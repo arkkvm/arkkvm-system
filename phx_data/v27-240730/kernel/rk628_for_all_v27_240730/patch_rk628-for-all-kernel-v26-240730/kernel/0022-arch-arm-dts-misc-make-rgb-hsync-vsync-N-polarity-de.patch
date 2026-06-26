@@ -1,0 +1,46 @@
+From ce953726c3126dda8d3d03110bc5f6add9d8babb Mon Sep 17 00:00:00 2001
+From: Guochun Huang <hero.huang@rock-chips.com>
+Date: Fri, 11 Jun 2021 15:04:05 +0800
+Subject: [PATCH 022/232] arch: arm: dts: misc: make  rgb hsync/vsync N
+ polarity default
+
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+Change-Id: Ie46916e945debe97b2ddcf51760856566e8a81b6
+---
+ arch/arm/boot/dts/rk3288-evb-rk628-misc-rgb2dsi-avb.dts  | 4 ++--
+ arch/arm/boot/dts/rk3288-evb-rk628-misc-rgb2lvds-avb.dts | 4 ++--
+ 2 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm/boot/dts/rk3288-evb-rk628-misc-rgb2dsi-avb.dts b/arch/arm/boot/dts/rk3288-evb-rk628-misc-rgb2dsi-avb.dts
+index 0b843e1e793505..05380a33a9f9e9 100644
+--- a/arch/arm/boot/dts/rk3288-evb-rk628-misc-rgb2dsi-avb.dts
++++ b/arch/arm/boot/dts/rk3288-evb-rk628-misc-rgb2dsi-avb.dts
+@@ -34,8 +34,8 @@
+ 				vfront-porch = <15>;
+ 				hsync-len = <2>;
+ 				vsync-len = <2>;
+-				hsync-active = <1>;
+-				vsync-active = <1>;
++				hsync-active = <0>;
++				vsync-active = <0>;
+ 				de-active = <0>;
+ 				pixelclk-active = <0>;
+ 			};
+diff --git a/arch/arm/boot/dts/rk3288-evb-rk628-misc-rgb2lvds-avb.dts b/arch/arm/boot/dts/rk3288-evb-rk628-misc-rgb2lvds-avb.dts
+index 6463ab836767bf..48735b11b0e2c2 100644
+--- a/arch/arm/boot/dts/rk3288-evb-rk628-misc-rgb2lvds-avb.dts
++++ b/arch/arm/boot/dts/rk3288-evb-rk628-misc-rgb2lvds-avb.dts
+@@ -46,8 +46,8 @@
+ 				vfront-porch = <3>;
+ 				hsync-len = <4>;
+ 				vsync-len = <2>;
+-				hsync-active = <1>;
+-				vsync-active = <1>;
++				hsync-active = <0>;
++				vsync-active = <0>;
+ 				de-active = <0>;
+ 				pixelclk-active = <0>;
+ 			};
+-- 
+2.17.1
+

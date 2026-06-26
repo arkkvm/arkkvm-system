@@ -1,0 +1,358 @@
+From 7289e364655baea7cc9f79eac95de8d7ac52b855 Mon Sep 17 00:00:00 2001
+From: Algea Cao <algea.cao@rock-chips.com>
+Date: Fri, 17 Nov 2023 09:55:52 +0800
+Subject: [PATCH] drm/bridge: synopsys: Support hdmi force output
+
+Support hdmi output specific resolution and color format
+regardless of whether hdmi is connected.
+
+Signed-off-by: Algea Cao <algea.cao@rock-chips.com>
+Change-Id: I228a74d128aa818166f589798897729473d97610
+---
+ drivers/gpu/drm/bridge/synopsys/dw-hdmi.c   |  60 +++++++---
+ drivers/gpu/drm/rockchip/dw_hdmi-rockchip.c | 117 ++++++++++++++------
+ include/drm/bridge/dw_hdmi.h                |   1 +
+ 3 files changed, 129 insertions(+), 49 deletions(-)
+
+diff --git a/drivers/gpu/drm/bridge/synopsys/dw-hdmi.c b/drivers/gpu/drm/bridge/synopsys/dw-hdmi.c
+index 35db236c9536..95d45f280b20 100644
+--- a/drivers/gpu/drm/bridge/synopsys/dw-hdmi.c
++++ b/drivers/gpu/drm/bridge/synopsys/dw-hdmi.c
+@@ -284,8 +284,9 @@ struct dw_hdmi {
+ 	bool sink_has_audio;
+ 	bool hpd_state;
+ 	bool support_hdmi;
+-	bool force_logo;
+-	int force_output;
++	bool force_logo;		/* force uboot hdmi output specific resolution */
++	bool force_kernel_output;	/* force kernel hdmi output specific resolution */
++	int force_output;		/* force hdmi/dvi output mode */
+ 
+ 	struct delayed_work work;
+ 	struct workqueue_struct *workqueue;
+@@ -1669,6 +1670,9 @@ static bool dw_hdmi_support_scdc(struct dw_hdmi *hdmi,
+ 	if (hdmi->version < 0x200a)
+ 		return false;
+ 
++	if (hdmi->force_kernel_output)
++		return true;
++
+ 	/* Disable if no DDC bus */
+ 	if (!hdmi->ddc)
+ 		return false;
+@@ -1983,17 +1987,14 @@ static int dw_hdmi_phy_init(struct dw_hdmi *hdmi, void *data,
+ 			    const struct drm_display_info *display,
+ 			    const struct drm_display_mode *mode)
+ {
+-	int i, ret;
++	int ret;
+ 
+-	/* HDMI Phy spec says to do the phy initialization sequence twice */
+-	for (i = 0; i < 2; i++) {
+-		dw_hdmi_phy_sel_data_en_pol(hdmi, 1);
+-		dw_hdmi_phy_sel_interface_control(hdmi, 0);
++	dw_hdmi_phy_sel_data_en_pol(hdmi, 1);
++	dw_hdmi_phy_sel_interface_control(hdmi, 0);
+ 
+-		ret = hdmi_phy_configure(hdmi, display);
+-		if (ret)
+-			return ret;
+-	}
++	ret = hdmi_phy_configure(hdmi, display);
++	if (ret)
++		return ret;
+ 
+ 	return 0;
+ }
+@@ -2950,7 +2951,7 @@ static void dw_hdmi_update_power(struct dw_hdmi *hdmi)
+ 	}
+ 
+ 	if (force == DRM_FORCE_OFF) {
+-		if (hdmi->initialized) {
++		if (hdmi->initialized && !hdmi->force_kernel_output) {
+ 			hdmi->initialized = false;
+ 			hdmi->disabled = true;
+ 			hdmi->logo_plug_out = true;
+@@ -2995,6 +2996,9 @@ static enum drm_connector_status dw_hdmi_detect(struct dw_hdmi *hdmi)
+ 		mutex_unlock(&hdmi->mutex);
+ 	}
+ 
++	if (hdmi->force_kernel_output)
++		return connector_status_connected;
++
+ 	result = hdmi->phy.ops->read_hpd(hdmi, hdmi->phy.data);
+ 	mutex_lock(&hdmi->mutex);
+ 	if (result != hdmi->last_connector_result) {
+@@ -3089,6 +3093,21 @@ static int dw_hdmi_connector_get_modes(struct drm_connector *connector)
+ 	void *data = hdmi->plat_data->phy_data;
+ 	int i,  ret = 0;
+ 
++	if (hdmi->force_kernel_output) {
++		mode = hdmi->plat_data->get_force_timing(data);
++		hdmi->support_hdmi = true;
++		hdmi->sink_is_hdmi = true;
++		hdmi->sink_has_audio = true;
++		mode = drm_mode_duplicate(connector->dev, mode);
++		drm_mode_debug_printmodeline(mode);
++		drm_mode_probed_add(connector, mode);
++		info->edid_hdmi_dc_modes = 0;
++		info->hdmi.y420_dc_modes = 0;
++		info->color_formats = 0;
++
++		return 1;
++	}
++
+ 	memset(metedata, 0, sizeof(*metedata));
+ 	edid = dw_hdmi_get_edid(hdmi, connector);
+ 	if (edid) {
+@@ -3290,7 +3309,8 @@ static int dw_hdmi_connector_atomic_check(struct drm_connector *connector,
+ 		drm_scdc_readb(hdmi->ddc, SCDC_TMDS_CONFIG, &val);
+ 
+ 		/* if plug out before hdmi bind, reset hdmi */
+-		if (vmode->mtmdsclock >= 340000000 && !(val & SCDC_TMDS_BIT_CLOCK_RATIO_BY_40))
++		if (vmode->mtmdsclock >= 340000000 && !(val & SCDC_TMDS_BIT_CLOCK_RATIO_BY_40)
++		    && !hdmi->force_kernel_output)
+ 			hdmi->logo_plug_out = true;
+ 	}
+ 
+@@ -3959,6 +3979,9 @@ dw_hdmi_bridge_mode_valid(struct drm_bridge *bridge,
+ 	const struct dw_hdmi_plat_data *pdata = hdmi->plat_data;
+ 	enum drm_mode_status mode_status = MODE_OK;
+ 
++	if (hdmi->force_kernel_output)
++		return MODE_OK;
++
+ 	if (hdmi->next_bridge)
+ 		return MODE_OK;
+ 
+@@ -4118,7 +4141,7 @@ void dw_hdmi_setup_rx_sense(struct dw_hdmi *hdmi, bool hpd, bool rx_sense)
+ {
+ 	mutex_lock(&hdmi->mutex);
+ 
+-	if (!hdmi->force && !hdmi->force_logo) {
++	if (!hdmi->force && !hdmi->force_logo && !hdmi->force_kernel_output) {
+ 		/*
+ 		 * If the RX sense status indicates we're disconnected,
+ 		 * clear the software rxsense status.
+@@ -4684,6 +4707,12 @@ static int get_force_logo_property(struct dw_hdmi *hdmi)
+ 	}
+ 	of_node_put(route);
+ 
++	if (!of_device_is_available(route_hdmi)) {
++		dev_dbg(hdmi->dev, "route-hdmi is disabled\n");
++		of_node_put(route_hdmi);
++		return 0;
++	}
++
+ 	hdmi->force_logo =
+ 		of_property_read_bool(route_hdmi, "force-output");
+ 
+@@ -4865,6 +4894,9 @@ struct dw_hdmi *dw_hdmi_probe(struct platform_device *pdev,
+ 	if (ret)
+ 		goto err_iahb;
+ 
++	if (hdmi->plat_data->get_force_timing(hdmi->plat_data->phy_data))
++		hdmi->force_kernel_output = true;
++
+ 	hdmi->logo_plug_out = false;
+ 	hdmi->initialized = false;
+ 	ret = hdmi_readb(hdmi, HDMI_PHY_STAT0);
+diff --git a/drivers/gpu/drm/rockchip/dw_hdmi-rockchip.c b/drivers/gpu/drm/rockchip/dw_hdmi-rockchip.c
+index 450b1626b8da..aef8a1702f35 100644
+--- a/drivers/gpu/drm/rockchip/dw_hdmi-rockchip.c
++++ b/drivers/gpu/drm/rockchip/dw_hdmi-rockchip.c
+@@ -24,6 +24,10 @@
+ #include <drm/drm_probe_helper.h>
+ #include <drm/drm_simple_kms_helper.h>
+ 
++#include <video/display_timing.h>
++#include <video/videomode.h>
++#include <video/of_display_timing.h>
++
+ #include <uapi/linux/videodev2.h>
+ 
+ #include "rockchip_drm_drv.h"
+@@ -250,6 +254,9 @@ struct rockchip_hdmi {
+ 	struct pinctrl *p;
+ 	struct pinctrl_state *idle_state;
+ 	struct pinctrl_state *default_state;
++	bool timing_force_output;
++	struct drm_display_mode force_mode;
++	u32 force_bus_format;
+ };
+ 
+ #define to_rockchip_hdmi(x)	container_of(x, struct rockchip_hdmi, x)
+@@ -806,6 +813,45 @@ static int hdmi_bus_fmt_to_color_format(unsigned int bus_format)
+ 	}
+ }
+ 
++static void parse_bus_format(u32 bus_format, u32 *format, u32 *colordepth)
++{
++	switch (bus_format) {
++	case MEDIA_BUS_FMT_RGB101010_1X30:
++		*format = RK_IF_FORMAT_RGB;
++		*colordepth = 10;
++		break;
++	case MEDIA_BUS_FMT_YUV8_1X24:
++		*format = RK_IF_FORMAT_YCBCR444;
++		*colordepth = 8;
++		break;
++	case MEDIA_BUS_FMT_YUV10_1X30:
++		*format = RK_IF_FORMAT_YCBCR444;
++		*colordepth = 10;
++		break;
++	case MEDIA_BUS_FMT_UYVY10_1X20:
++	case MEDIA_BUS_FMT_YUYV10_1X20:
++		*format = RK_IF_FORMAT_YCBCR422;
++		*colordepth = 10;
++		break;
++	case MEDIA_BUS_FMT_UYVY8_1X16:
++	case MEDIA_BUS_FMT_YUYV8_1X16:
++		*format = RK_IF_FORMAT_YCBCR422;
++		*colordepth = 8;
++		break;
++	case MEDIA_BUS_FMT_UYYVYY8_0_5X24:
++		*format = RK_IF_FORMAT_YCBCR420;
++		*colordepth = 8;
++		break;
++	case MEDIA_BUS_FMT_UYYVYY10_0_5X30:
++		*format = RK_IF_FORMAT_YCBCR420;
++		*colordepth = 10;
++		break;
++	default:
++		*format = RK_IF_FORMAT_RGB;
++		*colordepth = 8;
++	}
++}
++
+ static unsigned int
+ hdmi_get_tmdsclock(struct rockchip_hdmi *hdmi, unsigned long pixelclock)
+ {
+@@ -1377,6 +1423,8 @@ static int rockchip_hdmi_parse_dt(struct rockchip_hdmi *hdmi)
+ 	int ret, val, phy_table_size;
+ 	u32 *phy_config;
+ 	struct device_node *np = hdmi->dev->of_node;
++	struct display_timing timing;
++	struct videomode vm;
+ 
+ 	hdmi->regmap = syscon_regmap_lookup_by_phandle(np, "rockchip,grf");
+ 	if (IS_ERR(hdmi->regmap)) {
+@@ -1517,6 +1565,24 @@ static int rockchip_hdmi_parse_dt(struct rockchip_hdmi *hdmi)
+ 		dev_dbg(hdmi->dev, "use default hdmi phy table\n");
+ 	}
+ 
++	if (of_property_read_bool(np, "force-output")) {
++		hdmi->timing_force_output = true;
++
++		ret = of_get_display_timing(np, "force_timing", &timing);
++		if (ret < 0) {
++			dev_err(hdmi->dev, "can't get force timing\n");
++			hdmi->timing_force_output = false;
++			return ret;
++		}
++
++		videomode_from_timing(&timing, &vm);
++		drm_display_mode_from_videomode(&vm, &hdmi->force_mode);
++		hdmi->force_mode.type |= DRM_MODE_TYPE_PREFERRED;
++
++		if (of_property_read_u32(np, "force-bus-format", &hdmi->force_bus_format))
++			hdmi->force_bus_format = MEDIA_BUS_FMT_RGB888_1X24;
++	}
++
+ 	hdmi->hpd_gpiod = devm_gpiod_get_optional(hdmi->dev, "hpd", GPIOD_IN);
+ 
+ 	if (IS_ERR(hdmi->hpd_gpiod)) {
+@@ -2150,6 +2216,9 @@ dw_hdmi_rockchip_select_output(struct drm_connector_state *conn_state,
+ 		}
+ 	}
+ 
++	if (hdmi->timing_force_output)
++		parse_bus_format(hdmi->force_bus_format, color_format, &color_depth);
++
+ 	if (*color_format == RK_IF_FORMAT_YCBCR420) {
+ 		*output_mode = ROCKCHIP_OUT_MODE_YUV420;
+ 		if (color_depth > 8)
+@@ -2601,6 +2670,16 @@ static void dw_hdmi_rockchip_set_hdcp14_mem(void *data, bool enable)
+ 		regmap_write(hdmi->vo1_regmap, RK3588_GRF_VO1_CON7, val);
+ }
+ 
++static struct drm_display_mode *dw_hdmi_rockchip_get_force_timing(void *data)
++{
++	struct rockchip_hdmi *hdmi = (struct rockchip_hdmi *)data;
++
++	if (!hdmi->timing_force_output)
++		return NULL;
++
++	return &hdmi->force_mode;
++}
++
+ static const struct drm_prop_enum_list color_depth_enum_list[] = {
+ 	{ 0, "Automatic" }, /* Prefer highest color depth */
+ 	{ 8, "24bit" },
+@@ -2649,41 +2728,7 @@ dw_hdmi_rockchip_attach_properties(struct drm_connector *connector,
+ 	struct rockchip_drm_private *private = connector->dev->dev_private;
+ 	int ret;
+ 
+-	switch (color) {
+-	case MEDIA_BUS_FMT_RGB101010_1X30:
+-		hdmi->hdmi_output = RK_IF_FORMAT_RGB;
+-		hdmi->colordepth = 10;
+-		break;
+-	case MEDIA_BUS_FMT_YUV8_1X24:
+-		hdmi->hdmi_output = RK_IF_FORMAT_YCBCR444;
+-		hdmi->colordepth = 8;
+-		break;
+-	case MEDIA_BUS_FMT_YUV10_1X30:
+-		hdmi->hdmi_output = RK_IF_FORMAT_YCBCR444;
+-		hdmi->colordepth = 10;
+-		break;
+-	case MEDIA_BUS_FMT_UYVY10_1X20:
+-	case MEDIA_BUS_FMT_YUYV10_1X20:
+-		hdmi->hdmi_output = RK_IF_FORMAT_YCBCR422;
+-		hdmi->colordepth = 10;
+-		break;
+-	case MEDIA_BUS_FMT_UYVY8_1X16:
+-	case MEDIA_BUS_FMT_YUYV8_1X16:
+-		hdmi->hdmi_output = RK_IF_FORMAT_YCBCR422;
+-		hdmi->colordepth = 8;
+-		break;
+-	case MEDIA_BUS_FMT_UYYVYY8_0_5X24:
+-		hdmi->hdmi_output = RK_IF_FORMAT_YCBCR420;
+-		hdmi->colordepth = 8;
+-		break;
+-	case MEDIA_BUS_FMT_UYYVYY10_0_5X30:
+-		hdmi->hdmi_output = RK_IF_FORMAT_YCBCR420;
+-		hdmi->colordepth = 10;
+-		break;
+-	default:
+-		hdmi->hdmi_output = RK_IF_FORMAT_RGB;
+-		hdmi->colordepth = 8;
+-	}
++	parse_bus_format(color, &hdmi->hdmi_output, &hdmi->colordepth);
+ 
+ 	hdmi->bus_format = color;
+ 	hdmi->prev_bus_format = color;
+@@ -3544,6 +3589,8 @@ static int dw_hdmi_rockchip_bind(struct device *dev, struct device *master,
+ 		dw_hdmi_rockchip_set_ddc_io;
+ 	plat_data->set_hdcp14_mem =
+ 		dw_hdmi_rockchip_set_hdcp14_mem;
++	plat_data->get_force_timing =
++		dw_hdmi_rockchip_get_force_timing;
+ 	plat_data->property_ops = &dw_hdmi_rockchip_property_ops;
+ 
+ 	secondary = rockchip_hdmi_find_by_id(dev->driver, !hdmi->id);
+diff --git a/include/drm/bridge/dw_hdmi.h b/include/drm/bridge/dw_hdmi.h
+index aca7ae836796..906e96bcb4d7 100644
+--- a/include/drm/bridge/dw_hdmi.h
++++ b/include/drm/bridge/dw_hdmi.h
+@@ -259,6 +259,7 @@ struct dw_hdmi_plat_data {
+ 	int (*get_colorimetry)(void *data, struct edid *edid);
+ 	void (*set_ddc_io)(void *data, bool enable);
+ 	void (*set_hdcp14_mem)(void *data, bool enable);
++	struct drm_display_mode *(*get_force_timing)(void *data);
+ 
+ 	/* Vendor Property support */
+ 	const struct dw_hdmi_property_ops *property_ops;
+-- 
+2.17.1
+

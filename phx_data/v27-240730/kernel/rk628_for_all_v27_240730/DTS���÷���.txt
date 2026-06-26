@@ -1,0 +1,18 @@
+rk628-for-all整套代码期望能兼容所有SOC，其目的与LINUX内核DRM显示架构解耦，让RK628的接口转换代码相对独立，方便版本管控和迭代，目前功能包括RGB->MIPI DSI，RGB->LVDS，RGB->GVI，RGB->HDMI, HDMI->MIPI-CSI以及HDMI->MIPI-DSI，HDMI->LVDS，HDMI->GVI，HDMI->BT1120，其中后几个直连方式需要固定HDMI分辨率。
+
+1)、misc驱动配置可以参考如下dts：
+
+kernel/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-ddr4-v10.dtsi
+kernel/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2dsi-ddr4-v10.dts
+kernel/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2dsi-dual-ddr4-v10.dts
+kernel/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2gvi-ddr4-v10.dts
+kernel/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2lvds-ddr4-v10.dts
+kernel/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2lvds-dual-ddr4-v10.dts
+kernel/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2dsi-ddr4-v10.dts
+kernel/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2gvi-ddr4-v10.dts
+kernel/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2hdmi-ddr4-v10.dts
+kernel/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2lvds-ddr4-v10.dts
+kernel/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2lvds-dual-ddr4-v10.dts
+
+2)、media驱动配置参考dts请参阅指导文档。
+

@@ -1,0 +1,107 @@
+From ec3ebe6623b05ca31a01620d53f773a919fd7823 Mon Sep 17 00:00:00 2001
+From: Guochun Huang <hero.huang@rock-chips.com>
+Date: Wed, 13 Dec 2023 02:12:10 +0000
+Subject: [PATCH 191/232] ARM: dts: rockchip: fix
+ rk3288-evb-rk628-misc-hdmi2gvi route
+
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+Change-Id: Ibf0e8bab5af9e57fd070969223da14fb8662b56a
+---
+ .../rk3288-evb-rk628-misc-hdmi2gvi-avb.dts    | 73 +++++++++++++++++--
+ 1 file changed, 68 insertions(+), 5 deletions(-)
+
+diff --git a/arch/arm/boot/dts/rk3288-evb-rk628-misc-hdmi2gvi-avb.dts b/arch/arm/boot/dts/rk3288-evb-rk628-misc-hdmi2gvi-avb.dts
+index e906ab83a9c6d0..10cad011a552cb 100644
+--- a/arch/arm/boot/dts/rk3288-evb-rk628-misc-hdmi2gvi-avb.dts
++++ b/arch/arm/boot/dts/rk3288-evb-rk628-misc-hdmi2gvi-avb.dts
+@@ -37,10 +37,23 @@
+ 
+ &hdmi {
+ 	status = "okay";
+-};
+-
+-&hdmi_in_vopb {
+-	status = "disabled";
++	force-bus-format = <MEDIA_BUS_FMT_UYYVYY8_0_5X24>;
++	force-output;
++	force_timing {
++		clock-frequency = <594000000>;
++		hactive = <3840>;
++		vactive = <2160>;
++		hback-porch = <296>;
++		hfront-porch = <176>;
++		vback-porch = <72>;
++		vfront-porch = <8>;
++		hsync-len = <88>;
++		vsync-len = <10>;
++		hsync-active = <1>;
++		vsync-active = <1>;
++		de-active = <0>;
++		pixelclk-active = <0>;
++	};
+ };
+ 
+ &i2c1 {
+@@ -60,8 +73,58 @@
+ 		interrupts = <15 IRQ_TYPE_LEVEL_HIGH>;
+ 		enable-gpios = <&gpio5 RK_PC2 GPIO_ACTIVE_HIGH>;
+ 		reset-gpios = <&gpio7 RK_PB6 GPIO_ACTIVE_LOW>;
+-		panel-enable-gpios = <&gpio7 RK_PA2 GPIO_ACTIVE_HIGH>;
++		panel-enable-gpios = <&gpio7 RK_PC5 GPIO_ACTIVE_HIGH>;
+ 		status = "okay";
++
++		src-mode-4k-yuv420;
++		rk628,hdmi-in;
++		rk628-gvi {
++			/* "rgb666"
++			 * "rgb888"
++			 * "rgb101010"
++			 * "yuyv8"
++			 * "yuyv10"
++			 */
++			bus-format = "rgb888";
++			gvi,lanes = <8>;
++			//"rockchip,division-mode";
++			//"rockchip, gvi-frm-rst";
++			status = "okay";
++		};
++
++		display-timings {
++			src-timing {
++				clock-frequency = <594000000>;
++				hactive = <3840>;
++				vactive = <2160>;
++				hback-porch = <296>;
++				hfront-porch = <176>;
++				vback-porch = <72>;
++				vfront-porch = <8>;
++				hsync-len = <88>;
++				vsync-len = <10>;
++				hsync-active = <1>;
++				vsync-active = <1>;
++				de-active = <0>;
++				pixelclk-active = <0>;
++			};
++
++			dst-timing {
++				clock-frequency = <594000000>;
++				hactive = <3840>;
++				vactive = <2160>;
++				hback-porch = <296>;
++				hfront-porch = <176>;
++				vback-porch = <72>;
++				vfront-porch = <8>;
++				hsync-len = <88>;
++				vsync-len = <10>;
++				hsync-active = <0>;
++				vsync-active = <0>;
++				de-active = <0>;
++				pixelclk-active = <0>;
++			};
++	    };
+ 	};
+ };
+ 
+-- 
+2.17.1
+

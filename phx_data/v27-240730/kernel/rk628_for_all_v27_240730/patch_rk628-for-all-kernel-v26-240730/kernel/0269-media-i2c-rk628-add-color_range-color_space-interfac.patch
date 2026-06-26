@@ -1,0 +1,226 @@
+From 10fa3d0303d239582b44a69576fb2b2a3052a3f0 Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Sat, 11 May 2024 21:47:34 +0800
+Subject: [PATCH 269/305] media: i2c: rk628: add color_range/color_space
+ interface
+
+Type: Function
+Redmine ID: N/A
+Associated modifications: N/A
+Test: N/A
+
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+Change-Id: I9f2633f8ff4f9f2b3e9d6c02b3865eff125f30a5
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c |  4 -
+ drivers/media/i2c/rk628/rk628_hdmirx.c   | 98 ++++++++++++++++++++----
+ drivers/media/i2c/rk628/rk628_hdmirx.h   |  6 ++
+ 3 files changed, 90 insertions(+), 18 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index ed9e45d3b63375..bc051874519b5b 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -718,9 +718,7 @@ static void rk628_dsi_set_scs(struct rk628_csi *csi)
+ 	u32 val;
+ 	int avi_rdy;
+ 
+-	mutex_lock(&csi->confctl_mutex);
+ 	avi_rdy = rk628_is_avi_ready(csi->rk628, csi->avi_rcv_rdy);
+-	mutex_unlock(&csi->confctl_mutex);
+ 
+ 	rk628_i2c_read(csi->rk628, HDMI_RX_PDEC_AVI_PB, &val);
+ 	video_fmt = (val & VIDEO_FORMAT_MASK) >> 5;
+@@ -1074,9 +1072,7 @@ static void rk628_csi_set_csi(struct v4l2_subdev *sd)
+ 		v4l2_dbg(1, debug, sd, "%s csi1 config done\n", __func__);
+ 	}
+ 
+-	mutex_lock(&csi->confctl_mutex);
+ 	avi_rdy = rk628_is_avi_ready(csi->rk628, csi->avi_rcv_rdy);
+-	mutex_unlock(&csi->confctl_mutex);
+ 
+ 	rk628_i2c_read(csi->rk628, HDMI_RX_PDEC_AVI_PB, &val);
+ 	video_fmt = (val & VIDEO_FORMAT_MASK) >> 5;
+diff --git a/drivers/media/i2c/rk628/rk628_hdmirx.c b/drivers/media/i2c/rk628/rk628_hdmirx.c
+index ba7666fae3dda3..16ed62caf049bd 100644
+--- a/drivers/media/i2c/rk628/rk628_hdmirx.c
++++ b/drivers/media/i2c/rk628/rk628_hdmirx.c
+@@ -58,6 +58,41 @@ struct hdmirx_tmdsclk_cnt {
+ 	u8  cnt;
+ };
+ 
++enum hdmirx_pix_fmt {
++	HDMIRX_RGB888 = 0,
++	HDMIRX_YUV422 = 1,
++	HDMIRX_YUV444 = 2,
++	HDMIRX_YUV420 = 3,
++};
++
++static const char * const bus_format_str[] = {
++	"RGB",
++	"YUV422",
++	"YUV444",
++	"YUV420",
++	"UNKNOWN",
++};
++
++static const char *bus_color_range_str[3] = {
++	"Default", "Limited", "Full"
++};
++
++static const char *bus_color_space_str[8] = {
++	"xvYCC601", "xvYCC709", "sYCC601", "Adobe_YCC601",
++	"Adobe_RGB", "BT2020_YcCbcCrc", "BT2020_RGB_OR_YCbCr", "RGB"
++};
++
++enum hdmirx_color_space {
++	HDMIRX_XVYCC601 = 0,
++	HDMIRX_XVYCC709 = 1,
++	HDMIRX_SYCC601 = 2,
++	HDMIRX_ADOBE_YCC601 = 3,
++	HDMIRX_ADOBE_RGB = 4,
++	HDMIRX_BT2020_YCC_CONST_LUM = 5,
++	HDMIRX_BT2020_RGB_OR_YCC = 6,
++	HDMIRX_RGB = 7,
++};
++
+ #define HDMIRX_GET_TMDSCLK_TIME		21
+ 
+ static int hdcp_load_keys_cb(struct rk628 *rk628, struct rk628_hdcp *hdcp)
+@@ -1146,14 +1181,6 @@ void rk628_hdmirx_phy_prepclk_cfg(struct rk628 *rk628)
+ }
+ EXPORT_SYMBOL(rk628_hdmirx_phy_prepclk_cfg);
+ 
+-static const char * const bus_format_str[] = {
+-	"RGB",
+-	"YUV422",
+-	"YUV444",
+-	"YUV420",
+-	"UNKNOWN",
+-};
+-
+ u8 rk628_hdmirx_get_format(struct rk628 *rk628)
+ {
+ 	u32 val;
+@@ -1241,7 +1268,7 @@ static int rk628_hdmirx_read_timing(struct rk628 *rk628,
+ 	u32 hofs_pix, hbp, hfp, vbp, vfp;
+ 	u32 tmds_clk, tmdsclk_cnt;
+ 	u64 tmp_data;
+-	u8 video_fmt;
++	u8 video_fmt, vic, color_range, color_space;
+ 
+ 	memset(timings, 0, sizeof(struct v4l2_dv_timings));
+ 	timings->type = V4L2_DV_BT_656_1120;
+@@ -1302,7 +1329,11 @@ static int rk628_hdmirx_read_timing(struct rk628 *rk628,
+ 	hfp = htotal - hact - hofs_pix;
+ 	vfp = vtotal - vact - vs - vbp;
+ 
++	rk628_i2c_read(rk628, HDMI_RX_PDEC_AVI_PB, &val);
++	vic = (val & VID_IDENT_CODE_MASK) >> 24;
+ 	video_fmt = rk628_hdmirx_get_format(rk628);
++	color_range = rk628_hdmirx_get_range(rk628);
++	color_space = rk628_hdmirx_get_color_space(rk628);
+ 	if (video_fmt == BUS_FMT_YUV420) {
+ 		htotal *= 2;
+ 		hact *= 2;
+@@ -1313,6 +1344,8 @@ static int rk628_hdmirx_read_timing(struct rk628 *rk628,
+ 
+ 	dev_info(rk628->dev, "cnt_num:%d, tmds_cnt:%d, hs_cnt:%d, vs_cnt:%d, hofs:%d\n",
+ 		 HDMIRX_MODETCLK_CNT_NUM, tmdsclk_cnt, modetclk_cnt_hs, modetclk_cnt_vs, hofs_pix);
++	dev_info(rk628->dev, "get current aviif:  vic:%d, color_range: %s, color_space %s",
++		 vic, bus_color_range_str[color_range], bus_color_space_str[color_space]);
+ 
+ 	bt->width = hact;
+ 	bt->height = vact;
+@@ -1451,20 +1484,57 @@ EXPORT_SYMBOL(rk628_hdmirx_get_timings);
+ 
+ u8 rk628_hdmirx_get_range(struct rk628 *rk628)
+ {
+-	u32 val;
+ 	u8 color_range;
++	u32 val, vic, fmt;
+ 
+ 	rk628_i2c_read(rk628, HDMI_RX_PDEC_AVI_PB, &val);
+ 	color_range = (val & RGB_COLORRANGE_MASK) >> 18;
+-	if (color_range == 0x1)
+-		color_range = CSC_LIMIT_RANGE;
+-	else
+-		color_range = CSC_FULL_RANGE;
++	vic = (val & VID_IDENT_CODE_MASK) >> 24;
++	fmt = (val & VIDEO_FORMAT_MASK) >> 5;
++	if (fmt == HDMIRX_RGB888 && color_range == HDMIRX_DEFAULT_RANGE) {
++		(vic) ?
++		(color_range = HDMIRX_LIMIT_RANGE) :
++		(color_range = HDMIRX_FULL_RANGE);
++	}
+ 
+ 	return color_range;
+ }
+ EXPORT_SYMBOL(rk628_hdmirx_get_range);
+ 
++u8 rk628_hdmirx_get_color_space(struct rk628 *rk628)
++{
++	u32 val, EC2_0, C1_C0, fmt;
++	u8 color_space;
++
++	rk628_i2c_read(rk628, HDMI_RX_PDEC_AVI_PB, &val);
++	EC2_0 = (val & EXT_COLORIMETRY_MASK) >> 20;
++	C1_C0 = (val & COLORIMETRY_MASK) >> 14;
++	fmt = (val & VIDEO_FORMAT_MASK) >> 5;
++	if (fmt == HDMIRX_RGB888) {
++		(C1_C0 == 0) ?
++		(color_space = HDMIRX_RGB) :
++		(color_space = EC2_0);
++	} else {
++		switch (C1_C0) {
++		case 0:
++			color_space = HDMIRX_XVYCC709;
++			break;
++		case 1:
++			color_space = HDMIRX_XVYCC601;
++			break;
++		case 2:
++			color_space = HDMIRX_XVYCC709;
++			break;
++		default:
++			color_space = EC2_0;
++			break;
++		}
++	}
++
++	return color_space;
++}
++EXPORT_SYMBOL(rk628_hdmirx_get_color_space);
++
+ void rk628_hdmirx_controller_reset(struct rk628 *rk628)
+ {
+ 	mutex_lock(&rk628->rst_lock);
+diff --git a/drivers/media/i2c/rk628/rk628_hdmirx.h b/drivers/media/i2c/rk628/rk628_hdmirx.h
+index eb5efcbcd8f29a..12e0de6a23d189 100644
+--- a/drivers/media/i2c/rk628/rk628_hdmirx.h
++++ b/drivers/media/i2c/rk628/rk628_hdmirx.h
+@@ -254,7 +254,12 @@
+ #define DVI_DET				BIT(28)
+ #define HDMI_RX_PDEC_GCP_AVMUTE       	(HDMI_RX_BASE + 0x0380)
+ #define PKTDEC_GCP_CD_MASK		GENMASK(7, 4)
++#define HDMI_RX_PDEC_AVI_HB		(HDMI_RX_BASE + 0x03a0)
+ #define HDMI_RX_PDEC_AVI_PB		(HDMI_RX_BASE + 0x03a4)
++#define VID_IDENT_CODE_VIC7		BIT(31)
++#define VID_IDENT_CODE_MASK		GENMASK(30, 24)
++#define EXT_COLORIMETRY_MASK		GENMASK(22, 20)
++#define COLORIMETRY_MASK		GENMASK(15, 14)
+ #define VIDEO_FORMAT_MASK		GENMASK(6, 5)
+ #define VIDEO_FORMAT(x)			UPDATE(x, 6, 5)
+ #define RGB_COLORRANGE_MASK		GENMASK(19, 18)
+@@ -516,6 +521,7 @@ u32 rk628_hdmirx_get_tmdsclk_cnt(struct rk628 *rk628);
+ int rk628_hdmirx_get_timings(struct rk628 *rk628,
+ 			     struct v4l2_dv_timings *timings);
+ u8 rk628_hdmirx_get_range(struct rk628 *rk628);
++u8 rk628_hdmirx_get_color_space(struct rk628 *rk628);
+ void rk628_hdmirx_controller_reset(struct rk628 *rk628);
+ bool rk628_hdmirx_scdc_ced_err(struct rk628 *rk628);
+ bool rk628_hdmirx_is_signal_change_ists(struct rk628 *rk628);
+-- 
+2.17.1
+

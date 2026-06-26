@@ -1,0 +1,56 @@
+From a86a2b2aa034e7de4974b8d4b138eefcecbeb011 Mon Sep 17 00:00:00 2001
+From: Shunqing Chen <csq@rock-chips.com>
+Date: Tue, 10 Aug 2021 18:26:36 +0800
+Subject: [PATCH 058/232] media: rk628-for-all: solve compilation problem
+
+Signed-off-by: Shunqing Chen <csq@rock-chips.com>
+Change-Id: I3c9f7401dc902f031787f89415570470c2469c21
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_bt1120_v4l2.c | 2 +-
+ drivers/media/i2c/rk628/rk628_csi.c         | 2 +-
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c    | 2 +-
+ 3 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+index c4c8c0bce3a912..70439dab8038c7 100644
+--- a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+@@ -630,7 +630,7 @@ static void calc_dsp_frm_hst_vst(const struct videomode *src,
+ {
+ 	u32 bp_in, bp_out;
+ 	u32 v_scale_ratio;
+-	long long t_frm_st;
++	u64 t_frm_st;
+ 	u64 t_bp_in, t_bp_out, t_delta, tin;
+ 	u32 src_pixclock, dst_pixclock;
+ 	u32 dsp_htotal, src_htotal, src_vtotal;
+diff --git a/drivers/media/i2c/rk628/rk628_csi.c b/drivers/media/i2c/rk628/rk628_csi.c
+index b8385a223f7630..8ad91cd966a289 100644
+--- a/drivers/media/i2c/rk628/rk628_csi.c
++++ b/drivers/media/i2c/rk628/rk628_csi.c
+@@ -609,7 +609,7 @@ static void calc_dsp_frm_hst_vst(const struct videomode *src,
+ {
+ 	u32 bp_in, bp_out;
+ 	u32 v_scale_ratio;
+-	long long t_frm_st;
++	u64 t_frm_st;
+ 	u64 t_bp_in, t_bp_out, t_delta, tin;
+ 	u32 src_pixclock, dst_pixclock;
+ 	u32 dsp_htotal, src_htotal, src_vtotal;
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index a0c5b4b68c0f98..b5456b446344cc 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -670,7 +670,7 @@ static void calc_dsp_frm_hst_vst(const struct videomode *src,
+ {
+ 	u32 bp_in, bp_out;
+ 	u32 v_scale_ratio;
+-	long long t_frm_st;
++	u64 t_frm_st;
+ 	u64 t_bp_in, t_bp_out, t_delta, tin;
+ 	u32 src_pixclock, dst_pixclock;
+ 	u32 dsp_htotal, src_htotal, src_vtotal;
+-- 
+2.17.1
+

@@ -1,0 +1,118 @@
+From 249f159dec8ad570814222fa9ab2711cb2fcd913 Mon Sep 17 00:00:00 2001
+From: Shunqing Chen <csq@rock-chips.com>
+Date: Sat, 31 Jul 2021 16:18:49 +0800
+Subject: [PATCH 030/232] media: i2c: rk628: add rk628_v4l2_controls.h
+
+Signed-off-by: Shunqing Chen <csq@rock-chips.com>
+Change-Id: I569928761444f1f26a5dab82978695475d649087
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_bt1120_v4l2.c   |  5 ++---
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c      | 11 ++++++-----
+ drivers/media/i2c/rk628/rk628_v4l2_controls.h | 18 ++++++++++++++++++
+ 3 files changed, 26 insertions(+), 8 deletions(-)
+ create mode 100644 drivers/media/i2c/rk628/rk628_v4l2_controls.h
+
+diff --git a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+index df66d0a563711d..5679ae0e2a5294 100644
+--- a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+@@ -23,7 +23,6 @@
+ #include <linux/version.h>
+ #include <linux/videodev2.h>
+ #include <linux/workqueue.h>
+-#include <media/v4l2-controls_rockchip.h>
+ #include <media/v4l2-ctrls.h>
+ #include <media/v4l2-device.h>
+ #include <media/v4l2-dv-timings.h>
+@@ -36,13 +35,13 @@
+ #include "rk628_hdmirx.h"
+ #include "rk628_cru.h"
+ #include "rk628_combrxphy.h"
+-#include "rk628_combtxphy.h"
++#include "rk628_v4l2_controls.h"
+ 
+ static int debug;
+ module_param(debug, int, 0644);
+ MODULE_PARM_DESC(debug, "debug level (0-3)");
+ 
+-#define DRIVER_VERSION			KERNEL_VERSION(0, 0x0, 0x1)
++#define DRIVER_VERSION			KERNEL_VERSION(0, 0x0, 0x2)
+ #define RK628_BT1120_NAME		"rk628-bt1120"
+ 
+ #define EDID_NUM_BLOCKS_MAX 		2
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index d64d356ad731ec..2a02f9599f9f12 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -23,7 +23,6 @@
+ #include <linux/version.h>
+ #include <linux/videodev2.h>
+ #include <linux/workqueue.h>
+-#include <media/v4l2-controls_rockchip.h>
+ #include <media/v4l2-ctrls.h>
+ #include <media/v4l2-device.h>
+ #include <media/v4l2-dv-timings.h>
+@@ -38,12 +37,13 @@
+ #include "rk628_cru.h"
+ #include "rk628_combrxphy.h"
+ #include "rk628_combtxphy.h"
++#include "rk628_v4l2_controls.h"
+ 
+ static int debug;
+ module_param(debug, int, 0644);
+ MODULE_PARM_DESC(debug, "debug level (0-3)");
+ 
+-#define DRIVER_VERSION			KERNEL_VERSION(0, 0x0, 0x1)
++#define DRIVER_VERSION			KERNEL_VERSION(0, 0x0, 0x2)
+ #define RK628_CSI_NAME			"rk628-csi"
+ 
+ #define EDID_NUM_BLOCKS_MAX 		2
+@@ -69,7 +69,6 @@ MODULE_PARM_DESC(debug, "debug level (0-3)");
+ 
+ struct rk628_csi {
+ 	struct device *dev;
+-	struct rk628 *parent;
+ 	struct i2c_client *i2c_client;
+ 	struct media_pad pad;
+ 	struct v4l2_subdev sd;
+@@ -2251,8 +2250,10 @@ static int rk628_csi_probe_of(struct rk628_csi *csi)
+ 		return ret;
+ 	}
+ 
+-	gpiod_set_value(csi->enable_gpio, 1);
+-	usleep_range(10000, 11000);
++	if (csi->enable_gpio) {
++		gpiod_set_value(csi->enable_gpio, 1);
++		usleep_range(10000, 11000);
++	}
+ 	gpiod_set_value(csi->reset_gpio, 0);
+ 	usleep_range(10000, 11000);
+ 	gpiod_set_value(csi->reset_gpio, 1);
+diff --git a/drivers/media/i2c/rk628/rk628_v4l2_controls.h b/drivers/media/i2c/rk628/rk628_v4l2_controls.h
+new file mode 100644
+index 00000000000000..6c736ddf85035b
+--- /dev/null
++++ b/drivers/media/i2c/rk628/rk628_v4l2_controls.h
+@@ -0,0 +1,18 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Copyright (c) 2020 Rockchip Electronics Co. Ltd.
++ *
++ * Author: Shunqing Chen <csq@rock-chips.com>
++ */
++
++#ifndef _RK628_V4L2_CONTROLS_H
++#define _RK628_V4L2_CONTROLS_H
++
++#include <linux/v4l2-controls.h>
++
++#define V4L2_CID_USER_RK_BASE (V4L2_CID_USER_BASE + 0x1080)
++
++#define RK_V4L2_CID_AUDIO_SAMPLING_RATE (V4L2_CID_USER_RK_BASE + 0x100)
++#define RK_V4L2_CID_AUDIO_PRESENT (V4L2_CID_USER_RK_BASE + 0x101)
++
++#endif
+-- 
+2.17.1
+

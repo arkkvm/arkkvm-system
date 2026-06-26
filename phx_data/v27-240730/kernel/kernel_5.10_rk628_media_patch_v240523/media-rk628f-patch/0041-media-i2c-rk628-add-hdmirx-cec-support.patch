@@ -1,0 +1,631 @@
+From c9c123690f3fa6b67bd1457dc20b95fc954b90fe Mon Sep 17 00:00:00 2001
+From: Chen Shunqing <csq@rock-chips.com>
+Date: Fri, 19 Jan 2024 02:46:19 +0000
+Subject: [PATCH 41/53] media: i2c: rk628: add hdmirx cec support
+
+Type: Function
+Redmine ID: N/A
+Associated modifications: N/A
+Test: N/A
+
+Change-Id: I975770e7d32fe3d3bcb2123a3b7aa5bda7b05cd7
+Signed-off-by: Chen Shunqing <csq@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628.c             |   2 +
+ drivers/media/i2c/rk628/rk628_bt1120_v4l2.c |  26 +-
+ drivers/media/i2c/rk628/rk628_cru.c         |  19 ++
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c    |  23 +-
+ drivers/media/i2c/rk628/rk628_hdmirx.c      | 264 ++++++++++++++++++++
+ drivers/media/i2c/rk628/rk628_hdmirx.h      |  52 ++++
+ 6 files changed, 384 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628.c b/drivers/media/i2c/rk628/rk628.c
+index c481805fe8d0..a6fd12f00c19 100644
+--- a/drivers/media/i2c/rk628/rk628.c
++++ b/drivers/media/i2c/rk628/rk628.c
+@@ -82,10 +82,12 @@ static const struct regmap_range rk628_hdmirx_readable_ranges[] = {
+ 	regmap_reg_range(HDMI_RX_SCDC_WRDATA0, HDMI_RX_SCDC_WRDATA0),
+ 	regmap_reg_range(HDMI_RX_HDMI20_STATUS, HDMI_RX_HDMI20_STATUS),
+ 	regmap_reg_range(HDMI_RX_PDEC_ISTS, HDMI_RX_PDEC_IEN),
++	regmap_reg_range(HDMI_RX_AUD_CEC_ISTS, HDMI_RX_AUD_CEC_IEN),
+ 	regmap_reg_range(HDMI_RX_AUD_FIFO_ISTS, HDMI_RX_AUD_FIFO_IEN),
+ 	regmap_reg_range(HDMI_RX_MD_ISTS, HDMI_RX_MD_IEN),
+ 	regmap_reg_range(HDMI_RX_HDMI_ISTS, HDMI_RX_HDMI_IEN),
+ 	regmap_reg_range(HDMI_RX_DMI_DISABLE_IF, HDMI_RX_DMI_DISABLE_IF),
++	regmap_reg_range(HDMI_RX_CEC_CTRL, HDMI_RX_CEC_WAKEUPCTRL),
+ };
+ 
+ static const struct regmap_access_table rk628_hdmirx_readable_table = {
+diff --git a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+index 8a9859a09a9c..d30600fd747e 100644
+--- a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+@@ -99,6 +99,8 @@ struct rk628_bt1120 {
+ 	bool avi_rcv_rdy;
+ 	bool vid_ints_en;
+ 	bool dual_edge;
++	bool cec_enable;
++	struct rk628_hdmirx_cec *cec;
+ 	struct rk628_hdcp hdcp;
+ 	bool i2s_enable_default;
+ 	HAUDINFO audio_info;
+@@ -418,6 +420,8 @@ static void rk628_bt1120_delayed_work_enable_hotplug(struct work_struct *work)
+ 		rk628_hdmirx_controller_setup(bt1120->rk628);
+ 		rk628_hdmirx_hpd_ctrl(sd, true);
+ 		rk628_hdmirx_config_all(sd);
++		if (bt1120->cec && bt1120->cec->adap)
++			rk628_hdmirx_cec_state_reconfiguration(bt1120->rk628, bt1120->cec);
+ 		rk628_bt1120_enable_interrupts(sd, true);
+ 		rk628_i2c_update_bits(bt1120->rk628, GRF_SYSTEM_CON0,
+ 				SW_I2S_DATA_OEN_MASK, SW_I2S_DATA_OEN(0));
+@@ -514,6 +518,9 @@ static void rk628_hdmirx_hpd_ctrl(struct v4l2_subdev *sd, bool en)
+ 	set_level = en ? en_level : !en_level;
+ 	rk628_i2c_update_bits(bt1120->rk628, HDMI_RX_HDMI_SETUP_CTRL,
+ 			HOT_PLUG_DETECT_MASK, HOT_PLUG_DETECT(set_level));
++
++	if (bt1120->cec_enable && bt1120->cec)
++		rk628_hdmirx_cec_hpd(bt1120->cec, en);
+ }
+ 
+ static int rk628_bt1120_s_ctrl_detect_tx_5v(struct v4l2_subdev *sd)
+@@ -834,7 +841,7 @@ static void rk628_bt1120_initial_setup(struct v4l2_subdev *sd)
+ 
+ 	/* selete int io function */
+ 	rk628_i2c_write(bt1120->rk628, GRF_GPIO3AB_SEL_CON, 0x30002000);
+-	rk628_i2c_write(bt1120->rk628, GRF_GPIO1AB_SEL_CON, HIWORD_UPDATE(0x7, 10, 8));
++	rk628_i2c_write(bt1120->rk628, GRF_GPIO1AB_SEL_CON, HIWORD_UPDATE(0x7, 11, 8));
+ 	/* I2S_SCKM0 */
+ 	rk628_i2c_write(bt1120->rk628, GRF_GPIO0AB_SEL_CON, HIWORD_UPDATE(0x1, 2, 2));
+ 	/* I2SLR_M0 */
+@@ -925,6 +932,10 @@ static void rk628_bt1120_enable_interrupts(struct v4l2_subdev *sd, bool en)
+ 		rk628_i2c_write(bt1120->rk628, HDMI_RX_MD_IEN_CLR, md_mask);
+ 		rk628_i2c_write(bt1120->rk628, HDMI_RX_PDEC_IEN_CLR, pdec_mask);
+ 		rk628_i2c_write(bt1120->rk628, HDMI_RX_AUD_FIFO_IEN_CLR, 0x1f);
++		if (bt1120->cec && bt1120->cec->adap) {
++			rk628_i2c_write(bt1120->rk628, HDMI_RX_AUD_CEC_IEN_SET, 0);
++			rk628_i2c_write(bt1120->rk628, HDMI_RX_AUD_CEC_IEN_CLR, ~0);
++		}
+ 		bt1120->vid_ints_en = false;
+ 	}
+ 	usleep_range(5000, 5000);
+@@ -1039,6 +1050,9 @@ static irqreturn_t rk628_bt1120_irq_handler(int irq, void *dev_id)
+ 
+ 	rk628_bt1120_isr(&bt1120->sd, 0, &handled);
+ 
++	if (bt1120->cec_enable && bt1120->cec)
++		rk628_hdmirx_cec_irq(bt1120->rk628, bt1120->cec);
++
+ 	return handled ? IRQ_HANDLED : IRQ_NONE;
+ }
+ 
+@@ -1734,6 +1748,9 @@ static int rk628_bt1120_probe_of(struct rk628_bt1120 *bt1120)
+ 	if (of_property_read_bool(dev->of_node, "hdcp-enable"))
+ 		hdcp1x_enable = true;
+ 
++	if (of_property_read_bool(dev->of_node, "cec-enable"))
++		bt1120->cec_enable = true;
++
+ 	if (of_property_read_bool(dev->of_node, "i2s-enable-default"))
+ 		i2s_enable_default = true;
+ 
+@@ -1966,6 +1983,9 @@ static int rk628_bt1120_probe(struct i2c_client *client,
+ 		goto err_work_queues;
+ 	}
+ 
++	if (bt1120->cec_enable)
++		bt1120->cec = rk628_hdmirx_cec_register(rk628);
++
+ 	v4l2_info(sd, "%s found @ 0x%x (%s)\n", client->name,
+ 		  client->addr << 1, client->adapter->name);
+ 
+@@ -1993,6 +2013,10 @@ static int rk628_bt1120_remove(struct i2c_client *client)
+ 		del_timer_sync(&bt1120->timer);
+ 		flush_work(&bt1120->work_i2c_poll);
+ 	}
++
++	if (bt1120->cec_enable && bt1120->cec)
++		rk628_hdmirx_cec_unregister(bt1120->cec);
++
+ 	cancel_delayed_work_sync(&bt1120->delayed_work_enable_hotplug);
+ 	cancel_delayed_work_sync(&bt1120->delayed_work_res_change);
+ 	cancel_work_sync(&bt1120->work_isr);
+diff --git a/drivers/media/i2c/rk628/rk628_cru.c b/drivers/media/i2c/rk628/rk628_cru.c
+index 2005b280e339..45f034738020 100644
+--- a/drivers/media/i2c/rk628/rk628_cru.c
++++ b/drivers/media/i2c/rk628/rk628_cru.c
+@@ -433,6 +433,19 @@ static unsigned long rk628_cru_clk_set_rate_sclk_uart(struct rk628 *rk628,
+ 	return rate;
+ }
+ 
++static unsigned long rk628_cru_clk_set_rate_cec(struct rk628 *rk628,
++						unsigned long rate)
++{
++	unsigned long m, n, parent_rate = REFCLK_RATE;
++
++	rational_best_approximation(rate, parent_rate,
++				    GENMASK(15, 0), GENMASK(15, 0),
++				    &m, &n);
++	rk628_i2c_write(rk628, CRU_CLKSEL_CON12, m << 16 | n);
++
++	return rate;
++}
++
+ void rk628_clk_mux_testout(struct rk628 *rk628, int id)
+ {
+ 	switch (id) {
+@@ -445,6 +458,9 @@ void rk628_clk_mux_testout(struct rk628 *rk628, int id)
+ 	case CGU_CLK_HDMIRX_AUD:
+ 		rk628_i2c_write(rk628, CRU_CLKSEL_CON06, 0x000f000b);
+ 		break;
++	case CGU_CLK_HDMIRX_CEC:
++		rk628_i2c_write(rk628, CRU_CLKSEL_CON06, 0x000f000c);
++		break;
+ 	}
+ }
+ EXPORT_SYMBOL(rk628_clk_mux_testout);
+@@ -473,6 +489,9 @@ int rk628_clk_set_rate(struct rk628 *rk628, unsigned int id,
+ 	case CGU_CLK_HDMIRX_AUD:
+ 		rk628_cru_clk_set_rate_sclk_hdmirx_aud(rk628, rate);
+ 		break;
++	case CGU_CLK_HDMIRX_CEC:
++		rk628_cru_clk_set_rate_cec(rk628, rate);
++		break;
+ 	default:
+ 		return -EINVAL;
+ 	}
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index ecd03de44a75..84c5ccb1bf28 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -113,6 +113,8 @@ struct rk628_csi {
+ 	bool avi_rcv_rdy;
+ 	bool vid_ints_en;
+ 	bool continues_clk;
++	bool cec_enable;
++	struct rk628_hdmirx_cec *cec;
+ 	struct rk628_hdcp hdcp;
+ 	bool i2s_enable_default;
+ 	HAUDINFO audio_info;
+@@ -505,6 +507,8 @@ static void rk628_csi_delayed_work_enable_hotplug(struct work_struct *work)
+ 		rk628_hdmirx_controller_setup(csi->rk628);
+ 		rk628_hdmirx_hpd_ctrl(sd, true);
+ 		rk628_hdmirx_config_all(sd);
++		if (csi->cec && csi->cec->adap)
++			rk628_hdmirx_cec_state_reconfiguration(csi->rk628, csi->cec);
+ 		rk628_csi_enable_interrupts(sd, true);
+ 		rk628_i2c_update_bits(csi->rk628, GRF_SYSTEM_CON0,
+ 				SW_I2S_DATA_OEN_MASK, SW_I2S_DATA_OEN(0));
+@@ -600,6 +604,9 @@ static void rk628_hdmirx_hpd_ctrl(struct v4l2_subdev *sd, bool en)
+ 	set_level = en ? en_level : !en_level;
+ 	rk628_i2c_update_bits(csi->rk628, HDMI_RX_HDMI_SETUP_CTRL,
+ 			HOT_PLUG_DETECT_MASK, HOT_PLUG_DETECT(set_level));
++
++	if (csi->cec_enable && csi->cec)
++		rk628_hdmirx_cec_hpd(csi->cec, en);
+ }
+ 
+ 
+@@ -1297,7 +1304,7 @@ static void rk628_csi_initial_setup(struct v4l2_subdev *sd)
+ 
+ 	/* selete int io function */
+ 	rk628_i2c_write(csi->rk628, GRF_GPIO3AB_SEL_CON, 0x30002000);
+-	rk628_i2c_write(csi->rk628, GRF_GPIO1AB_SEL_CON, HIWORD_UPDATE(0x7, 10, 8));
++	rk628_i2c_write(csi->rk628, GRF_GPIO1AB_SEL_CON, HIWORD_UPDATE(0xf, 11, 8));
+ 	/* I2S_SCKM0 */
+ 	rk628_i2c_write(csi->rk628, GRF_GPIO0AB_SEL_CON, HIWORD_UPDATE(0x1, 2, 2));
+ 	/* I2SLR_M0 */
+@@ -1416,6 +1423,10 @@ static void rk628_csi_enable_interrupts(struct v4l2_subdev *sd, bool en)
+ 		rk628_i2c_write(csi->rk628, HDMI_RX_MD_IEN_CLR, md_mask);
+ 		rk628_i2c_write(csi->rk628, HDMI_RX_PDEC_IEN_CLR, pdec_mask);
+ 		rk628_i2c_write(csi->rk628, HDMI_RX_AUD_FIFO_IEN_CLR, 0x1f);
++		if (csi->cec && csi->cec->adap) {
++			rk628_i2c_write(csi->rk628, HDMI_RX_AUD_CEC_IEN_SET, 0);
++			rk628_i2c_write(csi->rk628, HDMI_RX_AUD_CEC_IEN_CLR, ~0);
++		}
+ 		csi->vid_ints_en = false;
+ 	}
+ 	usleep_range(5000, 5000);
+@@ -1532,6 +1543,9 @@ static irqreturn_t rk628_csi_irq_handler(int irq, void *dev_id)
+ 
+ 	rk628_csi_isr(&csi->sd, 0, &handled);
+ 
++	if (csi->cec_enable && csi->cec)
++		rk628_hdmirx_cec_irq(csi->rk628, csi->cec);
++
+ 	return handled ? IRQ_HANDLED : IRQ_NONE;
+ }
+ 
+@@ -2435,6 +2449,9 @@ static int rk628_csi_probe_of(struct rk628_csi *csi)
+ 	if (of_property_read_bool(dev->of_node, "hdcp-enable"))
+ 		hdcp1x_enable = true;
+ 
++	if (of_property_read_bool(dev->of_node, "cec-enable"))
++		csi->cec_enable = true;
++
+ 	if (of_property_read_bool(dev->of_node, "i2s-enable-default"))
+ 		i2s_enable_default = true;
+ 
+@@ -2847,6 +2864,10 @@ static int rk628_csi_remove(struct i2c_client *client)
+ 		del_timer_sync(&csi->timer);
+ 		flush_work(&csi->work_i2c_poll);
+ 	}
++
++	if (csi->cec_enable && csi->cec)
++		rk628_hdmirx_cec_unregister(csi->cec);
++
+ 	rk628_hdmirx_audio_cancel_work_audio(csi->audio_info, true);
+ 	rk628_hdmirx_audio_cancel_work_rate_change(csi->audio_info, true);
+ 	cancel_delayed_work_sync(&csi->delayed_work_enable_hotplug);
+diff --git a/drivers/media/i2c/rk628/rk628_hdmirx.c b/drivers/media/i2c/rk628/rk628_hdmirx.c
+index 729155aefccd..4f0f9d2ac58b 100644
+--- a/drivers/media/i2c/rk628/rk628_hdmirx.c
++++ b/drivers/media/i2c/rk628/rk628_hdmirx.c
+@@ -836,6 +836,270 @@ static void rk628_hdmirxphy_set_clrdpt(struct rk628 *rk628, bool is_8bit)
+ 		hdmirxphy_write(rk628, 0x03, 0x0060);
+ }
+ 
++static int rk628_hdmirx_cec_log_addr(struct cec_adapter *adap, u8 logical_addr)
++{
++	struct rk628_hdmirx_cec *cec = cec_get_drvdata(adap);
++	struct rk628 *rk628 = cec->rk628;
++
++	if (logical_addr == CEC_LOG_ADDR_INVALID)
++		cec->addresses = 0;
++	else
++		cec->addresses |= BIT(logical_addr) | BIT(15);
++
++	rk628_i2c_write(rk628, HDMI_RX_CEC_ADDR_L, cec->addresses & 0xff);
++	rk628_i2c_write(rk628, HDMI_RX_CEC_ADDR_H, (cec->addresses >> 8) & 0xff);
++
++	return 0;
++}
++
++static int rk628_hdmirx_cec_enable(struct cec_adapter *adap, bool enable)
++{
++	struct rk628_hdmirx_cec *cec = cec_get_drvdata(adap);
++	struct rk628 *rk628 = cec->rk628;
++
++	if (!enable) {
++		rk628_i2c_write(rk628, HDMI_RX_AUD_CEC_IEN_CLR, ~0);
++		rk628_i2c_update_bits(rk628, HDMI_RX_DMI_DISABLE_IF, CEC_ENABLE_MASK, 0);
++	} else {
++		unsigned int irqs;
++
++		rk628_hdmirx_cec_log_addr(cec->adap, CEC_LOG_ADDR_INVALID);
++		rk628_i2c_update_bits(rk628, HDMI_RX_DMI_DISABLE_IF, CEC_ENABLE_MASK,
++				      CEC_ENABLE_MASK);
++
++		rk628_i2c_write(rk628, HDMI_RX_CEC_CTRL, 0);
++		rk628_i2c_write(rk628, HDMI_RX_AUD_CEC_ICLR, ~0);
++		rk628_i2c_write(rk628, HDMI_RX_CEC_LOCK, 0);
++
++		irqs = ERROR_INIT_ENSET | NACK_ENSET | EOM_ENSET | DONE_ENSET;
++		rk628_i2c_write(rk628, HDMI_RX_AUD_CEC_IEN_SET, irqs);
++	}
++
++	return 0;
++}
++
++static int rk628_hdmirx_cec_transmit(struct cec_adapter *adap, u8 attempts,
++				     u32 signal_free_time, struct cec_msg *msg)
++{
++	struct rk628_hdmirx_cec *cec = cec_get_drvdata(adap);
++	struct rk628 *rk628 = cec->rk628;
++	int i, msg_len;
++	unsigned int ctrl;
++
++	switch (signal_free_time) {
++	case CEC_SIGNAL_FREE_TIME_RETRY:
++		ctrl = CEC_CTRL_RETRY;
++		break;
++	case CEC_SIGNAL_FREE_TIME_NEW_INITIATOR:
++	default:
++		ctrl = CEC_CTRL_NORMAL;
++		break;
++	case CEC_SIGNAL_FREE_TIME_NEXT_XFER:
++		ctrl = CEC_CTRL_IMMED;
++		break;
++	}
++
++	msg_len = msg->len;
++	if (msg->len > 16)
++		msg_len = 16;
++	if (msg_len <= 0)
++		return 0;
++
++	for (i = 0; i < msg_len; i++)
++		rk628_i2c_write(rk628, HDMI_RX_CEC_TX_DATA_0 + i * 4, msg->msg[i]);
++
++	rk628_i2c_write(rk628, HDMI_RX_CEC_TX_CNT, msg_len);
++	rk628_i2c_write(rk628, HDMI_RX_CEC_CTRL, ctrl | CEC_SEND);
++
++	return 0;
++}
++
++static const struct cec_adap_ops rk628_hdmirx_cec_ops = {
++	.adap_enable = rk628_hdmirx_cec_enable,
++	.adap_log_addr = rk628_hdmirx_cec_log_addr,
++	.adap_transmit = rk628_hdmirx_cec_transmit,
++};
++
++static void rk628_hdmirx_cec_del(void *data)
++{
++	struct rk628_hdmirx_cec *cec = data;
++
++	cec_delete_adapter(cec->adap);
++}
++
++void rk628_hdmirx_cec_irq(struct rk628 *rk628, struct rk628_hdmirx_cec *cec)
++{
++	u32 stat, val;
++
++	rk628_i2c_read(rk628, HDMI_RX_AUD_CEC_ISTS, &stat);
++	if (stat == 0)
++		return;
++
++	rk628_i2c_write(rk628, HDMI_RX_AUD_CEC_ICLR, stat);
++
++	if (stat & ERROR_INIT) {
++		cec->tx_status = CEC_TX_STATUS_ERROR;
++		cec->tx_done = true;
++	} else if (stat & DONE) {
++		cec->tx_status = CEC_TX_STATUS_OK;
++		cec->tx_done = true;
++	} else if (stat & NACK) {
++		cec->tx_status = CEC_TX_STATUS_NACK;
++		cec->tx_done = true;
++	}
++
++	if (stat & EOM) {
++		unsigned int len, i;
++
++		rk628_i2c_read(rk628, HDMI_RX_CEC_RX_CNT, &val);
++		len = val & 0x1f;
++		if (len > sizeof(cec->rx_msg.msg))
++			len = sizeof(cec->rx_msg.msg);
++
++		for (i = 0; i < len; i++) {
++			rk628_i2c_read(rk628, HDMI_RX_CEC_RX_DATA_0 + i * 4, &val);
++			cec->rx_msg.msg[i] = val & 0xff;
++		}
++		rk628_i2c_write(rk628, HDMI_RX_CEC_LOCK, 0);
++
++		cec->rx_msg.len = len;
++		cec->rx_done = true;
++	}
++
++	if (cec->tx_done) {
++		cec->tx_done = false;
++		cec_transmit_attempt_done(cec->adap, cec->tx_status);
++	}
++	if (cec->rx_done) {
++		cec->rx_done = false;
++		cec_received_msg(cec->adap, &cec->rx_msg);
++	}
++}
++EXPORT_SYMBOL(rk628_hdmirx_cec_irq);
++
++struct rk628_hdmirx_cec *rk628_hdmirx_cec_register(struct rk628 *rk628)
++{
++	struct rk628_hdmirx_cec *cec;
++	int ret;
++	unsigned int irqs;
++
++	if (!rk628)
++		return NULL;
++
++	/*
++	 * Our device is just a convenience - we want to link to the real
++	 * hardware device here, so that userspace can see the association
++	 * between the HDMI hardware and its associated CEC chardev.
++	 */
++	cec = devm_kzalloc(rk628->dev, sizeof(*cec), GFP_KERNEL);
++	if (!cec)
++		return NULL;
++
++	cec->rk628 = rk628;
++	cec->dev = rk628->dev;
++
++	rk628_i2c_write(rk628, HDMI_RX_CEC_MASK, 0);
++	rk628_i2c_update_bits(rk628, HDMI_RX_DMI_DISABLE_IF, CEC_ENABLE_MASK, CEC_ENABLE_MASK);
++
++	rk628_i2c_write(rk628, HDMI_RX_CEC_TX_CNT, 0);
++	rk628_i2c_write(rk628, HDMI_RX_CEC_RX_CNT, 0);
++	/* clk_hdmirx_cec = 32.768k */
++	rk628_clk_set_rate(rk628, CGU_CLK_HDMIRX_CEC, 32768);
++
++	cec->adap = cec_allocate_adapter(&rk628_hdmirx_cec_ops, cec, "rk628-hdmirx",
++					 CEC_CAP_LOG_ADDRS | CEC_CAP_TRANSMIT |
++					 CEC_CAP_RC | CEC_CAP_PASSTHROUGH,
++					 CEC_MAX_LOG_ADDRS);
++	if (IS_ERR(cec->adap)) {
++		dev_err(cec->dev, "cec adap allocate failed!\n");
++		return NULL;
++	}
++
++	/* override the module pointer */
++	cec->adap->owner = THIS_MODULE;
++
++	ret = devm_add_action(cec->dev, rk628_hdmirx_cec_del, cec);
++	if (ret) {
++		cec_delete_adapter(cec->adap);
++		return NULL;
++	}
++
++	cec->notify = cec_notifier_cec_adap_register(cec->dev,
++						     NULL, cec->adap);
++	if (!cec->notify) {
++		dev_err(cec->dev, "cec notify register failed!\n");
++		return NULL;
++	}
++
++	ret = cec_register_adapter(cec->adap, cec->dev);
++	if (ret < 0) {
++		dev_err(cec->dev, "cec register adapter failed!\n");
++		cec_notifier_cec_adap_unregister(cec->notify, cec->adap);
++		return NULL;
++	}
++
++	/* The TV functionality can only map to physical address 0 */
++	cec_s_phys_addr(cec->adap, 0, false);
++
++	rk628_i2c_update_bits(rk628, HDMI_RX_DMI_DISABLE_IF, CEC_ENABLE_MASK, CEC_ENABLE_MASK);
++	irqs = ERROR_INIT_ENSET | NACK_ENSET | EOM_ENSET | DONE_ENSET;
++	rk628_i2c_write(rk628, HDMI_RX_AUD_CEC_IEN_SET, irqs);
++	rk628_i2c_write(rk628, HDMI_RX_AUD_CEC_ICLR, ~0);
++
++	/*
++	 * CEC documentation says we must not call cec_delete_adapter
++	 * after a successful call to cec_register_adapter().
++	 */
++	devm_remove_action(cec->dev, rk628_hdmirx_cec_del, cec);
++
++	return cec;
++}
++EXPORT_SYMBOL(rk628_hdmirx_cec_register);
++
++void rk628_hdmirx_cec_unregister(struct rk628_hdmirx_cec *cec)
++{
++	if (!cec)
++		return;
++
++	cec_notifier_cec_adap_unregister(cec->notify, cec->adap);
++	cec_unregister_adapter(cec->adap);
++}
++EXPORT_SYMBOL(rk628_hdmirx_cec_unregister);
++
++void rk628_hdmirx_cec_hpd(struct rk628_hdmirx_cec *cec, bool en)
++{
++	if (!cec || !cec->adap)
++		return;
++
++	cec_queue_pin_hpd_event(cec->adap, en, ktime_get());
++}
++EXPORT_SYMBOL(rk628_hdmirx_cec_hpd);
++
++void rk628_hdmirx_cec_state_reconfiguration(struct rk628 *rk628,
++					    struct rk628_hdmirx_cec *cec)
++{
++	unsigned int irqs;
++	u32 val;
++
++	rk628_i2c_write(rk628, HDMI_RX_CEC_ADDR_L, cec->addresses & 0xff);
++	rk628_i2c_write(rk628, HDMI_RX_CEC_ADDR_H, (cec->addresses >> 8) & 0xff);
++
++	rk628_i2c_write(rk628, HDMI_RX_CEC_MASK, 0);
++	rk628_i2c_write(rk628, HDMI_RX_CEC_TX_CNT, 0);
++	rk628_i2c_write(rk628, HDMI_RX_AUD_CEC_IEN_CLR, ~0);
++	rk628_i2c_write(rk628, HDMI_RX_AUD_CEC_ICLR, ~0);
++	rk628_i2c_write(rk628, HDMI_RX_CEC_CTRL, 0);
++	rk628_i2c_write(rk628, HDMI_RX_CEC_LOCK, 0);
++
++	irqs = ERROR_INIT_ENSET | NACK_ENSET | EOM_ENSET | DONE_ENSET;
++	rk628_i2c_read(rk628, HDMI_RX_AUD_CEC_IEN, &val);
++	if (!(val & irqs))
++		rk628_i2c_write(rk628, HDMI_RX_AUD_CEC_IEN_SET, irqs);
++
++	rk628_i2c_update_bits(rk628, HDMI_RX_DMI_DISABLE_IF, CEC_ENABLE_MASK, CEC_ENABLE(1));
++}
++EXPORT_SYMBOL(rk628_hdmirx_cec_state_reconfiguration);
++
+ void rk628_hdmirx_verisyno_phy_power_on(struct rk628 *rk628)
+ {
+ 	bool is_hdmi2 = false;
+diff --git a/drivers/media/i2c/rk628/rk628_hdmirx.h b/drivers/media/i2c/rk628/rk628_hdmirx.h
+index bb9690f35006..501ea054317c 100644
+--- a/drivers/media/i2c/rk628/rk628_hdmirx.h
++++ b/drivers/media/i2c/rk628/rk628_hdmirx.h
+@@ -8,6 +8,8 @@
+ #ifndef __RK628_HDMIRX_H
+ #define __RK628_HDMIRX_H
+ 
++#include <media/cec.h>
++#include <media/cec-notifier.h>
+ #include <media/v4l2-dv-timings.h>
+ #include "rk628.h"
+ 
+@@ -316,7 +318,21 @@
+ #define HDMI_RX_PDEC_ICLR		(HDMI_RX_BASE + 0x0f88)
+ #define HDMI_RX_PDEC_ISET		(HDMI_RX_BASE + 0x0f8c)
+ #define HDMI_RX_AUD_CEC_IEN_CLR		(HDMI_RX_BASE + 0x0f90)
++#define HDMI_RX_AUD_CEC_IEN_SET		(HDMI_RX_BASE + 0x0f94)
++#define ERROR_INIT_ENSET		BIT(20)
++#define ARBLST_ENSET			BIT(19)
++#define NACK_ENSET			BIT(18)
++#define EOM_ENSET			BIT(17)
++#define DONE_ENSET			BIT(16)
++#define HDMI_RX_AUD_CEC_ISTS		(HDMI_RX_BASE + 0x0f98)
++#define ERROR_INIT			BIT(20)
++#define ARBLST				BIT(19)
++#define NACK				BIT(18)
++#define EOM				BIT(17)
++#define DONE				BIT(16)
+ #define HDMI_RX_AUD_CEC_IEN		(HDMI_RX_BASE + 0x0f9c)
++#define HDMI_RX_AUD_CEC_ICLR		(HDMI_RX_BASE + 0x0fa0)
++#define HDMI_RX_AUD_CEC_ISET		(HDMI_RX_BASE + 0x0fa4)
+ #define HDMI_RX_AUD_FIFO_IEN_CLR	(HDMI_RX_BASE + 0x0fa8)
+ #define HDMI_RX_AUD_FIFO_IEN_SET	(HDMI_RX_BASE + 0x0fac)
+ #define AFIF_OVERFL_ENSET		BIT(4)
+@@ -369,11 +385,29 @@
+ #define HDMI_RX_DMI_DISABLE_IF		(HDMI_RX_BASE + 0x0ff4)
+ #define VID_ENABLE(x)			UPDATE(x, 7, 7)
+ #define VID_ENABLE_MASK			BIT(7)
++#define CEC_ENABLE(x)			UPDATE(x, 5, 5)
++#define CEC_ENABLE_MASK			BIT(5)
+ #define AUD_ENABLE(x)			UPDATE(x, 4, 4)
+ #define AUD_ENABLE_MASK			BIT(4)
+ #define HDMI_ENABLE(x)			UPDATE(x, 2, 2)
+ #define HDMI_ENABLE_MASK		BIT(2)
+ 
++#define HDMI_RX_CEC_CTRL		(HDMI_RX_BASE + 0x1f00)
++#define CEC_CTRL_FRAME_TYP		(3 << 1)
++#define CEC_CTRL_IMMED			(2 << 1)
++#define CEC_CTRL_NORMAL			(1 << 1)
++#define CEC_CTRL_RETRY			(0 << 1)
++#define CEC_SEND			BIT(0)
++#define HDMI_RX_CEC_MASK		(HDMI_RX_BASE + 0x1f08)
++#define HDMI_RX_CEC_ADDR_L		(HDMI_RX_BASE + 0x1f14)
++#define HDMI_RX_CEC_ADDR_H		(HDMI_RX_BASE + 0x1f18)
++#define HDMI_RX_CEC_TX_CNT		(HDMI_RX_BASE + 0x1f1c)
++#define HDMI_RX_CEC_RX_CNT		(HDMI_RX_BASE + 0x1f20)
++#define HDMI_RX_CEC_TX_DATA_0		(HDMI_RX_BASE + 0x1f40)
++#define HDMI_RX_CEC_RX_DATA_0		(HDMI_RX_BASE + 0x1f80)
++#define HDMI_RX_CEC_LOCK		(HDMI_RX_BASE + 0x1fc0)
++#define HDMI_RX_CEC_WAKEUPCTRL		(HDMI_RX_BASE + 0x1fc4)
++
+ #define HDMI_RX_IVECTOR_INDEX_CB	(HDMI_RX_BASE + 0x32e4)
+ #define HDMI_RX_MAX_REGISTER		HDMI_RX_IVECTOR_INDEX_CB
+ 
+@@ -434,6 +468,18 @@ struct rk628_hdcp {
+ 	struct hdcp_keys *keys;
+ };
+ 
++struct rk628_hdmirx_cec {
++	struct device *dev;
++	struct rk628 *rk628;
++	u32 addresses;
++	struct cec_adapter *adap;
++	struct cec_msg rx_msg;
++	unsigned int tx_status;
++	bool tx_done;
++	bool rx_done;
++	struct cec_notifier *notify;
++};
++
+ void rk628_hdmirx_set_hdcp(struct rk628 *rk628, struct rk628_hdcp *hdcp, bool en);
+ void rk628_hdmirx_controller_setup(struct rk628 *rk628);
+ 
+@@ -469,4 +515,10 @@ void rk628_hdmirx_controller_reset(struct rk628 *rk628);
+ bool rk628_hdmirx_scdc_ced_err(struct rk628 *rk628);
+ bool rk628_hdmirx_is_signal_change_ists(struct rk628 *rk628);
+ 
++void rk628_hdmirx_cec_irq(struct rk628 *rk628, struct rk628_hdmirx_cec *cec);
++struct rk628_hdmirx_cec *rk628_hdmirx_cec_register(struct rk628 *rk628);
++void rk628_hdmirx_cec_unregister(struct rk628_hdmirx_cec *cec);
++void rk628_hdmirx_cec_hpd(struct rk628_hdmirx_cec *cec, bool en);
++void rk628_hdmirx_cec_state_reconfiguration(struct rk628 *rk628,
++					    struct rk628_hdmirx_cec *cec);
+ #endif
+-- 
+2.17.1
+

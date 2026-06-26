@@ -1,0 +1,28 @@
+From dab931356960b5be298cb9948ed269d7332a573f Mon Sep 17 00:00:00 2001
+From: Luo Wei <lw@rock-chips.com>
+Date: Fri, 16 Dec 2022 11:01:10 +0800
+Subject: [PATCH 153/232] fix dclk error sometime when hdmi2lvds case
+
+Signed-off-by: Zhu Zhanbo  <zer.hu@rock-chips.com>
+Change-Id: I8f1d327047a180a95a47bbb69a61b4e294e5bede
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/misc/rk628/rk628_hdmirx.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/misc/rk628/rk628_hdmirx.c b/drivers/misc/rk628/rk628_hdmirx.c
+index db8b24b1fea046..0387d586a4bf68 100644
+--- a/drivers/misc/rk628/rk628_hdmirx.c
++++ b/drivers/misc/rk628/rk628_hdmirx.c
+@@ -432,7 +432,7 @@ static void rk628_hdmirx_get_timing(struct rk628 *rk628)
+ 		pixelclock /= 2;
+ 	}
+ 
+-	hdmirx->mode.clock = tmds_clk / 1000;
++	hdmirx->mode.clock = pixelclock / 1000;
+ 	hdmirx->mode.hdisplay = hact;
+ 	hdmirx->mode.hstart = hdmirx->mode.hdisplay + hfrontporch;
+ 	hdmirx->mode.hend = hdmirx->mode.hstart + hsync;
+-- 
+2.17.1
+

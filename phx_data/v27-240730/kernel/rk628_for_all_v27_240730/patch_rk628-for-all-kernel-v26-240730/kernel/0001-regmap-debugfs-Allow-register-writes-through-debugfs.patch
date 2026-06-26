@@ -1,0 +1,29 @@
+From c15bce141cbdda8a521d0654f67b4f852a27f34d Mon Sep 17 00:00:00 2001
+From: Wyon Bi <bivvy.bi@rock-chips.com>
+Date: Wed, 2 Jun 2021 08:49:01 +0800
+Subject: [PATCH 001/232] regmap: debugfs: Allow register writes through
+ debugfs
+
+Signed-off-by: Wyon Bi <bivvy.bi@rock-chips.com>
+Change-Id: Iaecea608dfb392bc0695229a02313741a59834cb
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/base/regmap/regmap-debugfs.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/base/regmap/regmap-debugfs.c b/drivers/base/regmap/regmap-debugfs.c
+index 3f0a7e262d6982..2437186791508c 100644
+--- a/drivers/base/regmap/regmap-debugfs.c
++++ b/drivers/base/regmap/regmap-debugfs.c
+@@ -259,7 +259,7 @@ static ssize_t regmap_map_read_file(struct file *file, char __user *user_buf,
+ 				   count, ppos);
+ }
+ 
+-#undef REGMAP_ALLOW_WRITE_DEBUGFS
++#define REGMAP_ALLOW_WRITE_DEBUGFS
+ #ifdef REGMAP_ALLOW_WRITE_DEBUGFS
+ /*
+  * This can be dangerous especially when we have clients such as
+-- 
+2.17.1
+

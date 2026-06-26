@@ -1,0 +1,27 @@
+From f3a57c00115c2e9f4e07abd867fb54cb70a96e97 Mon Sep 17 00:00:00 2001
+From: Shunhua Lan <lsh@rock-chips.com>
+Date: Wed, 8 Nov 2023 17:46:08 +0800
+Subject: [PATCH 211/232] media: i2c: rk628: add apll regmap_range
+
+Signed-off-by: Shunhua Lan <lsh@rock-chips.com>
+Change-Id: If0b990e76198bceb691d2c5e58263b3fb22f2c5b
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/media/i2c/rk628/rk628.c b/drivers/media/i2c/rk628/rk628.c
+index 7e023aad859a21..629b68db6d61d5 100644
+--- a/drivers/media/i2c/rk628/rk628.c
++++ b/drivers/media/i2c/rk628/rk628.c
+@@ -113,6 +113,7 @@ struct rk628 *rk628_i2c_register(struct i2c_client *client)
+ static const struct regmap_range rk628_cru_readable_ranges[] = {
+ 	regmap_reg_range(CRU_CPLL_CON0, CRU_CPLL_CON4),
+ 	regmap_reg_range(CRU_GPLL_CON0, CRU_GPLL_CON4),
++	regmap_reg_range(CRU_APLL_CON0, CRU_APLL_CON4),
+ 	regmap_reg_range(CRU_MODE_CON00, CRU_MODE_CON00),
+ 	regmap_reg_range(CRU_CLKSEL_CON00, CRU_CLKSEL_CON21),
+ 	regmap_reg_range(CRU_GATE_CON00, CRU_GATE_CON05),
+-- 
+2.17.1
+

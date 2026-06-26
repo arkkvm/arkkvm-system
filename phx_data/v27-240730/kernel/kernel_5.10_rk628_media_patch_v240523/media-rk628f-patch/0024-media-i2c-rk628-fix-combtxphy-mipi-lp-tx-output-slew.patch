@@ -1,0 +1,44 @@
+From 60ac035f030dc54b9fe8ed66e6db343a13e23939 Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Sat, 16 Dec 2023 02:42:03 +0000
+Subject: [PATCH 24/30] media: i2c: rk628: fix combtxphy mipi lp-tx output
+ slew-rate
+
+Change-Id: Ic5373f70af47ac8edc5192275bf7669508181f79
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_combtxphy.c | 4 ++--
+ drivers/media/i2c/rk628/rk628_combtxphy.h | 2 ++
+ 2 files changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_combtxphy.c b/drivers/media/i2c/rk628/rk628_combtxphy.c
+index ad40a58eb5d4d..a054591ea3c1e 100644
+--- a/drivers/media/i2c/rk628/rk628_combtxphy.c
++++ b/drivers/media/i2c/rk628/rk628_combtxphy.c
+@@ -49,8 +49,8 @@ static void rk628_combtxphy_dsi_power_on(struct rk628 *rk628)
+ 	rk628_i2c_update_bits(rk628,  COMBTXPHY_CON0, SW_PD_PLL, 0);
+ 	usleep_range(100, 200);
+ 	rk628_i2c_update_bits(rk628,  COMBTXPHY_CON9, SW_DSI_FSET_EN_MASK |
+-			      SW_DSI_RCAL_EN_MASK, SW_DSI_FSET_EN |
+-			      SW_DSI_RCAL_EN);
++			      SW_DSI_RCAL_EN_MASK | SW_LPTX_SR_TRIM_MASK, SW_DSI_FSET_EN |
++			      SW_DSI_RCAL_EN | SW_LPTX_SR_TRIM(7));
+ 	usleep_range(100, 200);
+ }
+ 
+diff --git a/drivers/media/i2c/rk628/rk628_combtxphy.h b/drivers/media/i2c/rk628/rk628_combtxphy.h
+index 406dc32f956d7..4d0b78a0cb075 100644
+--- a/drivers/media/i2c/rk628/rk628_combtxphy.h
++++ b/drivers/media/i2c/rk628/rk628_combtxphy.h
+@@ -52,6 +52,8 @@
+ #define SW_TX_CTL_CON4(x)	UPDATE(x, 9, 8)
+ #define COMBTXPHY_CON8		COMBTXPHY_REG(0x0020)
+ #define COMBTXPHY_CON9		COMBTXPHY_REG(0x0024)
++#define SW_LPTX_SR_TRIM_MASK	GENMASK(6, 4)
++#define SW_LPTX_SR_TRIM(x)	UPDATE(x, 6, 4)
+ #define SW_DSI_FSET_EN_MASK	BIT(29)
+ #define SW_DSI_FSET_EN		BIT(29)
+ #define SW_DSI_RCAL_EN_MASK	BIT(28)
+-- 
+2.25.1
+

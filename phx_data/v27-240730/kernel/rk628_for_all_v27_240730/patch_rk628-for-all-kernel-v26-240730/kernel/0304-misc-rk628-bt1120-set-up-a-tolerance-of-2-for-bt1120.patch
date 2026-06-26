@@ -1,0 +1,67 @@
+From 05a6d3a6f7f0af299b28b2229274e09fd7c93e71 Mon Sep 17 00:00:00 2001
+From: Zhibin Huang <zhibin.huang@rock-chips.com>
+Date: Mon, 13 May 2024 18:40:03 +0800
+Subject: [PATCH 304/305] misc: rk628: bt1120: set up a tolerance of 2% for
+ bt1120 decoder clk
+
+BT1120 dec clk is a 4-bit integer division, which is inaccurate in
+most resolutions.
+
+For example, In bt1120->HDMI 1024x768@60Hz scenario, the actual
+required clk frequency is 65MHz, while the CPLL frequency is 1188MHz.
+After frequency division, the obtained frequency is 62.5MHz, which
+deviates too much from the actual clk and causes the screen to be
+unable to display.
+
+So if the frequency division is not accurate, apply for a fault
+tolerance of up 2% in frequency setting, so that the obtained
+frequency is slightly higher than the actual required clk, so that
+the deviation between the actual clk and the required clk frequency
+is not significant.
+
+Type: Fix
+Redmine ID: N/A
+Associated modifications: N/A
+Test: N/A
+
+Signed-off-by: Zhibin Huang <zhibin.huang@rock-chips.com>
+Change-Id: Ib04c55d60211ea0cdc56a3bcc3ce49db1ceef8a8
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/misc/rk628/rk628_rgb.c | 13 ++++++++++++-
+ 1 file changed, 12 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/misc/rk628/rk628_rgb.c b/drivers/misc/rk628/rk628_rgb.c
+index 5b7b8d1658d52a..28e7de14db1a4f 100644
+--- a/drivers/misc/rk628/rk628_rgb.c
++++ b/drivers/misc/rk628/rk628_rgb.c
+@@ -269,6 +269,7 @@ static void rk628_bt1120_decoder_timing_cfg(struct rk628 *rk628)
+ static void rk628_bt1120_decoder_enable(struct rk628 *rk628)
+ {
+ 	struct rk628_display_mode *mode = rk628_display_get_src_mode(rk628);
++	unsigned long dec_clk_rate;
+ 
+ 	rk628_set_input_bus_format(rk628, BUS_FMT_YUV422);
+ 
+@@ -288,7 +289,17 @@ static void rk628_bt1120_decoder_enable(struct rk628 *rk628)
+ 	rk628_i2c_write(rk628, CRU_SOFTRST_CON00, 0x10001000);
+ 	rk628_i2c_write(rk628, CRU_SOFTRST_CON00, 0x10000000);
+ 
+-	rk628_cru_clk_set_rate(rk628, CGU_BT1120DEC, mode->clock * 1000);
++	/*
++	 * BT1120 dec clk is a 4-bit integer division, which is inaccurate in
++	 * most resolutions. So if the frequency division is not accurate, apply
++	 * for a fault tolerance of up 2% in frequency setting, so that the
++	 * obtained frequency is slightly higher than the actual required clk,
++	 * so that the deviation between the actual clk and the required clk
++	 * frequency is not significant.
++	 */
++	dec_clk_rate = rk628_cru_clk_set_rate(rk628, CGU_BT1120DEC, mode->clock * 1000);
++	if (dec_clk_rate < mode->clock * 1000)
++		rk628_cru_clk_set_rate(rk628, CGU_BT1120DEC, mode->clock * 1020);
+ 
+ 	if (rk628->rgb.bt1120_dual_edge) {
+ 		rk628_i2c_update_bits(rk628, GRF_RGB_DEC_CON0,
+-- 
+2.17.1
+

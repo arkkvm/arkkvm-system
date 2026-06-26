@@ -1,0 +1,43 @@
+From 3b75c3cbbe1c72a92a7959e532ab3d321d97f45c Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Wed, 11 May 2022 09:05:28 +0000
+Subject: [PATCH 144/232] media: rk628_bt1120: fix r2y_csc_mode when RGB color
+ format input
+
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+Change-Id: Idf7101efa957b6a0392bbf9db8d76fa5b304255b
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_bt1120_v4l2.c | 2 +-
+ drivers/media/i2c/rk628/rk628_csi.c         | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+index e7f58d11f871d1..7a31aa63297f0c 100644
+--- a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+@@ -669,7 +669,7 @@ static void enable_bt1120tx(struct v4l2_subdev *sd)
+ 		/* rgb data: cfg SW_R2Y_EN */
+ 		rk628_i2c_write(bt1120->rk628, GRF_CSC_CTRL_CON,
+ 				SW_YUV2VYU_SWP(0) |
+-				SW_R2Y_EN(1));
++				SW_R2Y_EN(1) | SW_R2Y_CSC_MODE(2));
+ 	}
+ 
+ 	/* if avi packet is not stable, reset ctrl*/
+diff --git a/drivers/media/i2c/rk628/rk628_csi.c b/drivers/media/i2c/rk628/rk628_csi.c
+index 1ac9857ac250b4..ce68f6b459afd7 100644
+--- a/drivers/media/i2c/rk628/rk628_csi.c
++++ b/drivers/media/i2c/rk628/rk628_csi.c
+@@ -784,7 +784,7 @@ static void rk628_csi_set_csi(struct rk628_csi *csi)
+ 		/* rgb data: cfg SW_R2Y_EN */
+ 		rk628_i2c_write(csi->rk628, GRF_CSC_CTRL_CON,
+ 				SW_YUV2VYU_SWP(0) |
+-				SW_R2Y_EN(1));
++				SW_R2Y_EN(1) | SW_R2Y_CSC_MODE(2));
+ 	}
+ 
+ 	/* if avi packet is not stable, reset ctrl*/
+-- 
+2.17.1
+

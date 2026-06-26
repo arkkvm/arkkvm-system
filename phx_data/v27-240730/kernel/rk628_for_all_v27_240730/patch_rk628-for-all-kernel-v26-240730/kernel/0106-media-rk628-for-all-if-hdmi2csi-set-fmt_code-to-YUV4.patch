@@ -1,0 +1,32 @@
+From a7f8233cae6a339b1c7cb7b4dc6993275e453d24 Mon Sep 17 00:00:00 2001
+From: Shunqing Chen <csq@rock-chips.com>
+Date: Tue, 28 Sep 2021 15:26:11 +0800
+Subject: [PATCH 106/232] media: rk628-for-all: if hdmi2csi set fmt_code to
+ YUV422
+
+Signed-off-by: Shunqing Chen <csq@rock-chips.com>
+Change-Id: Idd36249ee11ec2693a970356f6fa81166045f1f4
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index 3efa17a0e60089..56d13ecc24cbdb 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -2270,7 +2270,10 @@ static int rk628_csi_probe(struct i2c_client *client,
+ 		goto err_hdl;
+ 	}
+ 
+-	csi->mbus_fmt_code = MEDIA_BUS_FMT_RGB888_1X24;
++	if (csi->plat_data->tx_mode == DSI_MODE)
++		csi->mbus_fmt_code = MEDIA_BUS_FMT_RGB888_1X24;
++	else
++		csi->mbus_fmt_code = MEDIA_BUS_FMT_UYVY8_2X8;
+ 
+ 	memset(facing, 0, sizeof(facing));
+ 	if (strcmp(csi->module_facing, "back") == 0)
+-- 
+2.17.1
+

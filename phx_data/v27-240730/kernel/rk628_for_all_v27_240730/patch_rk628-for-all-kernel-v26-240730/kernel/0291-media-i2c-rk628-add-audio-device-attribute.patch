@@ -1,0 +1,102 @@
+From efe279f42083f576a970792a6fa03d5d6413b90e Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Mon, 20 May 2024 11:52:20 +0800
+Subject: [PATCH 291/305] media: i2c: rk628: add audio device attribute
+
+Type: Fix
+Redmine ID: N/A
+Associated modifications: N/A
+Test: N/A
+
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+Change-Id: Id256c3a8fc4881765cbdf561c6508876d9c5f2d4
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/Kconfig                |  1 +
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c | 37 ++++++++++++++++++++++++
+ 2 files changed, 38 insertions(+)
+
+diff --git a/drivers/media/i2c/Kconfig b/drivers/media/i2c/Kconfig
+index d7985accc52229..2f0bf79aa59157 100644
+--- a/drivers/media/i2c/Kconfig
++++ b/drivers/media/i2c/Kconfig
+@@ -313,6 +313,7 @@ config VIDEO_RK628_CSI
+ 	depends on VIDEO_V4L2 && I2C && VIDEO_V4L2_SUBDEV_API
+ 	select HDMI
+ 	select V4L2_FWNODE
++	select VIDEO_ROCKCHIP_HDMIRX_CLASS
+ 	help
+ 	  Support for the Rockchip RK628 HDMI to MIPI CSI-2 bridge.
+ 
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index dc39812dce9042..1af7721a33a436 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -19,6 +19,7 @@
+ #include <linux/platform_device.h>
+ #include <linux/reset.h>
+ #include <linux/rk-camera-module.h>
++#include <linux/rk_hdmirx_class.h>
+ #include <linux/slab.h>
+ #include <linux/timer.h>
+ #include <linux/v4l2-dv-timings.h>
+@@ -124,6 +125,7 @@ struct rk628_csi {
+ 	bool is_streaming;
+ 	bool csi_ints_en;
+ 	bool dual_mipi_use;
++	struct device *classdev;
+ };
+ 
+ struct rk628_csi_mode {
+@@ -2847,6 +2849,33 @@ static const struct of_device_id rk628_csi_of_match[] = {
+ };
+ MODULE_DEVICE_TABLE(of, rk628_csi_of_match);
+ 
++static ssize_t audio_rate_show(struct device *dev,
++			       struct device_attribute *attr, char *buf)
++{
++	struct rk628_csi *csi = dev_get_drvdata(dev);
++
++	return snprintf(buf, PAGE_SIZE, "%d", rk628_hdmirx_audio_fs(csi->audio_info));
++}
++
++static ssize_t audio_present_show(struct device *dev,
++				  struct device_attribute *attr, char *buf)
++{
++	struct rk628_csi *csi = dev_get_drvdata(dev);
++
++	return snprintf(buf, PAGE_SIZE, "%d",
++			tx_5v_power_present(&csi->sd) ?
++			rk628_hdmirx_audio_present(csi->audio_info) : 0);
++}
++
++static DEVICE_ATTR_RO(audio_rate);
++static DEVICE_ATTR_RO(audio_present);
++static struct attribute *rk628_attrs[] = {
++	&dev_attr_audio_rate.attr,
++	&dev_attr_audio_present.attr,
++	NULL
++};
++ATTRIBUTE_GROUPS(rk628);
++
+ static int rk628_csi_probe(struct i2c_client *client,
+ 			  const struct i2c_device_id *id)
+ {
+@@ -3015,6 +3044,14 @@ static int rk628_csi_probe(struct i2c_client *client,
+ 		goto err_hdl;
+ 	}
+ 
++	csi->classdev = device_create_with_groups(rk_hdmirx_class(),
++						  dev, MKDEV(0, 0),
++						  csi,
++						  rk628_groups,
++						  "rk628");
++	if (IS_ERR(csi->classdev))
++		goto err_hdl;
++
+ 	INIT_DELAYED_WORK(&csi->delayed_work_enable_hotplug,
+ 			rk628_csi_delayed_work_enable_hotplug);
+ 	INIT_DELAYED_WORK(&csi->delayed_work_res_change,
+-- 
+2.17.1
+

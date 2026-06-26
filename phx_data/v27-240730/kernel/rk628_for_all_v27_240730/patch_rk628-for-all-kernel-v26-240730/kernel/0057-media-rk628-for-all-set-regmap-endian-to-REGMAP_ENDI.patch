@@ -1,0 +1,97 @@
+From b03655341f750367d63d170d261e6e90a20bda2b Mon Sep 17 00:00:00 2001
+From: Shunqing Chen <csq@rock-chips.com>
+Date: Tue, 10 Aug 2021 16:45:04 +0800
+Subject: [PATCH 057/232] media: rk628-for-all: set regmap endian to
+ REGMAP_ENDIAN_NATIVE
+
+Signed-off-by: Shunqing Chen <csq@rock-chips.com>
+Change-Id: I5c42a76248e2d5c54ea860819a0f0641297daff0
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628.c | 28 ++++++++++++++--------------
+ 1 file changed, 14 insertions(+), 14 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628.c b/drivers/media/i2c/rk628/rk628.c
+index 36f7cef9f93f70..a163087cd58bb8 100644
+--- a/drivers/media/i2c/rk628/rk628.c
++++ b/drivers/media/i2c/rk628/rk628.c
+@@ -217,8 +217,8 @@ static const struct regmap_config rk628_regmap_config[RK628_DEV_MAX] = {
+ 		.val_bits = 32,
+ 		.reg_stride = 4,
+ 		.max_register = GRF_MAX_REGISTER,
+-		.reg_format_endian = REGMAP_ENDIAN_LITTLE,
+-		.val_format_endian = REGMAP_ENDIAN_LITTLE,
++		.reg_format_endian = REGMAP_ENDIAN_NATIVE,
++		.val_format_endian = REGMAP_ENDIAN_NATIVE,
+ 	},
+ 	[RK628_DEV_CRU] = {
+ 		.name = "cru",
+@@ -226,8 +226,8 @@ static const struct regmap_config rk628_regmap_config[RK628_DEV_MAX] = {
+ 		.val_bits = 32,
+ 		.reg_stride = 4,
+ 		.max_register = CRU_MAX_REGISTER,
+-		.reg_format_endian = REGMAP_ENDIAN_LITTLE,
+-		.val_format_endian = REGMAP_ENDIAN_LITTLE,
++		.reg_format_endian = REGMAP_ENDIAN_NATIVE,
++		.val_format_endian = REGMAP_ENDIAN_NATIVE,
+ 		.rd_table = &rk628_cru_readable_table,
+ 	},
+ 	[RK628_DEV_COMBRXPHY] = {
+@@ -236,8 +236,8 @@ static const struct regmap_config rk628_regmap_config[RK628_DEV_MAX] = {
+ 		.val_bits = 32,
+ 		.reg_stride = 4,
+ 		.max_register = COMBRX_REG(0x6790),
+-		.reg_format_endian = REGMAP_ENDIAN_LITTLE,
+-		.val_format_endian = REGMAP_ENDIAN_LITTLE,
++		.reg_format_endian = REGMAP_ENDIAN_NATIVE,
++		.val_format_endian = REGMAP_ENDIAN_NATIVE,
+ 		.rd_table = &rk628_combrxphy_readable_table,
+ 	},
+ 	[RK628_DEV_HDMIRX] = {
+@@ -246,8 +246,8 @@ static const struct regmap_config rk628_regmap_config[RK628_DEV_MAX] = {
+ 		.val_bits = 32,
+ 		.reg_stride = 4,
+ 		.max_register = HDMI_RX_MAX_REGISTER,
+-		.reg_format_endian = REGMAP_ENDIAN_LITTLE,
+-		.val_format_endian = REGMAP_ENDIAN_LITTLE,
++		.reg_format_endian = REGMAP_ENDIAN_NATIVE,
++		.val_format_endian = REGMAP_ENDIAN_NATIVE,
+ 		.rd_table = &rk628_hdmirx_readable_table,
+ 	},
+ 	[RK628_DEV_ADAPTER] = {
+@@ -256,8 +256,8 @@ static const struct regmap_config rk628_regmap_config[RK628_DEV_MAX] = {
+ 		.val_bits = 32,
+ 		.reg_stride = 4,
+ 		.max_register = KEY_MAX_REGISTER,
+-		.reg_format_endian = REGMAP_ENDIAN_LITTLE,
+-		.val_format_endian = REGMAP_ENDIAN_LITTLE,
++		.reg_format_endian = REGMAP_ENDIAN_NATIVE,
++		.val_format_endian = REGMAP_ENDIAN_NATIVE,
+ 		.rd_table = &rk628_key_readable_table,
+ 	},
+ 	[RK628_DEV_COMBTXPHY] = {
+@@ -266,8 +266,8 @@ static const struct regmap_config rk628_regmap_config[RK628_DEV_MAX] = {
+ 		.val_bits = 32,
+ 		.reg_stride = 4,
+ 		.max_register = COMBTXPHY_CON10,
+-		.reg_format_endian = REGMAP_ENDIAN_LITTLE,
+-		.val_format_endian = REGMAP_ENDIAN_LITTLE,
++		.reg_format_endian = REGMAP_ENDIAN_NATIVE,
++		.val_format_endian = REGMAP_ENDIAN_NATIVE,
+ 		.rd_table = &rk628_combtxphy_readable_table,
+ 	},
+ 	[RK628_DEV_CSI] = {
+@@ -276,8 +276,8 @@ static const struct regmap_config rk628_regmap_config[RK628_DEV_MAX] = {
+ 		.val_bits = 32,
+ 		.reg_stride = 4,
+ 		.max_register = CSI_MAX_REGISTER,
+-		.reg_format_endian = REGMAP_ENDIAN_LITTLE,
+-		.val_format_endian = REGMAP_ENDIAN_LITTLE,
++		.reg_format_endian = REGMAP_ENDIAN_NATIVE,
++		.val_format_endian = REGMAP_ENDIAN_NATIVE,
+ 		.rd_table = &rk628_csi_readable_table,
+ 	},
+ };
+-- 
+2.17.1
+

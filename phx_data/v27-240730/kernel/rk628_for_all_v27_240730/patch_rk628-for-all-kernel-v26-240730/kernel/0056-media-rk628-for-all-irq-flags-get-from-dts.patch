@@ -1,0 +1,143 @@
+From 3af4334d90f77b9bf8c86396ddf9e3090ee1a704 Mon Sep 17 00:00:00 2001
+From: Shunqing Chen <csq@rock-chips.com>
+Date: Tue, 10 Aug 2021 10:52:42 +0800
+Subject: [PATCH 056/232] media: rk628-for-all: irq flags get from dts
+
+Signed-off-by: Shunqing Chen <csq@rock-chips.com>
+Change-Id: Iaf318871dec50fd8dcb79e4fcfbc907dd7346298
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_bt1120_v4l2.c | 9 ++++++---
+ drivers/media/i2c/rk628/rk628_csi.c         | 9 ++++++---
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c    | 9 ++++++---
+ 3 files changed, 18 insertions(+), 9 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+index e0bbfdc7d43690..c4c8c0bce3a912 100644
+--- a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+@@ -10,6 +10,7 @@
+ #include <linux/gpio/consumer.h>
+ #include <linux/i2c.h>
+ #include <linux/interrupt.h>
++#include <linux/irq.h>
+ #include <linux/kernel.h>
+ #include <linux/math64.h>
+ #include <linux/module.h>
+@@ -41,7 +42,7 @@ static int debug;
+ module_param(debug, int, 0644);
+ MODULE_PARM_DESC(debug, "debug level (0-3)");
+ 
+-#define DRIVER_VERSION			KERNEL_VERSION(0, 0x0, 0x7)
++#define DRIVER_VERSION			KERNEL_VERSION(0, 0x0, 0x8)
+ #define RK628_BT1120_NAME		"rk628-bt1120"
+ 
+ #define EDID_NUM_BLOCKS_MAX 		2
+@@ -2046,6 +2047,7 @@ static int rk628_bt1120_probe(struct i2c_client *client,
+ 	char facing[2];
+ 	int err;
+ 	struct rk628 *rk628;
++	unsigned long irq_flags;
+ 
+ 	dev_info(dev, "RK628 I2C driver version: %02x.%02x.%02x",
+ 		DRIVER_VERSION >> 16,
+@@ -2181,9 +2183,10 @@ static int rk628_bt1120_probe(struct i2c_client *client,
+ 	rk628_bt1120_initial_setup(sd);
+ 
+ 	if (bt1120->hdmirx_irq) {
+-		v4l2_dbg(1, debug, sd, "cfg hdmirx irq!\n");
++		irq_flags = irqd_get_trigger_type(irq_get_irq_data(bt1120->hdmirx_irq));
++		v4l2_dbg(1, debug, sd, "cfg hdmirx irq, flags: %lu!\n", irq_flags);
+ 		err = devm_request_threaded_irq(dev, bt1120->hdmirx_irq, NULL,
+-				rk628_bt1120_irq_handler, IRQF_TRIGGER_HIGH |
++				rk628_bt1120_irq_handler, irq_flags |
+ 				IRQF_ONESHOT, "rk628_bt1120", bt1120);
+ 		if (err) {
+ 			v4l2_err(sd, "request rk628-bt1120 irq failed! err:%d\n",
+diff --git a/drivers/media/i2c/rk628/rk628_csi.c b/drivers/media/i2c/rk628/rk628_csi.c
+index d4330d14815a76..b8385a223f7630 100644
+--- a/drivers/media/i2c/rk628/rk628_csi.c
++++ b/drivers/media/i2c/rk628/rk628_csi.c
+@@ -11,6 +11,7 @@
+ #include <linux/gpio/consumer.h>
+ #include <linux/i2c.h>
+ #include <linux/interrupt.h>
++#include <linux/irq.h>
+ #include <linux/kernel.h>
+ #include <linux/math64.h>
+ #include <linux/module.h>
+@@ -42,7 +43,7 @@ static int debug;
+ module_param(debug, int, 0644);
+ MODULE_PARM_DESC(debug, "debug level (0-1)");
+ 
+-#define DRIVER_VERSION			KERNEL_VERSION(0, 0x0, 0x5)
++#define DRIVER_VERSION			KERNEL_VERSION(0, 0x0, 0x6)
+ 
+ #define EDID_NUM_BLOCKS_MAX 		2
+ #define EDID_BLOCK_SIZE 		128
+@@ -1856,6 +1857,7 @@ static int rk628_csi_probe(struct i2c_client *client,
+ 	int err;
+ 	u32 val;
+ 	struct rk628 *rk628;
++	unsigned long irq_flags;
+ 
+ 	dev_info(dev, "RK628 I2C driver version: %02x.%02x.%02x",
+ 		DRIVER_VERSION >> 16,
+@@ -1914,9 +1916,10 @@ static int rk628_csi_probe(struct i2c_client *client,
+ 	rk628_csi_initial_setup(csi);
+ 
+ 	if (csi->hdmirx_irq) {
+-		dev_dbg(csi->dev, "cfg hdmirx irq!\n");
++		irq_flags = irqd_get_trigger_type(irq_get_irq_data(csi->hdmirx_irq));
++		dev_dbg(csi->dev, "cfg hdmirx irq, flags: %lu!\n", irq_flags);
+ 		err = devm_request_threaded_irq(dev, csi->hdmirx_irq, NULL,
+-				rk628_csi_irq_handler, IRQF_TRIGGER_HIGH |
++				rk628_csi_irq_handler, irq_flags |
+ 				IRQF_ONESHOT, "rk628_csi", csi);
+ 		if (err) {
+ 			dev_err(csi->dev, "request rk628-csi irq failed! err:%d\n",
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index 84c33c202e4fa7..a0c5b4b68c0f98 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -10,6 +10,7 @@
+ #include <linux/gpio/consumer.h>
+ #include <linux/i2c.h>
+ #include <linux/interrupt.h>
++#include <linux/irq.h>
+ #include <linux/kernel.h>
+ #include <linux/math64.h>
+ #include <linux/module.h>
+@@ -43,7 +44,7 @@ static int debug;
+ module_param(debug, int, 0644);
+ MODULE_PARM_DESC(debug, "debug level (0-3)");
+ 
+-#define DRIVER_VERSION			KERNEL_VERSION(0, 0x0, 0x7)
++#define DRIVER_VERSION			KERNEL_VERSION(0, 0x0, 0x8)
+ #define RK628_CSI_NAME			"rk628-csi"
+ 
+ #define EDID_NUM_BLOCKS_MAX 		2
+@@ -2620,6 +2621,7 @@ static int rk628_csi_probe(struct i2c_client *client,
+ 	int err;
+ 	u32 val;
+ 	struct rk628 *rk628;
++	unsigned long irq_flags;
+ 
+ 	dev_info(dev, "RK628 I2C driver version: %02x.%02x.%02x",
+ 		DRIVER_VERSION >> 16,
+@@ -2755,9 +2757,10 @@ static int rk628_csi_probe(struct i2c_client *client,
+ 	rk628_csi_initial_setup(sd);
+ 
+ 	if (csi->hdmirx_irq) {
+-		v4l2_dbg(1, debug, sd, "cfg hdmirx irq!\n");
++		irq_flags = irqd_get_trigger_type(irq_get_irq_data(csi->hdmirx_irq));
++		v4l2_dbg(1, debug, sd, "cfg hdmirx irq, flags: %lu!\n", irq_flags);
+ 		err = devm_request_threaded_irq(dev, csi->hdmirx_irq, NULL,
+-				rk628_csi_irq_handler, IRQF_TRIGGER_HIGH |
++				rk628_csi_irq_handler, irq_flags |
+ 				IRQF_ONESHOT, "rk628_csi", csi);
+ 		if (err) {
+ 			v4l2_err(sd, "request rk628-csi irq failed! err:%d\n",
+-- 
+2.17.1
+

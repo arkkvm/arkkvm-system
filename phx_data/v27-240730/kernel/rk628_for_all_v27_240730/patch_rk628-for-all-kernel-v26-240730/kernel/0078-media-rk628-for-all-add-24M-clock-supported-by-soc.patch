@@ -1,0 +1,101 @@
+From 298f2c37ec5970c80e2606aa6596776c49519c2f Mon Sep 17 00:00:00 2001
+From: Shunqing Chen <csq@rock-chips.com>
+Date: Thu, 26 Aug 2021 11:07:52 +0800
+Subject: [PATCH 078/232] media: rk628-for-all: add 24M clock supported by soc
+
+Signed-off-by: Shunqing Chen <csq@rock-chips.com>
+Change-Id: Idd152d7e977a585166e5d95ce2cdf2ed4858591d
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_bt1120_v4l2.c | 10 ++++++++++
+ drivers/media/i2c/rk628/rk628_csi.c         | 10 ++++++++++
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c    | 10 ++++++++++
+ 3 files changed, 30 insertions(+)
+
+diff --git a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+index dd5035777d3511..ad1b435955a4ef 100644
+--- a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+@@ -83,6 +83,7 @@ struct rk628_bt1120 {
+ 	struct gpio_desc *reset_gpio;
+ 	struct gpio_desc *power_gpio;
+ 	struct gpio_desc *plugin_det_gpio;
++	struct clk *soc_24M;
+ 	struct clk *clk_hdmirx_aud;
+ 	struct clk *clk_vop;
+ 	struct clk *clk_rx_read;
+@@ -1865,6 +1866,15 @@ static int rk628_bt1120_probe_of(struct rk628_bt1120 *bt1120)
+ 	int ret = -EINVAL;
+ 	bool hdcp1x_enable = false, i2s_enable_default = false;
+ 
++	bt1120->soc_24M = devm_clk_get(dev, "soc_24M");
++	if (bt1120->soc_24M == ERR_PTR(-ENOENT))
++		bt1120->soc_24M = NULL;
++	if (IS_ERR(bt1120->soc_24M)) {
++		ret = PTR_ERR(bt1120->soc_24M);
++		dev_err(dev, "Unable to get soc_24M: %d\n", ret);
++	}
++	clk_prepare_enable(bt1120->soc_24M);
++
+ 	bt1120->enable_gpio = devm_gpiod_get_optional(dev, "enable",
+ 						     GPIOD_OUT_LOW);
+ 	if (IS_ERR(bt1120->enable_gpio)) {
+diff --git a/drivers/media/i2c/rk628/rk628_csi.c b/drivers/media/i2c/rk628/rk628_csi.c
+index e1187183f64db9..60d58deaab1bbb 100644
+--- a/drivers/media/i2c/rk628/rk628_csi.c
++++ b/drivers/media/i2c/rk628/rk628_csi.c
+@@ -73,6 +73,7 @@ struct rk628_csi {
+ 	struct gpio_desc *reset_gpio;
+ 	struct gpio_desc *power_gpio;
+ 	struct gpio_desc *plugin_det_gpio;
++	struct clk *soc_24M;
+ 	struct clk *clk_hdmirx_aud;
+ 	struct clk *clk_vop;
+ 	struct clk *clk_rx_read;
+@@ -1661,6 +1662,15 @@ static int rk628_csi_probe_of(struct rk628_csi *csi)
+ 	int ret = -EINVAL;
+ 	bool hdcp1x_enable = false, i2s_enable_default = false;
+ 
++	csi->soc_24M = devm_clk_get(dev, "soc_24M");
++	if (csi->soc_24M == ERR_PTR(-ENOENT))
++		csi->soc_24M = NULL;
++	if (IS_ERR(csi->soc_24M)) {
++		ret = PTR_ERR(csi->soc_24M);
++		dev_err(dev, "Unable to get soc_24M: %d\n", ret);
++	}
++	clk_prepare_enable(csi->soc_24M);
++
+ 	csi->enable_gpio = devm_gpiod_get_optional(dev, "enable",
+ 						     GPIOD_OUT_LOW);
+ 	if (IS_ERR(csi->enable_gpio)) {
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index 6e60ca92fa0985..d1aeae0ae4be8b 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -84,6 +84,7 @@ struct rk628_csi {
+ 	struct gpio_desc *reset_gpio;
+ 	struct gpio_desc *power_gpio;
+ 	struct gpio_desc *plugin_det_gpio;
++	struct clk *soc_24M;
+ 	struct clk *clk_hdmirx_aud;
+ 	struct clk *clk_vop;
+ 	struct clk *clk_rx_read;
+@@ -2229,6 +2230,15 @@ static int rk628_csi_probe_of(struct rk628_csi *csi)
+ 	int ret = -EINVAL;
+ 	bool hdcp1x_enable = false, i2s_enable_default = false;
+ 
++	csi->soc_24M = devm_clk_get(dev, "soc_24M");
++	if (csi->soc_24M == ERR_PTR(-ENOENT))
++		csi->soc_24M = NULL;
++	if (IS_ERR(csi->soc_24M)) {
++		ret = PTR_ERR(csi->soc_24M);
++		dev_err(dev, "Unable to get soc_24M: %d\n", ret);
++	}
++	clk_prepare_enable(csi->soc_24M);
++
+ 	csi->enable_gpio = devm_gpiod_get_optional(dev, "enable",
+ 						     GPIOD_OUT_LOW);
+ 	if (IS_ERR(csi->enable_gpio)) {
+-- 
+2.17.1
+

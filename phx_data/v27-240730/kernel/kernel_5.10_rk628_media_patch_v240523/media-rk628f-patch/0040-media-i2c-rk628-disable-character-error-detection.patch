@@ -1,0 +1,33 @@
+From 90a11941382a36c5bb54ec4c3d59077c8b5b6d97 Mon Sep 17 00:00:00 2001
+From: Chen Shunqing <csq@rock-chips.com>
+Date: Fri, 19 Jan 2024 02:30:43 +0000
+Subject: [PATCH 40/53] media: i2c: rk628: disable character error detection
+
+Type: Fix
+Redmine ID: N/A
+Associated N/A
+Test: Some sources have high bit error rate,
+      resulting in a black screen.
+
+Change-Id: Ibf928d96bb853cf45dc7d49827de2649c2263526
+Signed-off-by: Chen Shunqing <csq@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_hdmirx.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_hdmirx.c b/drivers/media/i2c/rk628/rk628_hdmirx.c
+index ec30d6b80c49..729155aefccd 100644
+--- a/drivers/media/i2c/rk628/rk628_hdmirx.c
++++ b/drivers/media/i2c/rk628/rk628_hdmirx.c
+@@ -178,7 +178,7 @@ EXPORT_SYMBOL(rk628_hdmirx_set_hdcp);
+ 
+ void rk628_hdmirx_controller_setup(struct rk628 *rk628)
+ {
+-	rk628_i2c_write(rk628, HDMI_RX_HDMI20_CONTROL, 0x10000f11);
++	rk628_i2c_write(rk628, HDMI_RX_HDMI20_CONTROL, 0x10000011);
+ 	rk628_i2c_write(rk628, HDMI_RX_HDMI_MODE_RECOVER, 0x00000021);
+ 	rk628_i2c_write(rk628, HDMI_RX_PDEC_CTRL, 0xbfff8011);
+ 	rk628_i2c_write(rk628, HDMI_RX_PDEC_ASP_CTRL, 0x00000040);
+-- 
+2.17.1
+

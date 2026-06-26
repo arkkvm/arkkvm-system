@@ -1,0 +1,37 @@
+From 5249ec4ebfb700a1d67961d2f99b499bb107bfa4 Mon Sep 17 00:00:00 2001
+From: Guochun Huang <hero.huang@rock-chips.com>
+Date: Mon, 27 Dec 2021 08:46:16 +0800
+Subject: [PATCH 124/232] misc: rk628: combtxphy: lvds: power up all channel
+ after phy lock
+
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+Change-Id: I7aaeb3746c771b876fd009a1b84df74489f289e3
+---
+ drivers/misc/rk628/rk628_combtxphy.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/misc/rk628/rk628_combtxphy.c b/drivers/misc/rk628/rk628_combtxphy.c
+index 7def6bf58972a3..7673e1d7fc7b0b 100644
+--- a/drivers/misc/rk628/rk628_combtxphy.c
++++ b/drivers/misc/rk628/rk628_combtxphy.c
+@@ -94,7 +94,7 @@ static void rk628_combtxphy_lvds_power_on(struct rk628 *rk628)
+ 			SW_RATE(combtxphy->rate_div / 2));
+ 
+ 	rk628_i2c_update_bits(rk628, COMBTXPHY_CON0,
+-			      SW_PD_PLL | SW_TX_PD_MASK, 0);
++			      SW_PD_PLL, 0);
+ 
+ 	ret = regmap_read_poll_timeout(rk628->regmap[RK628_DEV_GRF],
+ 				       GRF_DPHY0_STATUS, val,
+@@ -103,7 +103,7 @@ static void rk628_combtxphy_lvds_power_on(struct rk628 *rk628)
+ 		dev_err(rk628->dev, "phy is not lock\n");
+ 
+ 	usleep_range(100, 200);
+-	rk628_i2c_update_bits(rk628, COMBTXPHY_CON0, SW_TX_IDLE_MASK, 0);
++	rk628_i2c_update_bits(rk628, COMBTXPHY_CON0, SW_TX_IDLE_MASK | SW_TX_PD_MASK, 0);
+ }
+ 
+ static void rk628_combtxphy_gvi_power_on(struct rk628 *rk628)
+-- 
+2.17.1
+

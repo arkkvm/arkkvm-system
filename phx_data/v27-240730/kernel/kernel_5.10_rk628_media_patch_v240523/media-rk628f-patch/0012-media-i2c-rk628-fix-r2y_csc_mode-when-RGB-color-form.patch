@@ -1,0 +1,56 @@
+From 9edeed96fad7ae57cc9c90ddcba8f1aae4c6d61f Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Sat, 4 Nov 2023 12:02:27 +0000
+Subject: [PATCH 12/30] media: i2c: rk628: fix r2y_csc_mode when RGB color
+ format input
+
+Change-Id: I63ab2e27ef17dc0d4af4446da4e6ec50fba8624b
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628.h             | 2 ++
+ drivers/media/i2c/rk628/rk628_bt1120_v4l2.c | 2 +-
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c    | 2 +-
+ 3 files changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628.h b/drivers/media/i2c/rk628/rk628.h
+index 95678ddd03d48..6b28dd14cb772 100644
+--- a/drivers/media/i2c/rk628/rk628.h
++++ b/drivers/media/i2c/rk628/rk628.h
+@@ -92,6 +92,8 @@
+ #define SW_YUV2VYU_SWP(x)		HIWORD_UPDATE(x, 8, 8)
+ #define SW_R2Y_EN(x)			HIWORD_UPDATE(x, 4, 4)
+ #define SW_Y2R_EN(x)			HIWORD_UPDATE(x, 0, 0)
++#define SW_R2Y_CSC_MODE(x)		HIWORD_UPDATE(x, 7, 6)
++#define SW_Y2R_CSC_MODE(x)		HIWORD_UPDATE(x, 3, 2)
+ #define GRF_LVDS_TX_CON			0x003c
+ #define SW_LVDS_CON_DUAL_SEL(x)		HIWORD_UPDATE(x, 12, 12)
+ #define SW_LVDS_CON_DEN_POLARITY(x)	HIWORD_UPDATE(x, 11, 11)
+diff --git a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+index 7066c5fcd4fa9..3c1d1f95473b2 100644
+--- a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+@@ -580,7 +580,7 @@ static void enable_bt1120tx(struct v4l2_subdev *sd)
+ 		/* rgb data: cfg SW_R2Y_EN */
+ 		rk628_i2c_write(bt1120->rk628, GRF_CSC_CTRL_CON,
+ 				SW_YUV2VYU_SWP(0) |
+-				SW_R2Y_EN(1));
++				SW_R2Y_EN(1) | SW_R2Y_CSC_MODE(2));
+ 	}
+ 
+ 	/* if avi packet is not stable, reset ctrl*/
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index f26fa9ec5dff8..bc9c51963ee24 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -887,7 +887,7 @@ static void rk628_csi_set_csi(struct v4l2_subdev *sd)
+ 		/* rgb data: cfg SW_R2Y_EN */
+ 		rk628_i2c_write(csi->rk628, GRF_CSC_CTRL_CON,
+ 				SW_YUV2VYU_SWP(0) |
+-				SW_R2Y_EN(1));
++				SW_R2Y_EN(1) | SW_R2Y_CSC_MODE(2));
+ 	}
+ 
+ 	/* if avi packet is not stable, reset ctrl*/
+-- 
+2.25.1
+

@@ -1,0 +1,47 @@
+From df4a1dcc8c16bb6835d9da810bd524fb8bb64c84 Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Wed, 24 Jan 2024 02:04:35 +0000
+Subject: [PATCH 03/11] media: i2c: rk628: fix compile warnings
+
+Type: Fix
+Redmine ID: N/A
+Associated modifications: N/A
+Test: pass
+
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+Change-Id: I079414a4858ceea6cf659cf15c69d19a08d40810
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628.c              | 2 +-
+ drivers/media/i2c/rk628/rk628_post_process.c | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628.c b/drivers/media/i2c/rk628/rk628.c
+index 9681becba5f9a0..2995119c3dfdb8 100644
+--- a/drivers/media/i2c/rk628/rk628.c
++++ b/drivers/media/i2c/rk628/rk628.c
+@@ -435,7 +435,7 @@ static int rk628_reg_show(struct seq_file *s, void *v)
+ 	const struct regmap_config *reg;
+ 	struct rk628 *rk628 = s->private;
+ 	unsigned int i, j;
+-	u32 val;
++	u32 val = 0;
+ 
+ 	seq_printf(s, "rk628_%s:\n", file_dentry(s->file)->d_iname);
+ 
+diff --git a/drivers/media/i2c/rk628/rk628_post_process.c b/drivers/media/i2c/rk628/rk628_post_process.c
+index 6126bfbf13d6c5..2b9173be898707 100644
+--- a/drivers/media/i2c/rk628/rk628_post_process.c
++++ b/drivers/media/i2c/rk628/rk628_post_process.c
+@@ -1293,7 +1293,7 @@ static int rockchip_calc_post_csc(struct post_csc_coef *csc_simple_coef,
+ static void rk628_post_process_csc(struct rk628 *rk628)
+ {
+ 	enum bus_format in_fmt, out_fmt;
+-	struct post_csc_coef csc_coef;
++	struct post_csc_coef csc_coef = {};
+ 	bool is_input_yuv, is_output_yuv;
+ 	u32 color_space = V4L2_COLORSPACE_BT709F;
+ 	u32 csc_mode;
+-- 
+2.17.1
+

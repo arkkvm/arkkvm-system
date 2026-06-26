@@ -1,0 +1,33 @@
+From 4a595a8a27a1b1fed6a7110327dff50c305d87f0 Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Mon, 13 May 2024 11:58:47 +0800
+Subject: [PATCH 281/305] media: i2c: rk628: fix the last few lines offset
+
+Type: Fix
+Redmine ID: N/A
+Associated modifications: N/A
+Test: N/A
+
+Change-Id: I232a15790ce10dbd316514e019b941a8632536cb
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/media/i2c/rk628/rk628.c b/drivers/media/i2c/rk628/rk628.c
+index 10da7d759384d6..21c68005b44aac 100644
+--- a/drivers/media/i2c/rk628/rk628.c
++++ b/drivers/media/i2c/rk628/rk628.c
+@@ -739,6 +739,8 @@ static void calc_dsp_frm_hst_vst(const struct videomode *src,
+ 
+ 	do_div(t_frm_st, src_pixclock);
+ 	*dsp_frame_hst = do_div(t_frm_st, src_htotal);
++	if (src->vfront_porch < t_frm_st)
++		t_frm_st = src->vfront_porch;
+ 	*dsp_frame_vst = t_frm_st;
+ }
+ 
+-- 
+2.17.1
+

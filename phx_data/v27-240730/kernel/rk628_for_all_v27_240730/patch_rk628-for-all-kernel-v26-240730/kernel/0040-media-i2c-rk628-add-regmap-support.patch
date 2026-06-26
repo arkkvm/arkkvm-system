@@ -1,0 +1,5244 @@
+From 39607e79716ada30e134290d6f796289a479499e Mon Sep 17 00:00:00 2001
+From: Shunqing Chen <csq@rock-chips.com>
+Date: Tue, 3 Aug 2021 09:32:59 +0800
+Subject: [PATCH 040/232] media: i2c: rk628: add regmap support
+
+Signed-off-by: Shunqing Chen <csq@rock-chips.com>
+Change-Id: Ibeafa46b9367e0997d01e994af08cb269058e629
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628.c             | 507 ++++++++------------
+ drivers/media/i2c/rk628/rk628.h             |  63 ++-
+ drivers/media/i2c/rk628/rk628_bt1120_v4l2.c | 292 +++++------
+ drivers/media/i2c/rk628/rk628_combrxphy.c   | 283 +++++------
+ drivers/media/i2c/rk628/rk628_combrxphy.h   |   6 +-
+ drivers/media/i2c/rk628/rk628_combtxphy.c   | 249 ++++------
+ drivers/media/i2c/rk628/rk628_combtxphy.h   |  70 ++-
+ drivers/media/i2c/rk628/rk628_cru.c         | 388 +++++++--------
+ drivers/media/i2c/rk628/rk628_cru.h         | 109 ++++-
+ drivers/media/i2c/rk628/rk628_csi.c         | 340 ++++++-------
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c    | 405 ++++++++--------
+ drivers/media/i2c/rk628/rk628_hdmirx.h      |   2 +-
+ 12 files changed, 1378 insertions(+), 1336 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628.c b/drivers/media/i2c/rk628/rk628.c
+index b3efb6485b15cd..dbdf66d91dd437 100644
+--- a/drivers/media/i2c/rk628/rk628.c
++++ b/drivers/media/i2c/rk628/rk628.c
+@@ -9,15 +9,16 @@
+ #include <linux/debugfs.h>
+ #include <linux/i2c.h>
+ #include <linux/module.h>
++#include <linux/regmap.h>
+ 
+-#include "rk628_csi.h"
+ #include "rk628.h"
+-#include "rk628_cru.h"
+ #include "rk628_combrxphy.h"
+ #include "rk628_combtxphy.h"
++#include "rk628_cru.h"
++#include "rk628_csi.h"
++#include "rk628_hdmirx.h"
+ 
+-struct i2c_client *rk628_i2c = NULL;
+-
++#ifndef RK628_REGMAP
+ static int i2c_read(struct i2c_client *i2c, u32 reg, u32 *val)
+ {
+ 	int ret;
+@@ -43,7 +44,6 @@ static int i2c_read(struct i2c_client *i2c, u32 reg, u32 *val)
+ 	}
+ 
+ 	return 0;
+-
+ }
+ 
+ static int i2c_write(struct i2c_client *i2c, u32 reg, u32 val)
+@@ -72,340 +72,247 @@ static int i2c_write(struct i2c_client *i2c, u32 reg, u32 val)
+ 	return 0;
+ }
+ 
+-void rk628_i2c_write(u32 reg, u32 val)
++int rk628_i2c_write(struct rk628 *rk628, u32 reg, u32 val)
+ {
+-	if (!rk628_i2c)
+-		return;
+-
+-	i2c_write(rk628_i2c, reg, val);
++	return i2c_write(rk628->client, reg, val);
+ }
+-EXPORT_SYMBOL_GPL(rk628_i2c_write);
+ 
+-int rk628_i2c_read(u32 reg, u32 *val)
++int rk628_i2c_read(struct rk628 *rk628, u32 reg, u32 *val)
+ {
+-	if (!rk628_i2c)
+-		return -1;
+-
+-	return i2c_read(rk628_i2c, reg, val);
++	return i2c_read(rk628->client, reg, val);
+ }
+-EXPORT_SYMBOL_GPL(rk628_i2c_read);
+ 
+-void rk628_i2c_update_bits(u32 reg, u32 mask, u32 val)
++int rk628_i2c_update_bits(struct rk628 *rk628, u32 reg, u32 mask, u32 val)
+ {
+ 	u32 orig, tmp;
+ 
+-	if (!rk628_i2c)
+-		return;
+-
+-	i2c_read(rk628_i2c, reg, &orig);
++	i2c_read(rk628->client, reg, &orig);
+ 	tmp = orig & ~mask;
+ 	tmp |= val & mask;
+-	i2c_write(rk628_i2c, reg, tmp);
++	return i2c_write(rk628->client, reg, tmp);
+ }
+-EXPORT_SYMBOL_GPL(rk628_i2c_update_bits);
+ 
+-static void rk628_grf_registers_dump(struct seq_file *s)
++struct rk628 *rk628_i2c_register(struct i2c_client *client)
+ {
+-	uint32_t reg, val;
+-
+-	seq_puts(s, "====rk628_grf==== \n");
+-	for (reg = GRF_SYSTEM_CON0; reg < GRF_SOC_VERSION + 4; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-
+-	seq_puts(s, "\n");
+-}
++	struct rk628 *rk628;
++	struct device *dev = &client->dev;
+ 
+-static void rk628_cru_registers_dump(struct seq_file *s)
+-{
+-	uint32_t reg, val;
++	rk628 = devm_kzalloc(dev, sizeof(*rk628), GFP_KERNEL);
++	if (!rk628)
++		return NULL;
+ 
+-	seq_puts(s, "====rk628_cru==== \n");
+-	for (reg = 0xc0000; reg < 0xc0214; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
++	rk628->client = client;
++	rk628->dev = dev;
+ 
+-	seq_puts(s, "\n");
++	return rk628;
+ }
+ 
+-static void rk628_hdmirx_registers_dump(struct seq_file *s)
+-{
+-	uint32_t reg, val;
++#else
+ 
+-	seq_puts(s, "====rk628_hdmirx==== \n");
+-	for (reg = 0x30000; reg <= 0x30000; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = 0x30038; reg <= 0x30038; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = 0x30080; reg <= 0x30084; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = 0x30090; reg <= 0x3009c; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = 0x300a4; reg <= 0x300a4; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = 0x300b4; reg <= 0x300b4; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = 0x300c0; reg <= 0x300c4; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = 0x300d4; reg <= 0x300d4; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = 0x300e0; reg <= 0x300fc; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = 0x30140; reg <= 0x30150; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = 0x30158; reg <= 0x3015c; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = 0x30164; reg <= 0x30170; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = 0x3017c; reg <= 0x30180; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = 0x30200; reg <= 0x30200; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = 0x30208; reg <= 0x30208; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = 0x30214; reg <= 0x30214; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = 0x30240; reg <= 0x30244; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = 0x30254; reg <= 0x30264; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = 0x3027c; reg <= 0x3027c; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = 0x30280; reg <= 0x30284; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = 0x30300; reg <= 0x30300; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = 0x30310; reg <= 0x30310; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = 0x3033c; reg <= 0x30340; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = 0x30380; reg <= 0x30380; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = 0x30390; reg <= 0x30394; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = 0x303a4; reg <= 0x303a4; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = 0x303c0; reg <= 0x303c8; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = 0x30800; reg <= 0x3080c; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = 0x30824; reg <= 0x30828; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = 0x30860; reg <= 0x30860; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = 0x30fb0; reg <= 0x30fb4; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = 0x30fc8; reg <= 0x30fcc; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = 0x30fe0; reg <= 0x30fe4; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = 0x30ff4; reg <= 0x30ff4; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
++static const struct regmap_range rk628_cru_readable_ranges[] = {
++	regmap_reg_range(CRU_CPLL_CON0, CRU_CPLL_CON4),
++	regmap_reg_range(CRU_GPLL_CON0, CRU_GPLL_CON4),
++	regmap_reg_range(CRU_MODE_CON00, CRU_MODE_CON00),
++	regmap_reg_range(CRU_CLKSEL_CON00, CRU_CLKSEL_CON21),
++	regmap_reg_range(CRU_GATE_CON00, CRU_GATE_CON05),
++	regmap_reg_range(CRU_SOFTRST_CON00, CRU_SOFTRST_CON04),
++};
+ 
+-	seq_puts(s, "\n");
+-}
++static const struct regmap_access_table rk628_cru_readable_table = {
++	.yes_ranges     = rk628_cru_readable_ranges,
++	.n_yes_ranges   = ARRAY_SIZE(rk628_cru_readable_ranges),
++};
+ 
+-static void rk628_combrxphy_registers_dump(struct seq_file *s)
+-{
+-	uint32_t reg, val;
++static const struct regmap_range rk628_combrxphy_readable_ranges[] = {
++	regmap_reg_range(COMBRX_REG(0x6600), COMBRX_REG(0x665b)),
++	regmap_reg_range(COMBRX_REG(0x66a0), COMBRX_REG(0x66db)),
++	regmap_reg_range(COMBRX_REG(0x66f0), COMBRX_REG(0x66ff)),
++	regmap_reg_range(COMBRX_REG(0x6700), COMBRX_REG(0x6790)),
++};
+ 
+-	seq_puts(s, "====rk628_combrxphy==== \n");
+-	for (reg = 0x16600; reg <= 0x1665b; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = 0x166a0; reg <= 0x166db; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = 0x166f0; reg <= 0x166ff; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = 0x16700; reg <= 0x16790; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	seq_puts(s, "\n");
+-}
++static const struct regmap_access_table rk628_combrxphy_readable_table = {
++	.yes_ranges     = rk628_combrxphy_readable_ranges,
++	.n_yes_ranges   = ARRAY_SIZE(rk628_combrxphy_readable_ranges),
++};
+ 
+-static void rk628_combtxphy_registers_dump(struct seq_file *s)
+-{
+-	uint32_t reg, val;
++static const struct regmap_range rk628_hdmirx_readable_ranges[] = {
++	regmap_reg_range(HDMI_RX_HDMI_SETUP_CTRL, HDMI_RX_HDMI_SETUP_CTRL),
++	regmap_reg_range(HDMI_RX_HDMI_PCB_CTRL, HDMI_RX_HDMI_PCB_CTRL),
++	regmap_reg_range(HDMI_RX_HDMI_MODE_RECOVER, HDMI_RX_HDMI_ERROR_PROTECT),
++	regmap_reg_range(HDMI_RX_HDMI_SYNC_CTRL, HDMI_RX_HDMI_CKM_RESULT),
++	regmap_reg_range(HDMI_RX_HDMI_RESMPL_CTRL, HDMI_RX_HDMI_RESMPL_CTRL),
++	regmap_reg_range(HDMI_VM_CFG_CH2, HDMI_VM_CFG_CH2),
++	regmap_reg_range(HDMI_RX_HDCP_CTRL, HDMI_RX_HDCP_SETTINGS),
++	regmap_reg_range(HDMI_RX_HDCP_KIDX, HDMI_RX_HDCP_KIDX),
++	regmap_reg_range(HDMI_RX_HDCP_DBG, HDMI_RX_HDCP_AN0),
++	regmap_reg_range(HDMI_RX_HDCP_STS, HDMI_RX_HDCP_STS),
++	regmap_reg_range(HDMI_RX_MD_HCTRL1, HDMI_RX_MD_HACT_PX),
++	regmap_reg_range(HDMI_RX_MD_VCTRL, HDMI_RX_MD_VSC),
++	regmap_reg_range(HDMI_RX_MD_VOL, HDMI_RX_MD_VTL),
++	regmap_reg_range(HDMI_RX_MD_IL_POL, HDMI_RX_MD_STS),
++	regmap_reg_range(HDMI_RX_AUD_CTRL, HDMI_RX_AUD_CTRL),
++	regmap_reg_range(HDMI_RX_AUD_PLL_CTRL, HDMI_RX_AUD_PLL_CTRL),
++	regmap_reg_range(HDMI_RX_AUD_CLK_CTRL, HDMI_RX_AUD_CLK_CTRL),
++	regmap_reg_range(HDMI_RX_AUD_FIFO_CTRL, HDMI_RX_AUD_FIFO_TH),
++	regmap_reg_range(HDMI_RX_AUD_CHEXTR_CTRL, HDMI_RX_AUD_PAO_CTRL),
++	regmap_reg_range(HDMI_RX_AUD_FIFO_STS, HDMI_RX_AUD_FIFO_STS),
++	regmap_reg_range(HDMI_RX_AUDPLL_GEN_CTS, HDMI_RX_AUDPLL_GEN_N),
++	regmap_reg_range(HDMI_RX_PDEC_CTRL, HDMI_RX_PDEC_CTRL),
++	regmap_reg_range(HDMI_RX_PDEC_AUDIODET_CTRL, HDMI_RX_PDEC_AUDIODET_CTRL),
++	regmap_reg_range(HDMI_RX_PDEC_ERR_FILTER, HDMI_RX_PDEC_ASP_CTRL),
++	regmap_reg_range(HDMI_RX_PDEC_GCP_AVMUTE, HDMI_RX_PDEC_GCP_AVMUTE),
++	regmap_reg_range(HDMI_RX_PDEC_ACR_CTS, HDMI_RX_PDEC_ACR_N),
++	regmap_reg_range(HDMI_RX_PDEC_AIF_CTRL, HDMI_RX_PDEC_AIF_PB0),
++	regmap_reg_range(HDMI_RX_PDEC_AVI_PB, HDMI_RX_PDEC_AVI_PB),
++	regmap_reg_range(HDMI_RX_HDMI20_CONTROL, HDMI_RX_CHLOCK_CONFIG),
++	regmap_reg_range(HDMI_RX_SCDC_REGS1, HDMI_RX_SCDC_REGS2),
++	regmap_reg_range(HDMI_RX_SCDC_WRDATA0, HDMI_RX_SCDC_WRDATA0),
++	regmap_reg_range(HDMI_RX_PDEC_ISTS, HDMI_RX_PDEC_IEN),
++	regmap_reg_range(HDMI_RX_AUD_FIFO_ISTS, HDMI_RX_AUD_FIFO_IEN),
++	regmap_reg_range(HDMI_RX_MD_ISTS, HDMI_RX_MD_IEN),
++	regmap_reg_range(HDMI_RX_HDMI_ISTS, HDMI_RX_HDMI_IEN),
++	regmap_reg_range(HDMI_RX_DMI_DISABLE_IF, HDMI_RX_DMI_DISABLE_IF),
++};
+ 
+-	seq_puts(s, "====rk628_combtxphy==== \n");
+-	for (reg = 0x90000; reg < 0x9002c; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
++static const struct regmap_access_table rk628_hdmirx_readable_table = {
++	.yes_ranges     = rk628_hdmirx_readable_ranges,
++	.n_yes_ranges   = ARRAY_SIZE(rk628_hdmirx_readable_ranges),
++};
+ 
+-	seq_puts(s, "\n");
+-}
++static const struct regmap_range rk628_key_readable_ranges[] = {
++        regmap_reg_range(EDID_BASE, EDID_BASE + 0x400),
++};
+ 
+-static void rk628_csi_registers_dump(struct seq_file *s)
+-{
+-	uint32_t reg, val;
++static const struct regmap_access_table rk628_key_readable_table = {
++        .yes_ranges     = rk628_key_readable_ranges,
++        .n_yes_ranges   = ARRAY_SIZE(rk628_key_readable_ranges),
++};
+ 
+-	seq_puts(s, "====rk628_csi==== \n");
+-	for (reg = CSITX_CONFIG_DONE; reg < CSITX_CSITX_VERSION; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = CSITX_SYS_CTRL0_IMD; reg < CSITX_TIMING_HPW_PADDING_NUM; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = CSITX_VOP_PATH_CTRL; reg < CSITX_VOP_PATH_CTRL; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = CSITX_VOP_PATH_PKT_CTRL; reg < CSITX_VOP_PATH_PKT_CTRL; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = CSITX_CSITX_STATUS0; reg < CSITX_LPDT_DATA_IMD; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	for (reg = CSITX_DPHY_CTRL; reg < CSITX_DPHY_CTRL; reg += 4) {
+-		rk628_i2c_read(reg, &val);
+-		seq_printf(s, "0x%05x: %08x \n", reg, val);
+-	}
+-	seq_puts(s, "\n");
+-}
++static const struct regmap_range rk628_combtxphy_readable_ranges[] = {
++	regmap_reg_range(COMBTXPHY_BASE, COMBTXPHY_CON10),
++};
+ 
++static const struct regmap_access_table rk628_combtxphy_readable_table = {
++	.yes_ranges     = rk628_combtxphy_readable_ranges,
++	.n_yes_ranges   = ARRAY_SIZE(rk628_combtxphy_readable_ranges),
++};
+ 
+-static void rk628_registers_dump(struct seq_file *s)
+-{
+-	rk628_grf_registers_dump(s);
+-	rk628_cru_registers_dump(s);
+-	rk628_combtxphy_registers_dump(s);
+-	rk628_combrxphy_registers_dump(s);
+-	rk628_hdmirx_registers_dump(s);
+-	rk628_csi_registers_dump(s);
+-}
++static const struct regmap_range rk628_csi_readable_ranges[] = {
++	regmap_reg_range(CSITX_CONFIG_DONE, CSITX_CSITX_VERSION),
++	regmap_reg_range(CSITX_SYS_CTRL0_IMD, CSITX_TIMING_HPW_PADDING_NUM),
++	regmap_reg_range(CSITX_VOP_PATH_CTRL, CSITX_VOP_PATH_CTRL),
++	regmap_reg_range(CSITX_VOP_PATH_PKT_CTRL, CSITX_VOP_PATH_PKT_CTRL),
++	regmap_reg_range(CSITX_CSITX_STATUS0, CSITX_LPDT_DATA_IMD),
++	regmap_reg_range(CSITX_DPHY_CTRL, CSITX_DPHY_CTRL),
++};
+ 
+-struct dentry *debugfs_dir;
++static const struct regmap_access_table rk628_csi_readable_table = {
++	.yes_ranges     = rk628_csi_readable_ranges,
++	.n_yes_ranges   = ARRAY_SIZE(rk628_csi_readable_ranges),
++};
+ 
+-static int rk628_regs_show(struct seq_file *s, void *v)
+-{
+-	seq_puts(s, "/*******rk628 registers read******/\n");
+-	rk628_registers_dump(s);
+-	return 0;
+-}
++static const struct regmap_config rk628_regmap_config[RK628_DEV_MAX] = {
++	[RK628_DEV_GRF] = {
++		.name = "grf",
++		.reg_bits = 32,
++		.val_bits = 32,
++		.reg_stride = 4,
++		.max_register = GRF_MAX_REGISTER,
++		.reg_format_endian = REGMAP_ENDIAN_LITTLE,
++		.val_format_endian = REGMAP_ENDIAN_LITTLE,
++	},
++	[RK628_DEV_CRU] = {
++		.name = "cru",
++		.reg_bits = 32,
++		.val_bits = 32,
++		.reg_stride = 4,
++		.max_register = CRU_MAX_REGISTER,
++		.reg_format_endian = REGMAP_ENDIAN_LITTLE,
++		.val_format_endian = REGMAP_ENDIAN_LITTLE,
++		.rd_table = &rk628_cru_readable_table,
++	},
++	[RK628_DEV_COMBRXPHY] = {
++		.name = "combrxphy",
++		.reg_bits = 32,
++		.val_bits = 32,
++		.reg_stride = 4,
++		.max_register = COMBRX_REG(0x6790),
++		.reg_format_endian = REGMAP_ENDIAN_LITTLE,
++		.val_format_endian = REGMAP_ENDIAN_LITTLE,
++		.rd_table = &rk628_combrxphy_readable_table,
++	},
++	[RK628_DEV_HDMIRX] = {
++		.name = "hdmirx",
++		.reg_bits = 32,
++		.val_bits = 32,
++		.reg_stride = 4,
++		.max_register = HDMI_RX_MAX_REGISTER,
++		.reg_format_endian = REGMAP_ENDIAN_LITTLE,
++		.val_format_endian = REGMAP_ENDIAN_LITTLE,
++		.rd_table = &rk628_hdmirx_readable_table,
++	},
++	[RK628_DEV_ADAPTER] = {
++		.name = "adapter",
++		.reg_bits = 32,
++		.val_bits = 32,
++		.reg_stride = 4,
++		.max_register = KEY_MAX_REGISTER,
++		.reg_format_endian = REGMAP_ENDIAN_LITTLE,
++		.val_format_endian = REGMAP_ENDIAN_LITTLE,
++		.rd_table = &rk628_key_readable_table,
++	},
++	[RK628_DEV_COMBTXPHY] = {
++		.name = "combtxphy",
++		.reg_bits = 32,
++		.val_bits = 32,
++		.reg_stride = 4,
++		.max_register = COMBTXPHY_CON10,
++		.reg_format_endian = REGMAP_ENDIAN_LITTLE,
++		.val_format_endian = REGMAP_ENDIAN_LITTLE,
++		.rd_table = &rk628_combtxphy_readable_table,
++	},
++	[RK628_DEV_CSI] = {
++		.name = "csi",
++		.reg_bits = 32,
++		.val_bits = 32,
++		.reg_stride = 4,
++		.max_register = CSI_MAX_REGISTER,
++		.reg_format_endian = REGMAP_ENDIAN_LITTLE,
++		.val_format_endian = REGMAP_ENDIAN_LITTLE,
++		.rd_table = &rk628_csi_readable_table,
++	},
++};
+ 
+-static int rk628_regs_open(struct inode *inode, struct file *file)
++struct rk628 *rk628_i2c_register(struct i2c_client *client)
+ {
+-	return single_open(file, rk628_regs_show, inode->i_private);
+-}
++	struct rk628 *rk628;
++	int i, ret;
++	struct device *dev = &client->dev;
+ 
+-static ssize_t
+-rk628_regs_write(struct file *file, const char __user *buf,
+-		 size_t count, loff_t *ppos)
+-{
+-	u32 reg, val;
+-	char kbuf[25];
+-
+-	if (copy_from_user(kbuf, buf, count))
+-		return -EFAULT;
+-	if (sscanf(kbuf, "%x%x", &reg, &val) == -1)
+-		return -EFAULT;
+-	dev_info(&rk628_i2c->dev, "/*******rk628 register config******/\n");
+-	dev_info(&rk628_i2c->dev, "\n reg=%x val=%x\n", reg, val);
+-	rk628_i2c_write(reg, val);
+-
+-	return count;
+-}
++	rk628 = devm_kzalloc(dev, sizeof(*rk628), GFP_KERNEL);
++	if (!rk628)
++		return NULL;
+ 
+-static const struct file_operations rk628_regs_fops = {
+-	.owner = THIS_MODULE,
+-	.open = rk628_regs_open,
+-	.read = seq_read,
+-	.write = rk628_regs_write,
+-	.llseek = seq_lseek,
+-	.release = single_release,
+-};
++	rk628->client = client;
++	rk628->dev = dev;
++	for (i = 0; i < RK628_DEV_MAX; i++) {
++		const struct regmap_config *config = &rk628_regmap_config[i];
+ 
+-void rk628_register_debugfs(struct device *dev)
+-{
+-	debugfs_dir = debugfs_create_dir("rk628", NULL);
+-	if (IS_ERR(debugfs_dir)) {
+-		dev_err(dev, "failed to create debugfs dir!\n");
+-		return;
++		if (!config->name)
++			continue;
++
++		rk628->regmap[i] = devm_regmap_init_i2c(client, config);
++		if (IS_ERR(rk628->regmap[i])) {
++			ret = PTR_ERR(rk628->regmap[i]);
++			dev_err(dev, "failed to allocate register map %d: %d\n",
++				i, ret);
++			return NULL;
++		}
+ 	}
+-	debugfs_create_file("regs", 0400, debugfs_dir,
+-			    NULL, &rk628_regs_fops);
++
++	return rk628;
+ }
++#endif
+ 
+ MODULE_AUTHOR("Shunqing Chen <csq@rock-chips.com>");
+ MODULE_DESCRIPTION("Rockchip RK628 driver");
+diff --git a/drivers/media/i2c/rk628/rk628.h b/drivers/media/i2c/rk628/rk628.h
+index 81a1e482b1f0fd..06d32a9d29e0e4 100644
+--- a/drivers/media/i2c/rk628/rk628.h
++++ b/drivers/media/i2c/rk628/rk628.h
+@@ -10,6 +10,9 @@
+ 
+ #include <linux/module.h>
+ #include <linux/i2c.h>
++#include <linux/regmap.h>
++
++#define RK628_REGMAP
+ 
+ #define UPDATE(x, h, l)		(((x) << (l)) & GENMASK((h), (l)))
+ #define HIWORD_UPDATE(v, h, l)	(((v) << (l)) | (GENMASK((h), (l)) << 16))
+@@ -213,11 +216,61 @@ enum {
+ 	INPUT_MODE_YUV,
+ };
+ 
+-extern struct i2c_client *rk628_i2c;
++enum {
++	RK628_DEV_GRF,
++	RK628_DEV_COMBRXPHY,
++	RK628_DEV_HDMIRX = 3,
++	RK628_DEV_CSI,
++	RK628_DEV_DSI0,
++	RK628_DEV_DSI1,
++	RK628_DEV_HDMITX,
++	RK628_DEV_GVI,
++	RK628_DEV_COMBTXPHY,
++	RK628_DEV_ADAPTER,
++	RK628_DEV_EFUSE,
++	RK628_DEV_CRU,
++	RK628_DEV_GPIO0,
++	RK628_DEV_GPIO1,
++	RK628_DEV_GPIO2,
++	RK628_DEV_GPIO3,
++	RK628_DEV_MAX,
++};
++
++struct rk628 {
++	struct device *dev;
++	struct i2c_client *client;
++	struct regmap *regmap[RK628_DEV_MAX];
++};
++
++#ifndef RK628_REGMAP
++int rk628_i2c_write(struct rk628 *rk628, u32 reg, u32 val);
++int rk628_i2c_read(struct rk628 *rk628, u32 reg, u32 *val);
++int rk628_i2c_update_bits(struct rk628 *rk628, u32 reg, u32 mask,
++			  u32 val);
++#else
+ 
+-extern void rk628_i2c_write(u32 reg, u32 val);
+-extern int rk628_i2c_read(u32 reg, u32 *val);
+-extern void rk628_i2c_update_bits(u32 reg, u32 mask, u32 val);
+-void rk628_register_debugfs(struct device *dev);
++static inline int rk628_i2c_write(struct rk628 *rk628, u32 reg, u32 val)
++{
++	int region = (reg >> 16) & 0xff;
++
++	return regmap_write(rk628->regmap[region], reg, val);
++}
++
++static inline int rk628_i2c_read(struct rk628 *rk628, u32 reg, u32 *val)
++{
++	int region = (reg >> 16) & 0xff;
++
++	return regmap_read(rk628->regmap[region], reg, val);
++}
++
++static inline int rk628_i2c_update_bits(struct rk628 *rk628, u32 reg, u32 mask,
++					u32 val)
++{
++	int region = (reg >> 16) & 0xff;
++
++	return regmap_update_bits(rk628->regmap[region], reg, mask, val);
++}
++#endif
++struct rk628 *rk628_i2c_register(struct i2c_client *client);
+ 
+ #endif
+diff --git a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+index 5679ae0e2a5294..c292cdf7ca9cb0 100644
+--- a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+@@ -68,6 +68,7 @@ MODULE_PARM_DESC(debug, "debug level (0-3)");
+ struct rk628_bt1120 {
+ 	struct device *dev;
+ 	struct i2c_client *i2c_client;
++	struct rk628 *rk628;
+ 	struct media_pad pad;
+ 	struct v4l2_subdev sd;
+ 	struct v4l2_dv_timings timings;
+@@ -300,27 +301,27 @@ static int rk628_bt1120_get_detected_timings(struct v4l2_subdev *sd,
+ 
+ 	memset(timings, 0, sizeof(struct v4l2_dv_timings));
+ 	timings->type = V4L2_DV_BT_656_1120;
+-	rk628_i2c_read(HDMI_RX_SCDC_REGS1, &val);
++	rk628_i2c_read(bt1120->rk628, HDMI_RX_SCDC_REGS1, &val);
+ 	status = val;
+ 
+-	rk628_i2c_read(HDMI_RX_MD_STS, &val);
++	rk628_i2c_read(bt1120->rk628, HDMI_RX_MD_STS, &val);
+ 	bt->interlaced = val & ILACE_STS ?
+ 		V4L2_DV_INTERLACED : V4L2_DV_PROGRESSIVE;
+ 
+-	rk628_i2c_read(HDMI_RX_MD_HACT_PX, &val);
++	rk628_i2c_read(bt1120->rk628, HDMI_RX_MD_HACT_PX, &val);
+ 	hact = val & 0xffff;
+-	rk628_i2c_read(HDMI_RX_MD_VAL, &val);
++	rk628_i2c_read(bt1120->rk628, HDMI_RX_MD_VAL, &val);
+ 	vact = val & 0xffff;
+-	rk628_i2c_read(HDMI_RX_MD_HT1, &val);
++	rk628_i2c_read(bt1120->rk628, HDMI_RX_MD_HT1, &val);
+ 	htotal = (val >> 16) & 0xffff;
+-	rk628_i2c_read(HDMI_RX_MD_VTL, &val);
++	rk628_i2c_read(bt1120->rk628, HDMI_RX_MD_VTL, &val);
+ 	vtotal = val & 0xffff;
+-	rk628_i2c_read(0x3014c, &val);
++	rk628_i2c_read(bt1120->rk628, 0x3014c, &val);
+ 	hofs_pix = val & 0xffff;
+-	rk628_i2c_read(0x30164, &val);
++	rk628_i2c_read(bt1120->rk628, 0x30164, &val);
+ 	vbp = (val & 0xffff) + 1;
+ 
+-	rk628_i2c_read(0x3009c, &val);
++	rk628_i2c_read(bt1120->rk628, 0x3009c, &val);
+ 	tmdsclk_cnt = val & 0xffff;
+ 	tmp_data = tmdsclk_cnt;
+ 	tmp_data = ((tmp_data * MODETCLK_HZ) + MODETCLK_CNT_NUM / 2);
+@@ -333,12 +334,12 @@ static int rk628_bt1120_get_detected_timings(struct v4l2_subdev *sd,
+ 	}
+ 	fps = (tmds_clk + (htotal * vtotal) / 2) / (htotal * vtotal);
+ 
+-	rk628_i2c_read(0x30148, &val);
++	rk628_i2c_read(bt1120->rk628, 0x30148, &val);
+ 	modetclk_cnt_hs = val & 0xffff;
+ 	hs = (tmdsclk_cnt * modetclk_cnt_hs + MODETCLK_CNT_NUM / 2) /
+ 		MODETCLK_CNT_NUM;
+ 
+-	rk628_i2c_read(0x3015c, &val);
++	rk628_i2c_read(bt1120->rk628, 0x3015c, &val);
+ 	modetclk_cnt_vs = val & 0xffff;
+ 	vs = (tmdsclk_cnt * modetclk_cnt_vs + MODETCLK_CNT_NUM / 2) /
+ 		MODETCLK_CNT_NUM;
+@@ -418,7 +419,7 @@ static void rk628_bt1120_delayed_work_enable_hotplug(struct work_struct *work)
+ 		rk628_hdmirx_hpd_ctrl(sd, true);
+ 		rk628_hdmirx_config_all(sd);
+ 		rk628_bt1120_enable_interrupts(sd, true);
+-		rk628_i2c_update_bits(GRF_SYSTEM_CON0,
++		rk628_i2c_update_bits(bt1120->rk628, GRF_SYSTEM_CON0,
+ 				SW_I2S_DATA_OEN_MASK, SW_I2S_DATA_OEN(0));
+ 		schedule_delayed_work(&bt1120->delayed_work_audio, 0);
+ 	} else {
+@@ -427,7 +428,7 @@ static void rk628_bt1120_delayed_work_enable_hotplug(struct work_struct *work)
+ 		cancel_delayed_work(&bt1120->delayed_work_res_change);
+ 		rk628_hdmirx_hpd_ctrl(sd, false);
+ 		bt1120->nosignal = true;
+-		rk628_i2c_update_bits(GRF_SYSTEM_CON0,
++		rk628_i2c_update_bits(bt1120->rk628, GRF_SYSTEM_CON0,
+ 				SW_I2S_DATA_OEN_MASK, SW_I2S_DATA_OEN(1));
+ 		cancel_delayed_work(&bt1120->delayed_work_audio);
+ 	}
+@@ -457,36 +458,37 @@ static void rk628_delayed_work_res_change(struct work_struct *work)
+ static void rk628_bt1120_set_hdmi_hdcp(struct v4l2_subdev *sd, bool en)
+ {
+ 	u16 i;
++	struct rk628_bt1120 *bt1120 = to_bt1120(sd);
+ 
+ 	v4l2_dbg(1, debug, sd, "%s: %sable\n", __func__, en ? "en" : "dis");
+ 
+ 	if (en) {
+-		rk628_i2c_update_bits(HDMI_RX_HDCP_CTRL,
++		rk628_i2c_update_bits(bt1120->rk628, HDMI_RX_HDCP_CTRL,
+ 				HDCP_ENABLE_MASK |
+ 				HDCP_ENC_EN_MASK,
+ 				HDCP_ENABLE(1) |
+ 				HDCP_ENC_EN(1));
+-		rk628_i2c_update_bits(GRF_SYSTEM_CON0,
++		rk628_i2c_update_bits(bt1120->rk628, GRF_SYSTEM_CON0,
+ 				SW_ADAPTER_I2CSLADR_MASK |
+ 				SW_EFUSE_HDCP_EN_MASK,
+ 				SW_ADAPTER_I2CSLADR(0) |
+ 				SW_EFUSE_HDCP_EN(1));
+ 		for ( i = 0; i < ARRAY_SIZE(hdcp_key_data); i++) {
+-			rk628_i2c_write(HDCP_KEY_BASE + i * 4, hdcp_key_data[i]);
++			rk628_i2c_write(bt1120->rk628, HDCP_KEY_BASE + i * 4, hdcp_key_data[i]);
+ 		}
+ 
+-		rk628_i2c_update_bits(GRF_SYSTEM_CON0,
++		rk628_i2c_update_bits(bt1120->rk628, GRF_SYSTEM_CON0,
+ 				SW_ADAPTER_I2CSLADR_MASK |
+ 				SW_EFUSE_HDCP_EN_MASK,
+ 				SW_ADAPTER_I2CSLADR(0) |
+ 				SW_EFUSE_HDCP_EN(0));
+-		rk628_i2c_update_bits(HDMI_RX_HDCP_CTRL,
++		rk628_i2c_update_bits(bt1120->rk628, HDMI_RX_HDCP_CTRL,
+ 				HDCP_ENABLE_MASK |
+ 				HDCP_ENC_EN_MASK,
+ 				HDCP_ENABLE(1) |
+ 				HDCP_ENC_EN(1));
+ 	} else {
+-		rk628_i2c_update_bits(HDMI_RX_HDCP_CTRL,
++		rk628_i2c_update_bits(bt1120->rk628, HDMI_RX_HDCP_CTRL,
+ 				HDCP_ENABLE_MASK |
+ 				HDCP_ENC_EN_MASK,
+ 				HDCP_ENABLE(0) |
+@@ -503,7 +505,7 @@ static void rk628_hdmirx_hpd_ctrl(struct v4l2_subdev *sd, bool en)
+ 			en ? "en" : "dis", bt1120->hpd_output_inverted);
+ 	en_level = bt1120->hpd_output_inverted ? 0 : 1;
+ 	set_level = en ? en_level : !en_level;
+-	rk628_i2c_update_bits(HDMI_RX_HDMI_SETUP_CTRL,
++	rk628_i2c_update_bits(bt1120->rk628, HDMI_RX_HDMI_SETUP_CTRL,
+ 			HOT_PLUG_DETECT_MASK, HOT_PLUG_DETECT(set_level));
+ }
+ 
+@@ -558,21 +560,21 @@ static void enable_bt1120tx(struct v4l2_subdev *sd)
+ 
+ 	rk628_post_process_setup(sd);
+ 
+-	rk628_i2c_update_bits(GRF_POST_PROC_CON,
++	rk628_i2c_update_bits(bt1120->rk628, GRF_POST_PROC_CON,
+ 			   SW_DCLK_OUT_INV_EN, SW_DCLK_OUT_INV_EN);
+ 
+ 	if (bt1120->dual_edge) {
+ 		val |= ENC_DUALEDGE_EN(1);
+-		rk628_i2c_write(GRF_BT1120_DCLK_DELAY_CON0, 0x10000000);
+-		rk628_i2c_write(GRF_BT1120_DCLK_DELAY_CON1, 0);
++		rk628_i2c_write(bt1120->rk628, GRF_BT1120_DCLK_DELAY_CON0, 0x10000000);
++		rk628_i2c_write(bt1120->rk628, GRF_BT1120_DCLK_DELAY_CON1, 0);
+ 	}
+ 
+ 	val |= BT1120_UV_SWAP(0);
+-	rk628_i2c_write(GRF_RGB_ENC_CON, val);
++	rk628_i2c_write(bt1120->rk628, GRF_RGB_ENC_CON, val);
+ 	v4l2_dbg(1, debug, sd, "%s bt1120 cofig done\n", __func__);
+ 
+ 	for (i = 0; i < 100; i++) {
+-		rk628_i2c_read(HDMI_RX_PDEC_AVI_PB, &val);
++		rk628_i2c_read(bt1120->rk628, HDMI_RX_PDEC_AVI_PB, &val);
+ 		v4l2_dbg(2, debug, sd, "%s PDEC_AVI_PB:%#x, avi_rcv_rdy:%d\n",
+ 			 __func__, val, bt1120->avi_rcv_rdy);
+ 		if (val == avi_pb && bt1120->avi_rcv_rdy) {
+@@ -589,12 +591,12 @@ static void enable_bt1120tx(struct v4l2_subdev *sd)
+ 			__func__, val, video_fmt);
+ 	if (video_fmt) {
+ 		/* yuv data: cfg SW_YUV2VYU_SWP */
+-		rk628_i2c_write(GRF_CSC_CTRL_CON,
++		rk628_i2c_write(bt1120->rk628, GRF_CSC_CTRL_CON,
+ 				SW_YUV2VYU_SWP(1) |
+ 				SW_R2Y_EN(0));
+ 	} else {
+ 		/* rgb data: cfg SW_R2Y_EN */
+-		rk628_i2c_write(GRF_CSC_CTRL_CON,
++		rk628_i2c_write(bt1120->rk628, GRF_CSC_CTRL_CON,
+ 				SW_YUV2VYU_SWP(0) |
+ 				SW_R2Y_EN(1));
+ 	}
+@@ -662,6 +664,7 @@ static void rk628_post_process_scaler_init(struct v4l2_subdev *sd,
+ 					   const struct videomode *src,
+ 					   const struct videomode *dst)
+ {
++	struct rk628_bt1120 *bt1120 = to_bt1120(sd);
+ 	u32 dsp_frame_hst, dsp_frame_vst;
+ 	u32 scl_hor_mode, scl_ver_mode;
+ 	u32 scl_v_factor, scl_h_factor;
+@@ -746,29 +749,29 @@ static void rk628_post_process_scaler_init(struct v4l2_subdev *sd,
+ 		v4l2_dbg(1, debug, sd, "vertical scale up\n");
+ 	}
+ 
+-	rk628_i2c_update_bits(GRF_RGB_DEC_CON0,
++	rk628_i2c_update_bits(bt1120->rk628, GRF_RGB_DEC_CON0,
+ 			SW_HRES_MASK, SW_HRES(src->hactive));
+-	rk628_i2c_write(GRF_SCALER_CON0,
++	rk628_i2c_write(bt1120->rk628, GRF_SCALER_CON0,
+ 		     SCL_VER_DOWN_MODE(ver_down_mode) |
+ 		     SCL_HOR_DOWN_MODE(hor_down_mode) |
+ 		     SCL_VER_MODE(scl_ver_mode) | SCL_HOR_MODE(scl_hor_mode) |
+ 		     SCL_EN(1));
+-	rk628_i2c_write(GRF_SCALER_CON1,
++	rk628_i2c_write(bt1120->rk628, GRF_SCALER_CON1,
+ 		     SCL_V_FACTOR(scl_v_factor) | SCL_H_FACTOR(scl_h_factor));
+-	rk628_i2c_write(GRF_SCALER_CON2,
++	rk628_i2c_write(bt1120->rk628, GRF_SCALER_CON2,
+ 		     DSP_FRAME_VST(dsp_frame_vst) |
+ 		     DSP_FRAME_HST(dsp_frame_hst));
+-	rk628_i2c_write(GRF_SCALER_CON3,
++	rk628_i2c_write(bt1120->rk628, GRF_SCALER_CON3,
+ 		     DSP_HS_END(dsp_hs_end) | DSP_HTOTAL(dsp_htotal));
+-	rk628_i2c_write(GRF_SCALER_CON4,
++	rk628_i2c_write(bt1120->rk628, GRF_SCALER_CON4,
+ 		     DSP_HACT_END(dsp_hact_end) | DSP_HACT_ST(dsp_hact_st));
+-	rk628_i2c_write(GRF_SCALER_CON5,
++	rk628_i2c_write(bt1120->rk628, GRF_SCALER_CON5,
+ 		     DSP_VS_END(dsp_vs_end) | DSP_VTOTAL(dsp_vtotal));
+-	rk628_i2c_write(GRF_SCALER_CON6,
++	rk628_i2c_write(bt1120->rk628, GRF_SCALER_CON6,
+ 		     DSP_VACT_END(dsp_vact_end) | DSP_VACT_ST(dsp_vact_st));
+-	rk628_i2c_write(GRF_SCALER_CON7,
++	rk628_i2c_write(bt1120->rk628, GRF_SCALER_CON7,
+ 		     DSP_HBOR_END(dsp_hbor_end) | DSP_HBOR_ST(dsp_hbor_st));
+-	rk628_i2c_write(GRF_SCALER_CON8,
++	rk628_i2c_write(bt1120->rk628, GRF_SCALER_CON8,
+ 		     DSP_VBOR_END(dsp_vbor_end) | DSP_VBOR_ST(dsp_vbor_st));
+ }
+ 
+@@ -794,8 +797,8 @@ static void rk628_post_process_setup(struct v4l2_subdev *sd)
+ 	/* do not scale now */
+ 	dst = src;
+ 
+-	rk628_cru_clk_set_rate(CGU_CLK_RX_READ, src.pixelclock);
+-	rk628_cru_clk_set_rate(CGU_SCLK_VOP, src.pixelclock);
++	rk628_clk_set_rate(bt1120->rk628, CGU_CLK_RX_READ, src.pixelclock);
++	rk628_clk_set_rate(bt1120->rk628, CGU_SCLK_VOP, src.pixelclock);
+ 
+ 	rk628_post_process_scaler_init(sd, &src, &dst);
+ }
+@@ -817,7 +820,7 @@ static int rk628_hdmirx_phy_power_on(struct v4l2_subdev *sd)
+ 
+ 	if (bt1120->rxphy_pwron) {
+ 		v4l2_dbg(1, debug, sd, "rxphy already power on, power off!\n");
+-		ret = rk628_combrxphy_power_off();
++		ret = rk628_rxphy_power_off(bt1120->rk628);
+ 		if (ret)
+ 			v4l2_err(sd, "hdmi rxphy power off failed!\n");
+ 		else
+@@ -826,7 +829,7 @@ static int rk628_hdmirx_phy_power_on(struct v4l2_subdev *sd)
+ 
+ 	usleep_range(100, 100);
+ 	if (bt1120->rxphy_pwron == false) {
+-		ret = rk628_combrxphy_power_on(f);
++		ret = rk628_rxphy_power_on(bt1120->rk628, f);
+ 		if (ret) {
+ 			bt1120->rxphy_pwron = false;
+ 			v4l2_err(sd, "hdmi rxphy power on failed\n");
+@@ -840,45 +843,50 @@ static int rk628_hdmirx_phy_power_on(struct v4l2_subdev *sd)
+ 
+ static void rk628_hdmirx_vid_enable(struct v4l2_subdev *sd, bool en)
+ {
++	struct rk628_bt1120 *bt1120 = to_bt1120(sd);
++
+ 	v4l2_dbg(1, debug, sd, "%s: %sable\n", __func__, en ? "en" : "dis");
+ 	if (en) {
+-		rk628_i2c_update_bits(HDMI_RX_DMI_DISABLE_IF,
++		rk628_i2c_update_bits(bt1120->rk628, HDMI_RX_DMI_DISABLE_IF,
+ 				VID_ENABLE_MASK, VID_ENABLE(1));
+ 	} else {
+-		rk628_i2c_update_bits(HDMI_RX_DMI_DISABLE_IF,
++		rk628_i2c_update_bits(bt1120->rk628, HDMI_RX_DMI_DISABLE_IF,
+ 				VID_ENABLE_MASK, VID_ENABLE(0));
+ 	}
+ }
+ 
+ static void rk628_hdmirx_controller_reset(struct v4l2_subdev *sd)
+ {
+-	rk628_i2c_write(HDMI_RX_DMI_SW_RST, 0x000101ff);
+-	rk628_i2c_write(HDMI_RX_DMI_DISABLE_IF, 0x00000000);
+-	rk628_i2c_write(HDMI_RX_DMI_DISABLE_IF, 0x0000017f);
+-	rk628_i2c_write(HDMI_RX_DMI_DISABLE_IF, 0x0001017f);
++	struct rk628_bt1120 *bt1120 = to_bt1120(sd);
++
++	rk628_i2c_write(bt1120->rk628, HDMI_RX_DMI_SW_RST, 0x000101ff);
++	rk628_i2c_write(bt1120->rk628, HDMI_RX_DMI_DISABLE_IF, 0x00000000);
++	rk628_i2c_write(bt1120->rk628, HDMI_RX_DMI_DISABLE_IF, 0x0000017f);
++	rk628_i2c_write(bt1120->rk628, HDMI_RX_DMI_DISABLE_IF, 0x0001017f);
+ }
+ 
+ static void rk628_hdmirx_audio_setup(struct v4l2_subdev *sd)
+ {
++	struct rk628_bt1120 *bt1120 = to_bt1120(sd);
+ 	u32 audio_pll_n, audio_pll_cts;
+ 
+ 	audio_pll_n = 5644;
+ 	audio_pll_cts = 148500;
+ 
+-	rk628_cru_clk_set_rate(CGU_CLK_HDMIRX_AUD, 5644800);
++	rk628_clk_set_rate(bt1120->rk628, CGU_CLK_HDMIRX_AUD, 5644800);
+ 
+ 	/* manual aud CTS */
+-	rk628_i2c_write(HDMI_RX_AUDPLL_GEN_CTS, audio_pll_cts);
++	rk628_i2c_write(bt1120->rk628, HDMI_RX_AUDPLL_GEN_CTS, audio_pll_cts);
+ 	/* manual aud N */
+-	rk628_i2c_write(HDMI_RX_AUDPLL_GEN_N, audio_pll_n);
++	rk628_i2c_write(bt1120->rk628, HDMI_RX_AUDPLL_GEN_N, audio_pll_n);
+ 
+ 	/* aud CTS N en manual */
+-	rk628_i2c_update_bits(HDMI_RX_AUD_CLK_CTRL,
++	rk628_i2c_update_bits(bt1120->rk628, HDMI_RX_AUD_CLK_CTRL,
+ 			CTS_N_REF_MASK, CTS_N_REF(1));
+ 	/* aud pll ctrl */
+-	rk628_i2c_update_bits(HDMI_RX_AUD_PLL_CTRL,
++	rk628_i2c_update_bits(bt1120->rk628, HDMI_RX_AUD_PLL_CTRL,
+ 			PLL_LOCK_TOGGLE_DIV_MASK, PLL_LOCK_TOGGLE_DIV(0));
+-	rk628_i2c_update_bits(HDMI_RX_AUD_FIFO_TH,
++	rk628_i2c_update_bits(bt1120->rk628, HDMI_RX_AUD_FIFO_TH,
+ 		AFIF_TH_START_MASK |
+ 		AFIF_TH_MAX_MASK |
+ 		AFIF_TH_MIN_MASK,
+@@ -887,15 +895,15 @@ static void rk628_hdmirx_audio_setup(struct v4l2_subdev *sd)
+ 		AFIF_TH_MIN(8));
+ 
+ 	/* AUTO_VMUTE */
+-	rk628_i2c_update_bits(HDMI_RX_AUD_FIFO_CTRL,
++	rk628_i2c_update_bits(bt1120->rk628, HDMI_RX_AUD_FIFO_CTRL,
+ 			AFIF_SUBPACKET_DESEL_MASK |
+ 			AFIF_SUBPACKETS_MASK,
+ 			AFIF_SUBPACKET_DESEL(0) |
+ 			AFIF_SUBPACKETS(1));
+-	rk628_i2c_write(HDMI_RX_AUD_SAO_CTRL,
++	rk628_i2c_write(bt1120->rk628, HDMI_RX_AUD_SAO_CTRL,
+ 			I2S_LPCM_BPCUV(0) |
+ 			I2S_32_16(1));
+-	rk628_i2c_write(HDMI_RX_AUD_MUTE_CTRL,
++	rk628_i2c_write(bt1120->rk628, HDMI_RX_AUD_MUTE_CTRL,
+ 			APPLY_INT_MUTE(0)	|
+ 			APORT_SHDW_CTRL(3)	|
+ 			AUTO_ACLK_MUTE(2)	|
+@@ -904,13 +912,13 @@ static void rk628_hdmirx_audio_setup(struct v4l2_subdev *sd)
+ 			AUD_MUTE_SEL(1)		|
+ 			AUD_MUTE_MODE(1));
+ 
+-	rk628_i2c_write(HDMI_RX_AUD_PAO_CTRL,
++	rk628_i2c_write(bt1120->rk628, HDMI_RX_AUD_PAO_CTRL,
+ 			PAO_RATE(0));
+-	rk628_i2c_write(HDMI_RX_AUD_CHEXTR_CTRL,
++	rk628_i2c_write(bt1120->rk628, HDMI_RX_AUD_CHEXTR_CTRL,
+ 			AUD_LAYOUT_CTRL(1));
+ 
+ 	/* audio detect */
+-	rk628_i2c_write(HDMI_RX_PDEC_AUDIODET_CTRL,
++	rk628_i2c_write(bt1120->rk628, HDMI_RX_PDEC_AUDIODET_CTRL,
+ 			AUDIODET_THRESHOLD(0));
+ }
+ 
+@@ -928,12 +936,12 @@ static void rk628_bt1120_delayed_work_audio(struct work_struct *work)
+ 	static u64 pre_fs_audio;
+ 
+ 	/* fout=128*fs=ftmds*N/CTS */
+-	rk628_i2c_read(HDMI_RX_HDMI_CKM_RESULT, &clkrate);
++	rk628_i2c_read(bt1120->rk628, HDMI_RX_HDMI_CKM_RESULT, &clkrate);
+ 	clkrate = clkrate & 0xffff;
+ 	/* tmdsclk = (clkrate/1000) * 49500000 */
+ 	tmdsclk = clkrate * (49500000 / 1000);
+-	rk628_i2c_read(HDMI_RX_PDEC_ACR_CTS, &cts_decoded);
+-	rk628_i2c_read(HDMI_RX_PDEC_ACR_N, &n_decoded);
++	rk628_i2c_read(bt1120->rk628, HDMI_RX_PDEC_ACR_CTS, &cts_decoded);
++	rk628_i2c_read(bt1120->rk628, HDMI_RX_PDEC_ACR_N, &n_decoded);
+ 	/* fs_audio = ((tmdsclk * n_decoded) / cts_decoded ) / 128 */
+ 	if (cts_decoded != 0) {
+ 		fs_audio = div_u64((tmdsclk * n_decoded), cts_decoded);
+@@ -962,20 +970,20 @@ static void rk628_bt1120_delayed_work_audio(struct work_struct *work)
+ 		default:
+ 			break;
+ 		}
+-		rk628_cru_clk_set_rate(CGU_CLK_HDMIRX_AUD, hdmirx_aud_clkrate);
++		rk628_clk_set_rate(bt1120->rk628, CGU_CLK_HDMIRX_AUD, hdmirx_aud_clkrate);
+ 		v4l2_dbg(2, debug, sd,
+ 			"%s: audo switch clk_hdmirx_aud to %d  fs_audio:%llu pre_fs_audio:%llu\n",
+ 			__func__, hdmirx_aud_clkrate, fs_audio, pre_fs_audio);
+ 		if (pre_fs_audio != 0) {
+-			rk628_i2c_write(HDMI_RX_AUD_FIFO_ICLR, 0x1f);
+-			rk628_i2c_write(HDMI_RX_AUD_FIFO_CTRL, 0x10001);
+-			rk628_i2c_write(HDMI_RX_AUD_FIFO_CTRL, 0x10000);
++			rk628_i2c_write(bt1120->rk628, HDMI_RX_AUD_FIFO_ICLR, 0x1f);
++			rk628_i2c_write(bt1120->rk628, HDMI_RX_AUD_FIFO_CTRL, 0x10001);
++			rk628_i2c_write(bt1120->rk628, HDMI_RX_AUD_FIFO_CTRL, 0x10000);
+ 		}
+ 		pre_fs_audio = fs_audio;
+ 		bt1120->fs_audio = fs_audio;
+ 	}
+ 
+-	rk628_i2c_read(HDMI_RX_AUD_FIFO_FILLSTS1, &cur_state);
++	rk628_i2c_read(bt1120->rk628, HDMI_RX_AUD_FIFO_FILLSTS1, &cur_state);
+ 	v4l2_dbg(2, debug, sd,
+ 		"%s: HDMI_RX_AUD_FIFO_FILLSTS1:%#x, single offset:%d, total offset:%d\n",
+ 		__func__, cur_state, cur_state-pre_state, cur_state-init_state);
+@@ -985,24 +993,24 @@ static void rk628_bt1120_delayed_work_audio(struct work_struct *work)
+ 		bt1120->audio_present = false;
+ 	if ((cur_state-init_state) > 16 && (cur_state-pre_state) > 0) {
+ 		hdmirx_aud_clkrate += 10;
+-		rk628_cru_clk_set_rate(CGU_CLK_HDMIRX_AUD, hdmirx_aud_clkrate);
++		rk628_clk_set_rate(bt1120->rk628, CGU_CLK_HDMIRX_AUD, hdmirx_aud_clkrate);
+ 		v4l2_dbg(2, debug, sd, "%s: (cur_state-init_state) > 16 hdmirx_aud_clkrate:%d\n",
+ 				__func__, hdmirx_aud_clkrate);
+ 	} else if ((cur_state != 0) && (cur_state-init_state) < -16 && (cur_state-pre_state) < 0) {
+ 		hdmirx_aud_clkrate -= 10;
+-		rk628_cru_clk_set_rate(CGU_CLK_HDMIRX_AUD, hdmirx_aud_clkrate);
++		rk628_clk_set_rate(bt1120->rk628, CGU_CLK_HDMIRX_AUD, hdmirx_aud_clkrate);
+ 		v4l2_dbg(2, debug, sd, "%s: (cur_state-init_state) < -16 hdmirx_aud_clkrate:%d\n",
+ 				__func__, hdmirx_aud_clkrate);
+ 	}
+ 	pre_state = cur_state;
+ 
+-	rk628_i2c_read(HDMI_RX_AUD_FIFO_ISTS, &val);
++	rk628_i2c_read(bt1120->rk628, HDMI_RX_AUD_FIFO_ISTS, &val);
+ 	v4l2_dbg(2, debug, sd, "%s: HDMI_RX_AUD_FIFO_ISTS:%#x\n", __func__, val);
+ 	if ((val != 0x9) && ((val & 0x10) || (val & 0x8))) {
+-		rk628_i2c_write(HDMI_RX_AUD_FIFO_ICLR, 0x1f);
+-		rk628_i2c_write(HDMI_RX_AUD_FIFO_CTRL, 0x10001);
++		rk628_i2c_write(bt1120->rk628, HDMI_RX_AUD_FIFO_ICLR, 0x1f);
++		rk628_i2c_write(bt1120->rk628, HDMI_RX_AUD_FIFO_CTRL, 0x10001);
+ 		/*msleep(1);*/
+-		rk628_i2c_write(HDMI_RX_AUD_FIFO_CTRL, 0x10000);
++		rk628_i2c_write(bt1120->rk628, HDMI_RX_AUD_FIFO_CTRL, 0x10000);
+ 		pre_state = cur_state = 0;
+ 
+ 		v4l2_err(sd, "%s: HDMI_RX_AUD_FIFO_ISTS:%#x, underflow or overflow\n",
+@@ -1014,28 +1022,30 @@ static void rk628_bt1120_delayed_work_audio(struct work_struct *work)
+ 
+ static void rk628_hdmirx_controller_setup(struct v4l2_subdev *sd)
+ {
+-	rk628_i2c_write(HDMI_RX_HDMI20_CONTROL, 0x10001f10);
+-	rk628_i2c_write(HDMI_RX_HDMI_MODE_RECOVER, 0x000000e1);
+-	rk628_i2c_write(HDMI_RX_PDEC_CTRL, 0xbfff8011);
+-	rk628_i2c_write(HDMI_RX_PDEC_ASP_CTRL, 0x00000040);
+-	rk628_i2c_write(HDMI_RX_HDMI_RESMPL_CTRL, 0x00000001);
+-	rk628_i2c_write(HDMI_RX_HDMI_SYNC_CTRL, 0x00000014);
+-	rk628_i2c_write(HDMI_RX_PDEC_ERR_FILTER, 0x00000008);
+-	rk628_i2c_write(HDMI_RX_SCDC_I2CCONFIG, 0x01000000);
+-	rk628_i2c_write(HDMI_RX_SCDC_CONFIG, 0x00000001);
+-	rk628_i2c_write(HDMI_RX_SCDC_WRDATA0, 0xabcdef01);
+-	rk628_i2c_write(HDMI_RX_CHLOCK_CONFIG, 0x0030c15c);
+-	rk628_i2c_write(HDMI_RX_HDMI_ERROR_PROTECT, 0x000d0c98);
+-	rk628_i2c_write(HDMI_RX_MD_HCTRL1, 0x00000010);
+-	rk628_i2c_write(HDMI_RX_MD_HCTRL2, 0x00001738);
+-	rk628_i2c_write(HDMI_RX_MD_VCTRL, 0x00000002);
+-	rk628_i2c_write(HDMI_RX_MD_VTH, 0x0000073a);
+-	rk628_i2c_write(HDMI_RX_MD_IL_POL, 0x00000004);
+-	rk628_i2c_write(HDMI_RX_PDEC_ACRM_CTRL, 0x00000000);
+-	rk628_i2c_write(HDMI_RX_HDMI_DCM_CTRL, 0x00040414);
+-	rk628_i2c_write(HDMI_RX_HDMI_CKM_EVLTM, 0x00103e70);
+-	rk628_i2c_write(HDMI_RX_HDMI_CKM_F, 0x0c1c0b54);
+-	rk628_i2c_write(HDMI_RX_HDMI_RESMPL_CTRL, 0x00000001);
++	struct rk628_bt1120 *bt1120 = to_bt1120(sd);
++
++	rk628_i2c_write(bt1120->rk628, HDMI_RX_HDMI20_CONTROL, 0x10001f10);
++	rk628_i2c_write(bt1120->rk628, HDMI_RX_HDMI_MODE_RECOVER, 0x000000e1);
++	rk628_i2c_write(bt1120->rk628, HDMI_RX_PDEC_CTRL, 0xbfff8011);
++	rk628_i2c_write(bt1120->rk628, HDMI_RX_PDEC_ASP_CTRL, 0x00000040);
++	rk628_i2c_write(bt1120->rk628, HDMI_RX_HDMI_RESMPL_CTRL, 0x00000001);
++	rk628_i2c_write(bt1120->rk628, HDMI_RX_HDMI_SYNC_CTRL, 0x00000014);
++	rk628_i2c_write(bt1120->rk628, HDMI_RX_PDEC_ERR_FILTER, 0x00000008);
++	rk628_i2c_write(bt1120->rk628, HDMI_RX_SCDC_I2CCONFIG, 0x01000000);
++	rk628_i2c_write(bt1120->rk628, HDMI_RX_SCDC_CONFIG, 0x00000001);
++	rk628_i2c_write(bt1120->rk628, HDMI_RX_SCDC_WRDATA0, 0xabcdef01);
++	rk628_i2c_write(bt1120->rk628, HDMI_RX_CHLOCK_CONFIG, 0x0030c15c);
++	rk628_i2c_write(bt1120->rk628, HDMI_RX_HDMI_ERROR_PROTECT, 0x000d0c98);
++	rk628_i2c_write(bt1120->rk628, HDMI_RX_MD_HCTRL1, 0x00000010);
++	rk628_i2c_write(bt1120->rk628, HDMI_RX_MD_HCTRL2, 0x00001738);
++	rk628_i2c_write(bt1120->rk628, HDMI_RX_MD_VCTRL, 0x00000002);
++	rk628_i2c_write(bt1120->rk628, HDMI_RX_MD_VTH, 0x0000073a);
++	rk628_i2c_write(bt1120->rk628, HDMI_RX_MD_IL_POL, 0x00000004);
++	rk628_i2c_write(bt1120->rk628, HDMI_RX_PDEC_ACRM_CTRL, 0x00000000);
++	rk628_i2c_write(bt1120->rk628, HDMI_RX_HDMI_DCM_CTRL, 0x00040414);
++	rk628_i2c_write(bt1120->rk628, HDMI_RX_HDMI_CKM_EVLTM, 0x00103e70);
++	rk628_i2c_write(bt1120->rk628, HDMI_RX_HDMI_CKM_F, 0x0c1c0b54);
++	rk628_i2c_write(bt1120->rk628, HDMI_RX_HDMI_RESMPL_CTRL, 0x00000001);
+ }
+ 
+ static bool rk628_rcv_supported_res(struct v4l2_subdev *sd, u32 width,
+@@ -1062,6 +1072,7 @@ static int rk628_hdmirx_phy_setup(struct v4l2_subdev *sd)
+ {
+ 	u32 i, cnt, val;
+ 	u32 width, height, frame_width, frame_height, status;
++	struct rk628_bt1120 *bt1120 = to_bt1120(sd);
+ 
+ 	for ( i = 0; i < RXPHY_CFG_MAX_TIMES; i++) {
+ 		rk628_hdmirx_phy_power_on(sd);
+@@ -1069,15 +1080,15 @@ static int rk628_hdmirx_phy_setup(struct v4l2_subdev *sd)
+ 
+ 		do {
+ 			cnt++;
+-			rk628_i2c_read(HDMI_RX_MD_HACT_PX, &val);
++			rk628_i2c_read(bt1120->rk628, HDMI_RX_MD_HACT_PX, &val);
+ 			width = val & 0xffff;
+-			rk628_i2c_read(HDMI_RX_MD_VAL, &val);
++			rk628_i2c_read(bt1120->rk628, HDMI_RX_MD_VAL, &val);
+ 			height = val & 0xffff;
+-			rk628_i2c_read(HDMI_RX_MD_HT1, &val);
++			rk628_i2c_read(bt1120->rk628, HDMI_RX_MD_HT1, &val);
+ 			frame_width = (val >> 16) & 0xffff;
+-			rk628_i2c_read(HDMI_RX_MD_VTL, &val);
++			rk628_i2c_read(bt1120->rk628, HDMI_RX_MD_VTL, &val);
+ 			frame_height = val & 0xffff;
+-			rk628_i2c_read(HDMI_RX_SCDC_REGS1, &val);
++			rk628_i2c_read(bt1120->rk628, HDMI_RX_SCDC_REGS1, &val);
+ 			status = val;
+ 			v4l2_dbg(1, debug, sd, "%s read wxh:%dx%d, total:%dx%d,"
+ 					" SCDC_REGS1:%#x, cnt:%d\n", __func__,
+@@ -1117,23 +1128,23 @@ static void rk628_bt1120_initial_setup(struct v4l2_subdev *sd)
+ 	struct v4l2_subdev_edid def_edid;
+ 
+ 	/* selete int io function */
+-	rk628_i2c_write(GRF_GPIO3AB_SEL_CON, 0x30002000);
+-	rk628_i2c_write(GRF_GPIO1AB_SEL_CON, HIWORD_UPDATE(0x7, 10, 8));
++	rk628_i2c_write(bt1120->rk628, GRF_GPIO3AB_SEL_CON, 0x30002000);
++	rk628_i2c_write(bt1120->rk628, GRF_GPIO1AB_SEL_CON, HIWORD_UPDATE(0x7, 10, 8));
+ 	/* I2S_SCKM0 */
+-	rk628_i2c_write(GRF_GPIO0AB_SEL_CON, HIWORD_UPDATE(0x1, 2, 2));
++	rk628_i2c_write(bt1120->rk628, GRF_GPIO0AB_SEL_CON, HIWORD_UPDATE(0x1, 2, 2));
+ 	/* I2SLR_M0 */
+-	rk628_i2c_write(GRF_GPIO0AB_SEL_CON, HIWORD_UPDATE(0x1, 3, 3));
++	rk628_i2c_write(bt1120->rk628, GRF_GPIO0AB_SEL_CON, HIWORD_UPDATE(0x1, 3, 3));
+ 	/* I2SM0D0 */
+-	rk628_i2c_write(GRF_GPIO0AB_SEL_CON, HIWORD_UPDATE(0x1, 5, 4));
++	rk628_i2c_write(bt1120->rk628, GRF_GPIO0AB_SEL_CON, HIWORD_UPDATE(0x1, 5, 4));
+ 	/* hdmirx int en */
+-	rk628_i2c_write(GRF_INTR0_EN, 0x01000100);
++	rk628_i2c_write(bt1120->rk628, GRF_INTR0_EN, 0x01000100);
+ 
+ 	/* pinctrl for vop pin */
+-	rk628_i2c_write(GRF_GPIO2AB_SEL_CON, 0xffffffff);
+-	rk628_i2c_write(GRF_GPIO2C_SEL_CON, 0xffff5555);
+-	rk628_i2c_write(GRF_GPIO3AB_SEL_CON, 0x10b010b);
++	rk628_i2c_write(bt1120->rk628, GRF_GPIO2AB_SEL_CON, 0xffffffff);
++	rk628_i2c_write(bt1120->rk628, GRF_GPIO2C_SEL_CON, 0xffff5555);
++	rk628_i2c_write(bt1120->rk628, GRF_GPIO3AB_SEL_CON, 0x10b010b);
+ 
+-	rk628_i2c_update_bits(GRF_SYSTEM_CON0,
++	rk628_i2c_update_bits(bt1120->rk628, GRF_SYSTEM_CON0,
+ 			SW_BT_DATA_OEN_MASK |
+ 			SW_INPUT_MODE_MASK |
+ 			SW_OUTPUT_MODE_MASK |
+@@ -1157,7 +1168,7 @@ static void rk628_bt1120_initial_setup(struct v4l2_subdev *sd)
+ 
+ 	if (tx_5v_power_present(sd)) {
+ 		rk628_hdmirx_config_all(sd);
+-		rk628_i2c_update_bits(GRF_SYSTEM_CON0,
++		rk628_i2c_update_bits(bt1120->rk628, GRF_SYSTEM_CON0,
+ 				SW_I2S_DATA_OEN_MASK, SW_I2S_DATA_OEN(0));
+ 		schedule_delayed_work(&bt1120->delayed_work_audio, msecs_to_jiffies(1000));
+ 	}
+@@ -1188,24 +1199,25 @@ static void rk628_bt1120_format_change(struct v4l2_subdev *sd)
+ static void rk628_bt1120_enable_interrupts(struct v4l2_subdev *sd, bool en)
+ {
+ 	u32 val_a, val_b;
++	struct rk628_bt1120 *bt1120 = to_bt1120(sd);
+ 
+ 	v4l2_dbg(1, debug, sd, "%s: %sable\n", __func__, en ? "en" : "dis");
+ 	/* clr irq */
+-	rk628_i2c_write(HDMI_RX_MD_ICLR, 0xffffffff);
+-	rk628_i2c_write(HDMI_RX_PDEC_ICLR, 0xffffffff);
++	rk628_i2c_write(bt1120->rk628, HDMI_RX_MD_ICLR, 0xffffffff);
++	rk628_i2c_write(bt1120->rk628, HDMI_RX_PDEC_ICLR, 0xffffffff);
+ 
+ 	if (en) {
+-		rk628_i2c_write(HDMI_RX_MD_IEN_SET,
++		rk628_i2c_write(bt1120->rk628, HDMI_RX_MD_IEN_SET,
+ 				VACT_LIN_ENSET | HACT_PIX_ENSET);
+-		rk628_i2c_write(HDMI_RX_PDEC_IEN_SET, AVI_RCV_ENSET);
++		rk628_i2c_write(bt1120->rk628, HDMI_RX_PDEC_IEN_SET, AVI_RCV_ENSET);
+ 	} else {
+-		rk628_i2c_write(HDMI_RX_MD_IEN_CLR, 0xffffffff);
+-		rk628_i2c_write(HDMI_RX_PDEC_IEN_CLR, 0xffffffff);
++		rk628_i2c_write(bt1120->rk628, HDMI_RX_MD_IEN_CLR, 0xffffffff);
++		rk628_i2c_write(bt1120->rk628, HDMI_RX_PDEC_IEN_CLR, 0xffffffff);
+ 	}
+ 	usleep_range(5000, 5000);
+ 
+-	rk628_i2c_read(HDMI_RX_MD_IEN, &val_a);
+-	rk628_i2c_read(HDMI_RX_PDEC_IEN, &val_b);
++	rk628_i2c_read(bt1120->rk628, HDMI_RX_MD_IEN, &val_a);
++	rk628_i2c_read(bt1120->rk628, HDMI_RX_PDEC_IEN, &val_b);
+ 	v4l2_dbg(1, debug, sd, "%s MD_IEN:%#x, PDEC_IEN:%#x\n",
+ 			__func__, val_a, val_b);
+ }
+@@ -1221,15 +1233,15 @@ static int rk628_bt1120_isr(struct v4l2_subdev *sd, u32 status, bool *handled)
+ 		return -EINVAL;
+ 	}
+ 
+-	rk628_i2c_read(HDMI_RX_MD_ISTS, &md_ints);
+-	rk628_i2c_read(HDMI_RX_PDEC_ISTS, &pdec_ints);
++	rk628_i2c_read(bt1120->rk628, HDMI_RX_MD_ISTS, &md_ints);
++	rk628_i2c_read(bt1120->rk628, HDMI_RX_PDEC_ISTS, &pdec_ints);
+ 	plugin = tx_5v_power_present(sd);
+ 	v4l2_dbg(1, debug, sd, "%s: md_ints: %#x, pdec_ints:%#x, plugin: %d\n",
+ 		__func__, md_ints, pdec_ints, plugin);
+ 
+ 	if ((md_ints & (VACT_LIN_ISTS | HACT_PIX_ISTS)) && plugin) {
+-		rk628_i2c_read(HDMI_RX_MD_HACT_PX, &hact);
+-		rk628_i2c_read(HDMI_RX_MD_VAL, &vact);
++		rk628_i2c_read(bt1120->rk628, HDMI_RX_MD_HACT_PX, &hact);
++		rk628_i2c_read(bt1120->rk628, HDMI_RX_MD_VAL, &vact);
+ 		v4l2_dbg(1, debug, sd, "%s: HACT:%#x, VACT:%#x\n",
+ 				__func__, hact, vact);
+ 
+@@ -1248,7 +1260,7 @@ static int rk628_bt1120_isr(struct v4l2_subdev *sd, u32 status, bool *handled)
+ 		v4l2_dbg(1, debug, sd, "%s: AVI RCV INT!\n", __func__);
+ 		bt1120->avi_rcv_rdy = true;
+ 		/* After get the AVI_RCV interrupt state, disable interrupt. */
+-		rk628_i2c_write(HDMI_RX_PDEC_IEN_CLR, 0xffffffff);
++		rk628_i2c_write(bt1120->rk628, HDMI_RX_PDEC_IEN_CLR, 0xffffffff);
+ 
+ 		*handled = true;
+ 	}
+@@ -1257,9 +1269,9 @@ static int rk628_bt1120_isr(struct v4l2_subdev *sd, u32 status, bool *handled)
+ 		v4l2_dbg(1, debug, sd, "%s: unhandled interrupt!\n", __func__);
+ 
+ 	/* clear interrupts */
+-	rk628_i2c_write(HDMI_RX_MD_ICLR, 0xffffffff);
+-	rk628_i2c_write(HDMI_RX_PDEC_ICLR, 0xffffffff);
+-	rk628_i2c_write(GRF_INTR0_CLR_EN, 0x01000100);
++	rk628_i2c_write(bt1120->rk628, HDMI_RX_MD_ICLR, 0xffffffff);
++	rk628_i2c_write(bt1120->rk628, HDMI_RX_PDEC_ICLR, 0xffffffff);
++	rk628_i2c_write(bt1120->rk628, GRF_INTR0_CLR_EN, 0x01000100);
+ 
+ 	return 0;
+ }
+@@ -1612,19 +1624,19 @@ static int rk628_bt1120_g_edid(struct v4l2_subdev *sd,
+ 		edid->blocks = bt1120->edid_blocks_written - edid->start_block;
+ 
+ 	/* edid access by apb when read, i2c slave addr: 0x0 */
+-	rk628_i2c_update_bits(GRF_SYSTEM_CON0,
++	rk628_i2c_update_bits(bt1120->rk628, GRF_SYSTEM_CON0,
+ 			SW_ADAPTER_I2CSLADR_MASK |
+ 			SW_EDID_MODE_MASK,
+ 			SW_ADAPTER_I2CSLADR(0) |
+ 			SW_EDID_MODE(1));
+ 
+ 	for (i = 0; i < (edid->blocks * EDID_BLOCK_SIZE); i ++) {
+-		rk628_i2c_read(EDID_BASE + ((edid->start_block *
++		rk628_i2c_read(bt1120->rk628, EDID_BASE + ((edid->start_block *
+ 				EDID_BLOCK_SIZE) + i) * 4, &val);
+ 		edid->edid[i] = val;
+ 	}
+ 
+-	rk628_i2c_update_bits(GRF_SYSTEM_CON0,
++	rk628_i2c_update_bits(bt1120->rk628, GRF_SYSTEM_CON0,
+ 			SW_EDID_MODE_MASK,
+ 			SW_EDID_MODE(0));
+ 
+@@ -1662,21 +1674,21 @@ static int rk628_bt1120_s_edid(struct v4l2_subdev *sd,
+ 	}
+ 
+ 	/* edid access by apb when write, i2c slave addr: 0x0 */
+-	rk628_i2c_update_bits(GRF_SYSTEM_CON0,
++	rk628_i2c_update_bits(bt1120->rk628, GRF_SYSTEM_CON0,
+ 			SW_ADAPTER_I2CSLADR_MASK |
+ 			SW_EDID_MODE_MASK,
+ 			SW_ADAPTER_I2CSLADR(0) |
+ 			SW_EDID_MODE(1));
+ 
+ 	for (i = 0; i < edid_len; i++) {
+-		rk628_i2c_write(EDID_BASE + i * 4, edid->edid[i]);
++		rk628_i2c_write(bt1120->rk628, EDID_BASE + i * 4, edid->edid[i]);
+ 	}
+ 
+ 	/* read out for debug */
+ 	if (debug >= 3) {
+ 		printk("%s: Read EDID: ======\n", __func__);
+ 		for (i = 0; i < edid_len; i++) {
+-			rk628_i2c_read(EDID_BASE + i * 4, &val);
++			rk628_i2c_read(bt1120->rk628, EDID_BASE + i * 4, &val);
+ 			printk("0x%02x ", val);
+ 			if ((i + 1) % 8 == 0)
+ 				printk("\n");
+@@ -1685,7 +1697,7 @@ static int rk628_bt1120_s_edid(struct v4l2_subdev *sd,
+ 	}
+ 
+ 	/* edid access by RX's i2c, i2c slave addr: 0x0 */
+-	rk628_i2c_update_bits(GRF_SYSTEM_CON0,
++	rk628_i2c_update_bits(bt1120->rk628, GRF_SYSTEM_CON0,
+ 			SW_ADAPTER_I2CSLADR_MASK |
+ 			SW_EDID_MODE_MASK,
+ 			SW_ADAPTER_I2CSLADR(0) |
+@@ -1939,6 +1951,7 @@ static int rk628_bt1120_probe(struct i2c_client *client,
+ 	struct device_node *node = dev->of_node;
+ 	char facing[2];
+ 	int err;
++	struct rk628 *rk628;
+ 
+ 	dev_info(dev, "RK628 I2C driver version: %02x.%02x.%02x",
+ 		DRIVER_VERSION >> 16,
+@@ -1954,7 +1967,10 @@ static int rk628_bt1120_probe(struct i2c_client *client,
+ 
+ 	bt1120->dev = dev;
+ 	bt1120->i2c_client = client;
+-	rk628_i2c = client;
++	rk628 = rk628_i2c_register(client);
++	if (!rk628)
++		return -ENOMEM;
++	bt1120->rk628 = rk628;
+ 	bt1120->cur_mode = &supported_modes[0];
+ 	bt1120->hdmirx_irq = client->irq;
+ 	sd = &bt1120->sd;
+@@ -1981,7 +1997,7 @@ static int rk628_bt1120_probe(struct i2c_client *client,
+ 		return err;
+ 	}
+ 
+-	rk628_cru_init();
++	rk628_cru_initialize(rk628);
+ 
+ 	v4l2_subdev_init(sd, &rk628_bt1120_ops);
+ 	sd->flags |= V4L2_SUBDEV_FL_HAS_DEVNODE | V4L2_SUBDEV_FL_HAS_EVENTS;
+@@ -2098,8 +2114,6 @@ static int rk628_bt1120_probe(struct i2c_client *client,
+ 		goto err_work_queues;
+ 	}
+ 
+-	rk628_register_debugfs(bt1120->dev);
+-
+ 	v4l2_info(sd, "%s found @ 0x%x (%s)\n", client->name,
+ 		  client->addr << 1, client->adapter->name);
+ 
+@@ -2131,7 +2145,7 @@ static int rk628_bt1120_remove(struct i2c_client *client)
+ 	cancel_delayed_work_sync(&bt1120->delayed_work_audio);
+ 
+ 	if (bt1120->rxphy_pwron)
+-		rk628_combrxphy_power_off();
++		rk628_rxphy_power_off(bt1120->rk628);
+ 
+ 	mutex_destroy(&bt1120->confctl_mutex);
+ 
+diff --git a/drivers/media/i2c/rk628/rk628_combrxphy.c b/drivers/media/i2c/rk628/rk628_combrxphy.c
+index 7479ef796a07a4..462552ffc88b0c 100644
+--- a/drivers/media/i2c/rk628/rk628_combrxphy.c
++++ b/drivers/media/i2c/rk628/rk628_combrxphy.c
+@@ -14,9 +14,10 @@
+ #include <linux/platform_device.h>
+ #include <linux/reset.h>
+ #include "rk628.h"
++#include "rk628_combrxphy.h"
+ 
+-#define REG(x)			((x) + 0x10000)
+-#define COMBRXPHY_MAX_REGISTER	REG(0x6790)
++
++#define COMBRXPHY_MAX_REGISTER	COMBRX_REG(0x6790)
+ 
+ #define MAX_ROUND		6
+ #define MAX_DATA_NUM		16
+@@ -26,60 +27,60 @@
+ #define CLK_STABLE_LOOP_CNT	10
+ #define CLK_STABLE_THRESHOLD	6
+ 
+-static int rk628_combrxphy_try_clk_detect(void)
++static int rk628_combrxphy_try_clk_detect(struct rk628 *rk628)
+ {
+-	uint32_t val, i;
++	u32 val, i;
+ 	int ret;
+ 
+ 	ret = -1;
+ 
+ 	/* step1: set pin_rst_n to 1’b0.wait 1 period(1us).release reset */
+ 	/* step2: select pll clock src and enable auto check */
+-	rk628_i2c_read(REG(0x6630), &val);
++	rk628_i2c_read(rk628, COMBRX_REG(0x6630), &val);
+ 	/* clear bit0 and bit3 */
+ 	val = val & 0xfffffff6;
+-	rk628_i2c_write(REG(0x6630), val);
++	rk628_i2c_write(rk628, COMBRX_REG(0x6630), val);
+ 	/* step3: select hdmi mode and enable chip, read reg6654,
+ 	* make sure auto setup done.
+ 	*/
+ 	/* auto fsm reset related */
+-	rk628_i2c_read(REG(0x6630), &val);
++	rk628_i2c_read(rk628, COMBRX_REG(0x6630), &val);
+ 	val = val | BIT(24);
+-	rk628_i2c_write(REG(0x6630), val);
++	rk628_i2c_write(rk628, COMBRX_REG(0x6630), val);
+ 	/* pull down ana rstn */
+-	rk628_i2c_read(REG(0x66f0), &val);
++	rk628_i2c_read(rk628, COMBRX_REG(0x66f0), &val);
+ 	val = val & 0xfffffeff;
+-	rk628_i2c_write(REG(0x66f0), val);
++	rk628_i2c_write(rk628, COMBRX_REG(0x66f0), val);
+ 	/* pull down dig rstn */
+-	rk628_i2c_read(REG(0x66f4), &val);
++	rk628_i2c_read(rk628, COMBRX_REG(0x66f4), &val);
+ 	val = val & 0xfffffffe;
+-	rk628_i2c_write(REG(0x66f4), val);
++	rk628_i2c_write(rk628, COMBRX_REG(0x66f4), val);
+ 	/* pull up ana rstn */
+-	rk628_i2c_read(REG(0x66f0), &val);
++	rk628_i2c_read(rk628, COMBRX_REG(0x66f0), &val);
+ 	val = val | 0x100;
+-	rk628_i2c_write(REG(0x66f0), val);
++	rk628_i2c_write(rk628, COMBRX_REG(0x66f0), val);
+ 	/* pull up dig rstn */
+-	rk628_i2c_read(REG(0x66f4), &val);
++	rk628_i2c_read(rk628, COMBRX_REG(0x66f4), &val);
+ 	val = val  | 0x1;
+-	rk628_i2c_write(REG(0x66f4), val);
++	rk628_i2c_write(rk628, COMBRX_REG(0x66f4), val);
+ 
+-	rk628_i2c_read(REG(0x66f0), &val);
++	rk628_i2c_read(rk628, COMBRX_REG(0x66f0), &val);
+ 	/* set bit0 and bit2 to 1*/
+ 	val = (val & 0xfffffff8) | 0x5;
+-	rk628_i2c_write(REG(0x66f0), val);
++	rk628_i2c_write(rk628, COMBRX_REG(0x66f0), val);
+ 
+ 	/* auto fsm en = 0 */
+-	rk628_i2c_read(REG(0x66f0), &val);
++	rk628_i2c_read(rk628, COMBRX_REG(0x66f0), &val);
+ 	/* set bit0 and bit2 to 1*/
+ 	val = (val & 0xfffffff8) | 0x4;
+-	rk628_i2c_write(REG(0x66f0), val);
++	rk628_i2c_write(rk628, COMBRX_REG(0x66f0), val);
+ 
+ 	for (i = 0; i < 10; i++) {
+ 		mdelay(1);
+-		rk628_i2c_read(REG(0x6654), &val);
++		rk628_i2c_read(rk628, COMBRX_REG(0x6654), &val);
+ 		if ((val & 0xf0000000) == 0x80000000) {
+ 			ret = 0;
+-			dev_info(&rk628_i2c->dev, "clock detected!\n");
++			dev_info(rk628->dev, "clock detected!\n");
+ 			break;
+ 		}
+ 	}
+@@ -87,30 +88,32 @@ static int rk628_combrxphy_try_clk_detect(void)
+ 	return ret;
+ }
+ 
+-static void rk628_combrxphy_get_data_of_round(uint32_t *data)
++static void rk628_combrxphy_get_data_of_round(struct rk628 *rk628,
++					      u32 *data)
+ {
+-	uint32_t i;
++	u32 i;
+ 
+ 	for (i = 0; i < MAX_DATA_NUM; i++)
+-		rk628_i2c_read(REG(0x6740 + i * 4), &data[i]);
++		rk628_i2c_read(rk628, COMBRX_REG(0x6740 + i * 4), &data[i]);
+ }
+ 
+-static void rk628_combrxphy_set_dc_gain(uint32_t x, uint32_t y, uint32_t z)
++static void rk628_combrxphy_set_dc_gain(struct rk628 *rk628,
++				        u32 x, u32 y, u32 z)
+ {
+-	uint32_t val;
+-	uint32_t dc_gain_ch0, dc_gain_ch1, dc_gain_ch2;
++	u32 val;
++	u32 dc_gain_ch0, dc_gain_ch1, dc_gain_ch2;
+ 
+ 	dc_gain_ch0 = x & 0xf;
+ 	dc_gain_ch1 = y & 0xf;
+ 	dc_gain_ch2 = z & 0xf;
+-	rk628_i2c_read(REG(0x661c), &val);
++	rk628_i2c_read(rk628, COMBRX_REG(0x661c), &val);
+ 
+ 	val = (val & 0xff0f0f0f) | (dc_gain_ch0 << 20) | (dc_gain_ch1 << 12) |
+ 		(dc_gain_ch2 << 4);
+-	rk628_i2c_write(REG(0x661c), val);
++	rk628_i2c_write(rk628, COMBRX_REG(0x661c), val);
+ }
+ 
+-static void rk628_combrxphy_set_data_of_round(uint32_t *data, uint32_t *data_in)
++static void rk628_combrxphy_set_data_of_round(u32 *data, u32 *data_in)
+ {
+ 	if ((data != NULL) && (data_in != NULL)) {
+ 		data_in[0] = data[0];
+@@ -133,13 +136,14 @@ static void rk628_combrxphy_set_data_of_round(uint32_t *data, uint32_t *data_in)
+ }
+ 
+ static void
+-rk628_combrxphy_max_zero_of_round(uint32_t *data_in, uint32_t *max_zero,
+-                                  uint32_t *max_val, int n, int ch)
++rk628_combrxphy_max_zero_of_round(struct rk628 *rk628,
++				  u32 *data_in, u32 *max_zero,
++                                  u32 *max_val, int n, int ch)
+ {
+-	uint32_t i;
+-	uint32_t cnt = 0;
+-	uint32_t max_cnt = 0;
+-	uint32_t max_v = 0;
++	u32 i;
++	u32 cnt = 0;
++	u32 max_cnt = 0;
++	u32 max_v = 0;
+ 
+ 	for (i = 0; i < MAX_DATA_NUM; i++) {
+ 		if (max_v < data_in[i])
+@@ -156,16 +160,17 @@ rk628_combrxphy_max_zero_of_round(uint32_t *data_in, uint32_t *max_zero,
+ 
+ 	max_zero[n] = max_cnt;
+ 	max_val[n] = max_v;
+-	dev_info(&rk628_i2c->dev, "channel:%d, round:%d, max_zero_cnt:%d, max_val:%#x\n",
++	dev_info(rk628->dev, "channel:%d, round:%d, max_zero_cnt:%d, max_val:%#x\n",
+ 		 ch, n, max_zero[n], max_val[n]);
+ }
+ 
+-static int rk628_combrxphy_chose_round_for_ch(uint32_t *rd_max_zero,
+-					      uint32_t *rd_max_val, int ch)
++static int rk628_combrxphy_chose_round_for_ch(struct rk628 *rk628,
++					      u32 *rd_max_zero,
++					      u32 *rd_max_val, int ch)
+ {
+     int i, rd = 0;
+-    uint32_t max = 0;
+-    uint32_t max_v = 0;
++    u32 max = 0;
++    u32 max_v = 0;
+ 
+     for (i = 0; i < MAX_ROUND; i++) {
+         if (rd_max_zero[i] > max) {
+@@ -178,83 +183,83 @@ static int rk628_combrxphy_chose_round_for_ch(uint32_t *rd_max_zero,
+             rd = i;
+         }
+     }
+-    dev_info(&rk628_i2c->dev, "%s channel:%d, rd:%d\n", __func__, ch, rd);
++    dev_info(rk628->dev, "%s channel:%d, rd:%d\n", __func__, ch, rd);
+ 
+     return rd;
+ }
+ 
+-static void rk628_combrxphy_set_sample_edge_round(uint32_t x, uint32_t y, uint32_t z)
++static void rk628_combrxphy_set_sample_edge_round(struct rk628 *rk628, u32 x, u32 y, u32 z)
+ {
+-	uint32_t val;
+-	uint32_t equ_gain_ch0, equ_gain_ch1, equ_gain_ch2;
++	u32 val;
++	u32 equ_gain_ch0, equ_gain_ch1, equ_gain_ch2;
+ 
+ 	equ_gain_ch0 = (x & 0xf);
+ 	equ_gain_ch1 = (y & 0xf);
+ 	equ_gain_ch2 = (z & 0xf);
+-	rk628_i2c_read(REG(0x6618), &val);
++	rk628_i2c_read(rk628, COMBRX_REG(0x6618), &val);
+ 	val = (val & 0xff00f0ff) | (equ_gain_ch1 << 20) |
+ 		(equ_gain_ch0 << 16) | (equ_gain_ch2 << 8);
+-	rk628_i2c_write(REG(0x6618), val);
++	rk628_i2c_write(rk628, COMBRX_REG(0x6618), val);
+ }
+ 
+-static void rk628_combrxphy_start_sample_edge(void)
++static void rk628_combrxphy_start_sample_edge(struct rk628 *rk628)
+ {
+-	uint32_t val;
++	u32 val;
+ 
+-	rk628_i2c_read(REG(0x66f0), &val);
++	rk628_i2c_read(rk628, COMBRX_REG(0x66f0), &val);
+ 	val &= 0xfffff1ff;
+-	rk628_i2c_write(REG(0x66f0), val);
+-	rk628_i2c_read(REG(0x66f0), &val);
++	rk628_i2c_write(rk628, COMBRX_REG(0x66f0), val);
++	rk628_i2c_read(rk628, COMBRX_REG(0x66f0), &val);
+ 	val = (val & 0xfffff1ff) | (0x7 << 9);
+-	rk628_i2c_write(REG(0x66f0), val);
++	rk628_i2c_write(rk628, COMBRX_REG(0x66f0), val);
+ }
+ 
+-static void rk628_combrxphy_set_sample_edge_mode(int ch)
++static void rk628_combrxphy_set_sample_edge_mode(struct rk628 *rk628, int ch)
+ {
+-	uint32_t val;
++	u32 val;
+ 
+-	rk628_i2c_read(REG(0x6634), &val);
++	rk628_i2c_read(rk628, COMBRX_REG(0x6634), &val);
+ 	val = val & (~(0xf << ((ch + 1) * 4)));
+-	rk628_i2c_write(REG(0x6634), val);
++	rk628_i2c_write(rk628, COMBRX_REG(0x6634), val);
+ }
+ 
+-static void rk628_combrxphy_select_channel(int ch)
++static void rk628_combrxphy_select_channel(struct rk628 *rk628, int ch)
+ {
+-	uint32_t val;
++	u32 val;
+ 
+-	rk628_i2c_read(REG(0x6700), &val);
++	rk628_i2c_read(rk628, COMBRX_REG(0x6700), &val);
+ 	val = (val & 0xfffffffc) | (ch & 0x3);
+-	rk628_i2c_write(REG(0x6700), val);
++	rk628_i2c_write(rk628, COMBRX_REG(0x6700), val);
+ }
+ 
+-static void rk628_combrxphy_cfg_6730(void)
++static void rk628_combrxphy_cfg_6730(struct rk628 *rk628)
+ {
+-	uint32_t val;
++	u32 val;
+ 
+-	rk628_i2c_read(REG(0x6730), &val);
++	rk628_i2c_read(rk628, COMBRX_REG(0x6730), &val);
+ 	val = (val & 0xffff0000) | 0x1;
+-	rk628_i2c_write(REG(0x6730), val);
++	rk628_i2c_write(rk628, COMBRX_REG(0x6730), val);
+ }
+ 
+-static void rk628_combrxphy_sample_edge_procedure_for_cable(uint32_t cdr_mode)
++static void rk628_combrxphy_sample_edge_procedure_for_cable(struct rk628 *rk628, u32 cdr_mode)
+ {
+-	uint32_t n, ch;
+-	uint32_t data[MAX_DATA_NUM];
+-	uint32_t data_in[MAX_DATA_NUM];
+-	uint32_t round_max_zero[MAX_CHANNEL][MAX_ROUND];
+-	uint32_t round_max_value[MAX_CHANNEL][MAX_ROUND];
+-	uint32_t ch_round[MAX_CHANNEL];
+-	uint32_t edge, dc_gain;
+-	uint32_t rd_offset;
++	u32 n, ch;
++	u32 data[MAX_DATA_NUM];
++	u32 data_in[MAX_DATA_NUM];
++	u32 round_max_zero[MAX_CHANNEL][MAX_ROUND];
++	u32 round_max_value[MAX_CHANNEL][MAX_ROUND];
++	u32 ch_round[MAX_CHANNEL];
++	u32 edge, dc_gain;
++	u32 rd_offset;
+ 
+ 	/* Step1: set sample edge mode for channel 0~2 */
+ 	for (ch = 0; ch < MAX_CHANNEL; ch++)
+-		rk628_combrxphy_set_sample_edge_mode(ch);
++		rk628_combrxphy_set_sample_edge_mode(rk628, ch);
+ 
+ 	/* step2: once per round */
+ 	for (ch = 0; ch < MAX_CHANNEL; ch++) {
+-		rk628_combrxphy_select_channel(ch);
+-		rk628_combrxphy_cfg_6730();
++		rk628_combrxphy_select_channel(rk628, ch);
++		rk628_combrxphy_cfg_6730(rk628);
+ 	}
+ 
+ 	/* step3: config sample edge until the end of one frame
+@@ -293,28 +298,28 @@ static void rk628_combrxphy_sample_edge_procedure_for_cable(uint32_t cdr_mode)
+ 		edge = 2200 * 1125;
+ 	}
+ 
+-	dev_info(&rk628_i2c->dev, "cdr_mode:%d, dc_gain:%d, rd_offset:%d, edge:%#x\n",
++	dev_info(rk628->dev, "cdr_mode:%d, dc_gain:%d, rd_offset:%d, edge:%#x\n",
+ 		 cdr_mode, dc_gain, rd_offset, edge);
+ 	for (ch = 0; ch < MAX_CHANNEL; ch++) {
+-		rk628_combrxphy_select_channel(ch);
+-		rk628_i2c_write(REG(0x6708), edge);
++		rk628_combrxphy_select_channel(rk628, ch);
++		rk628_i2c_write(rk628, COMBRX_REG(0x6708), edge);
+ 	}
+ 
+-	rk628_combrxphy_set_dc_gain(dc_gain, dc_gain, dc_gain);
++	rk628_combrxphy_set_dc_gain(rk628, dc_gain, dc_gain, dc_gain);
+ 	for (n = rd_offset; n < (rd_offset + MAX_ROUND); n++) {
+ 		/* step4:set sample edge round value n,n=0(n=0~31) */
+-		rk628_combrxphy_set_sample_edge_round(n, n, n);
++		rk628_combrxphy_set_sample_edge_round(rk628, n, n, n);
+ 		/* step5:start sample edge */
+-		rk628_combrxphy_start_sample_edge();
++		rk628_combrxphy_start_sample_edge(rk628);
+ 		/* step6:waiting more than one frame time */
+ 		mdelay(41);
+ 		for (ch = 0; ch < MAX_CHANNEL; ch++) {
+ 			/* step7: get data of round n */
+-			rk628_combrxphy_select_channel(ch);
+-			rk628_combrxphy_get_data_of_round(data);
++			rk628_combrxphy_select_channel(rk628, ch);
++			rk628_combrxphy_get_data_of_round(rk628, data);
+ 			rk628_combrxphy_set_data_of_round(data, data_in);
+ 			/* step8: get the max constant value of round n */
+-			rk628_combrxphy_max_zero_of_round(data_in,
++			rk628_combrxphy_max_zero_of_round(rk628, data_in,
+ 			round_max_zero[ch], round_max_value[ch],
+ 				n - rd_offset, ch);
+ 		}
+@@ -324,30 +329,30 @@ static void rk628_combrxphy_sample_edge_procedure_for_cable(uint32_t cdr_mode)
+ 	* corresponding value n.
+ 	*/
+ 	for (ch = 0; ch < MAX_CHANNEL; ch++) {
+-		ch_round[ch] = rk628_combrxphy_chose_round_for_ch(round_max_zero[ch], round_max_value[ch], ch)
++		ch_round[ch] = rk628_combrxphy_chose_round_for_ch(rk628, round_max_zero[ch], round_max_value[ch], ch)
+ 			+ rd_offset;
+ 	}
+-	dev_info(&rk628_i2c->dev, "last equ gain ch0:%d, ch1:%d, ch2:%d\n",
++	dev_info(rk628->dev, "last equ gain ch0:%d, ch1:%d, ch2:%d\n",
+ 		 ch_round[0], ch_round[1], ch_round[2]);
+ 
+ 	/* step10: write result to sample edge round value  */
+-	rk628_combrxphy_set_sample_edge_round(ch_round[0], ch_round[1], ch_round[2]);
++	rk628_combrxphy_set_sample_edge_round(rk628, ch_round[0], ch_round[1], ch_round[2]);
+ 
+ 	/* do step5, step6 again */
+ 	/* step5:start sample edge */
+-	rk628_combrxphy_start_sample_edge();
++	rk628_combrxphy_start_sample_edge(rk628);
+ 	/* step6:waiting more than one frame time */
+ 	mdelay(41);
+ }
+ 
+-static int rk628_combrxphy_set_hdmi_mode_for_cable(int f)
++static int rk628_combrxphy_set_hdmi_mode_for_cable(struct rk628 *rk628, int f)
+ {
+-	uint32_t val, val_a, val_b, data_a, data_b;
+-	uint32_t i, j, count, ret;
+-	uint32_t cdr_mode, cdr_data, pll_man;
+-	uint32_t tmds_bitrate_per_lane;
+-	uint32_t cdr_data_min, cdr_data_max;
+-	uint32_t temp = 0;
++	u32 val, val_a, val_b, data_a, data_b;
++	u32 i, j, count, ret;
++	u32 cdr_mode, cdr_data, pll_man;
++	u32 tmds_bitrate_per_lane;
++	u32 cdr_data_min, cdr_data_max;
++	u32 temp = 0;
+ 
+ 	/*
+ 	 * use the mode of automatic clock detection, only supports fixed TMDS
+@@ -375,34 +380,34 @@ static int rk628_combrxphy_set_hdmi_mode_for_cable(int f)
+ 	 * 5'd0:rx3p clock  = 25.17MHz
+ 	 */
+ 
+-	const uint32_t cdr_mode_to_khz[] = {
++	const u32 cdr_mode_to_khz[] = {
+ 		25170,   27000,  33750,  40000,  59400,  65000,  68250,
+ 		74250,   83500,  85500,  88750,  92812, 101000, 108000,
+ 		119000,  135000, 148500, 162000, 297000,
+ 	};
+ 
+ 	for (i = 0; i < CLK_DET_TRY_TIMES; i++) {
+-		rk628_i2c_read(REG(0x6620), &val);
++		rk628_i2c_read(rk628, COMBRX_REG(0x6620), &val);
+ 		if (!temp && val) {
+ 			temp = val;
+ 			msleep(200);
+ 		}
+-		if (rk628_combrxphy_try_clk_detect() >= 0)
++		if (rk628_combrxphy_try_clk_detect(rk628) >= 0)
+ 			break;
+ 		mdelay(1);
+ 	}
+-	rk628_i2c_read(REG(0x6654), &val);
+-	dev_info(&rk628_i2c->dev, "clk det over cnt:%d, reg_0x6654:%#x\n", i, val);
++	rk628_i2c_read(rk628, COMBRX_REG(0x6654), &val);
++	dev_info(rk628->dev, "clk det over cnt:%d, reg_0x6654:%#x\n", i, val);
+ 
+-	rk628_i2c_read(REG(0x6620), &val);
++	rk628_i2c_read(rk628, COMBRX_REG(0x6620), &val);
+ 	if ((i == CLK_DET_TRY_TIMES) ||
+             ((val & 0x7f000000) == 0) ||
+             ((val & 0x007f0000) == 0) ||
+             ((val & 0x00007f00) == 0) ||
+             ((val & 0x0000007f) == 0)) {
+-	        dev_info(&rk628_i2c->dev, "clock detected failed, cfg resistance manual!\n");
+-	        rk628_i2c_write(REG(0x6620), 0x66666666);
+-	        rk628_i2c_update_bits(REG(0x6604), BIT(31), BIT(31));
++	        dev_info(rk628->dev, "clock detected failed, cfg resistance manual!\n");
++	        rk628_i2c_write(rk628, COMBRX_REG(0x6620), 0x66666666);
++	        rk628_i2c_update_bits(rk628, COMBRX_REG(0x6604), BIT(31), BIT(31));
+ 	        mdelay(1);
+ 	}
+ 
+@@ -412,7 +417,7 @@ static int rk628_combrxphy_set_hdmi_mode_for_cable(int f)
+ 		cdr_data_max = 0;
+ 
+ 		for (i = 0; i < CLK_DET_TRY_TIMES; i++) {
+-			rk628_i2c_read(REG(0x6654), &val);
++			rk628_i2c_read(rk628, COMBRX_REG(0x6654), &val);
+ 			cdr_data = val & 0xffff;
+ 			if (cdr_data <= cdr_data_min)
+ 				cdr_data_min = cdr_data;
+@@ -423,26 +428,26 @@ static int rk628_combrxphy_set_hdmi_mode_for_cable(int f)
+ 
+ 		if (((cdr_data_max - cdr_data_min) <= CLK_STABLE_THRESHOLD) &&
+ 				(cdr_data_min >= 60)) {
+-			dev_info(&rk628_i2c->dev, "clock stable!");
++			dev_info(rk628->dev, "clock stable!");
+ 			break;
+ 		}
+ 	}
+ 
+ 	if (j == CLK_STABLE_LOOP_CNT) {
+-		rk628_i2c_read(REG(0x6630), &val_a);
+-		rk628_i2c_read(REG(0x6608), &val_b);
+-		dev_err(&rk628_i2c->dev,
++		rk628_i2c_read(rk628, COMBRX_REG(0x6630), &val_a);
++		rk628_i2c_read(rk628, COMBRX_REG(0x6608), &val_b);
++		dev_err(rk628->dev,
+ 			"err, clk not stable, reg_0x6630:%#x, reg_0x6608:%#x",
+ 			val_a, val_b);
+ 
+ 		return -EINVAL;
+ 	}
+ 
+-	rk628_i2c_read(REG(0x6654), &val);
++	rk628_i2c_read(rk628, COMBRX_REG(0x6654), &val);
+ 	if ((val & 0x1f0000) == 0x1f0000) {
+-		rk628_i2c_read(REG(0x6630), &val_a);
+-		rk628_i2c_read(REG(0x6608), &val_b);
+-		dev_err(&rk628_i2c->dev,
++		rk628_i2c_read(rk628, COMBRX_REG(0x6630), &val_a);
++		rk628_i2c_read(rk628, COMBRX_REG(0x6608), &val_b);
++		dev_err(rk628->dev,
+ 			"clock error: 0x1f, reg_0x6630:%#x, reg_0x6608:%#x",
+ 			val_a, val_b);
+ 
+@@ -451,18 +456,18 @@ static int rk628_combrxphy_set_hdmi_mode_for_cable(int f)
+ 
+ 	cdr_mode = (val >> 16) & 0x1f;
+ 	cdr_data =  val & 0xffff;
+-	dev_info(&rk628_i2c->dev, "cdr_mode:%d, cdr_data:%d\n", cdr_mode, cdr_data);
++	dev_info(rk628->dev, "cdr_mode:%d, cdr_data:%d\n", cdr_mode, cdr_data);
+ 
+ 	/* step5: manually configure PLL
+ 	* cfg reg 66a8 tmds clock div2 for rgb/yuv444 as default
+ 	* reg 662c[16:8] pll_pre_div
+ 	*/
+ 	if (f <= 340000) {
+-		rk628_i2c_write(REG(0x662c), 0x01000500);
+-		rk628_i2c_write(REG(0x66a8), 0x0000c600);
++		rk628_i2c_write(rk628, COMBRX_REG(0x662c), 0x01000500);
++		rk628_i2c_write(rk628, COMBRX_REG(0x66a8), 0x0000c600);
+ 	} else {
+-		rk628_i2c_write(REG(0x662c), 0x01001400);
+-		rk628_i2c_write(REG(0x66a8), 0x0000c600);
++		rk628_i2c_write(rk628, COMBRX_REG(0x662c), 0x01001400);
++		rk628_i2c_write(rk628, COMBRX_REG(0x66a8), 0x0000c600);
+ 	}
+ 
+ 	/* when tmds bitrate/lane <= 340M, bitrate/lane = pix_clk * 10 */
+@@ -484,31 +489,31 @@ static int rk628_combrxphy_set_hdmi_mode_for_cable(int f)
+ 	else
+ 		pll_man = 0x7f0c8;
+ 
+-	dev_info(&rk628_i2c->dev, "cdr_mode:%d, pll_man:%#x\n", cdr_mode, pll_man);
+-	rk628_i2c_write(REG(0x6630), pll_man);
++	dev_info(rk628->dev, "cdr_mode:%d, pll_man:%#x\n", cdr_mode, pll_man);
++	rk628_i2c_write(rk628, COMBRX_REG(0x6630), pll_man);
+ 
+ 	/* step6: EQ and SAMPLE cfg */
+-	rk628_combrxphy_sample_edge_procedure_for_cable(cdr_mode);
++	rk628_combrxphy_sample_edge_procedure_for_cable(rk628, cdr_mode);
+ 
+ 	/* step7: Deassert fifo reset,enable fifo write and read */
+ 	/* reset rx_infifo */
+-	rk628_i2c_write(REG(0x66a0), 0x00000003);
++	rk628_i2c_write(rk628, COMBRX_REG(0x66a0), 0x00000003);
+ 	/* rx_infofo wr/rd disable */
+-	rk628_i2c_write(REG(0x66b0), 0x00080060);
++	rk628_i2c_write(rk628, COMBRX_REG(0x66b0), 0x00080060);
+ 	/* deassert rx_infifo reset */
+-	rk628_i2c_write(REG(0x66a0), 0x00000083);
++	rk628_i2c_write(rk628, COMBRX_REG(0x66a0), 0x00000083);
+ 	/* enable rx_infofo wr/rd en */
+-	rk628_i2c_write(REG(0x66b0), 0x00380060);
++	rk628_i2c_write(rk628, COMBRX_REG(0x66b0), 0x00380060);
+ 	/* cfg 0x2260 high_8b to 0x66ac high_8b, low_8b to 0x66b0 low_8b */
+-	rk628_i2c_update_bits(REG(0x66ac), GENMASK(31, 24), UPDATE(0x22, 31, 24));
++	rk628_i2c_update_bits(rk628, COMBRX_REG(0x66ac), GENMASK(31, 24), UPDATE(0x22, 31, 24));
+ 	mdelay(6);
+ 
+ 	/* step8: check all 3 data channels alignment */
+ 	count = 0;
+ 	for (i = 0; i < CHECK_CNT; i++) {
+ 		mdelay(1);
+-		rk628_i2c_read(REG(0x66b4), &data_a);
+-		rk628_i2c_read(REG(0x66b8), &data_b);
++		rk628_i2c_read(rk628, COMBRX_REG(0x66b4), &data_a);
++		rk628_i2c_read(rk628, COMBRX_REG(0x66b8), &data_b);
+ 		/* ch0 ch1 ch2 lock */
+ 		if (((data_a & 0x00ff00ff) == 0x00ff00ff) &&
+ 			((data_b & 0xff) == 0xff)) {
+@@ -517,28 +522,28 @@ static int rk628_combrxphy_set_hdmi_mode_for_cable(int f)
+ 	}
+ 
+ 	if (count >= CHECK_CNT) {
+-		dev_info(&rk628_i2c->dev, "channel alignment done\n");
+-		dev_info(&rk628_i2c->dev, "rx initial done\n");
++		dev_info(rk628->dev, "channel alignment done\n");
++		dev_info(rk628->dev, "rx initial done\n");
+ 		ret = 0;
+ 	} else if (count > 0) {
+-		dev_info(&rk628_i2c->dev, "link not stable, count:%d of 100\n", count);
++		dev_info(rk628->dev, "link not stable, count:%d of 100\n", count);
+ 		ret = 0;
+ 	} else {
+-		dev_err(&rk628_i2c->dev, "channel alignment failed!\n");
++		dev_err(rk628->dev, "channel alignment failed!\n");
+ 		ret = -EINVAL;
+ 	}
+ 
+ 	return ret;
+ }
+ 
+-int rk628_combrxphy_power_on(int f)
++int rk628_rxphy_power_on(struct rk628 *rk628, int f)
+ {
+-	return rk628_combrxphy_set_hdmi_mode_for_cable(f);
++	return rk628_combrxphy_set_hdmi_mode_for_cable(rk628, f);
+ }
+ 
+-int rk628_combrxphy_power_off(void)
++int rk628_rxphy_power_off(struct rk628 *rk628)
+ {
+-	rk628_i2c_update_bits(REG(0x6630), BIT(0), BIT(0));
++	rk628_i2c_update_bits(rk628, COMBRX_REG(0x6630), BIT(0), BIT(0));
+ 	return 0;
+ }
+ 
+diff --git a/drivers/media/i2c/rk628/rk628_combrxphy.h b/drivers/media/i2c/rk628/rk628_combrxphy.h
+index 8bfbc614f779be..2b789643b5fe09 100644
+--- a/drivers/media/i2c/rk628/rk628_combrxphy.h
++++ b/drivers/media/i2c/rk628/rk628_combrxphy.h
+@@ -8,7 +8,9 @@
+ #ifndef _RK628_COMBRXPHY_H
+ #define _RK628_COMBRXPHY_H
+ 
+-int rk628_combrxphy_power_on(int f);
+-int rk628_combrxphy_power_off(void);
++#define COMBRX_REG(x)			((x) + 0x10000)
++
++int rk628_rxphy_power_on(struct rk628 *rk628, int f);
++int rk628_rxphy_power_off(struct rk628 *rk628);
+ 
+ #endif
+diff --git a/drivers/media/i2c/rk628/rk628_combtxphy.c b/drivers/media/i2c/rk628/rk628_combtxphy.c
+index abfb3737d95b97..4778be97f5023f 100644
+--- a/drivers/media/i2c/rk628/rk628_combtxphy.c
++++ b/drivers/media/i2c/rk628/rk628_combtxphy.c
+@@ -9,161 +9,102 @@
+ #include "rk628.h"
+ #include "rk628_combtxphy.h"
+ 
+-#define REG(x)			((x) + 0x90000)
+-
+-#define COMBTXPHY_CON0		REG(0x0000)
+-#define SW_TX_IDLE_MASK		GENMASK(29, 20)
+-#define SW_TX_IDLE(x)		UPDATE(x, 29, 20)
+-#define SW_TX_PD_MASK		GENMASK(17, 8)
+-#define SW_TX_PD(x)		UPDATE(x, 17, 8)
+-#define SW_BUS_WIDTH_MASK	GENMASK(6, 5)
+-#define SW_BUS_WIDTH_7BIT	UPDATE(0x3, 6, 5)
+-#define SW_BUS_WIDTH_8BIT	UPDATE(0x2, 6, 5)
+-#define SW_BUS_WIDTH_9BIT	UPDATE(0x1, 6, 5)
+-#define SW_BUS_WIDTH_10BIT	UPDATE(0x0, 6, 5)
+-#define SW_PD_PLL_MASK		BIT(4)
+-#define SW_PD_PLL		BIT(4)
+-#define SW_GVI_LVDS_EN_MASK	BIT(3)
+-#define SW_GVI_LVDS_EN		BIT(3)
+-#define SW_MIPI_DSI_EN_MASK	BIT(2)
+-#define SW_MIPI_DSI_EN		BIT(2)
+-#define SW_MODULEB_EN_MASK	BIT(1)
+-#define SW_MODULEB_EN		BIT(1)
+-#define SW_MODULEA_EN_MASK	BIT(0)
+-#define SW_MODULEA_EN		BIT(0)
+-#define COMBTXPHY_CON1		REG(0x0004)
+-#define COMBTXPHY_CON2		REG(0x0008)
+-#define COMBTXPHY_CON3		REG(0x000c)
+-#define COMBTXPHY_CON4		REG(0x0010)
+-#define COMBTXPHY_CON5		REG(0x0014)
+-#define SW_RATE(x)		UPDATE(x, 26, 24)
+-#define SW_REF_DIV(x)		UPDATE(x, 20, 16)
+-#define SW_PLL_FB_DIV(x)	UPDATE(x, 14, 10)
+-#define SW_PLL_FRAC_DIV(x)	UPDATE(x, 9, 0)
+-#define COMBTXPHY_CON6		REG(0x0018)
+-#define COMBTXPHY_CON7		REG(0x001c)
+-#define SW_TX_RTERM_MASK	GENMASK(22, 20)
+-#define SW_TX_RTERM(x)		UPDATE(x, 22, 20)
+-#define SW_TX_MODE_MASK		GENMASK(17, 16)
+-#define SW_TX_MODE(x)		UPDATE(x, 17, 16)
+-#define SW_TX_CTL_CON5_MASK	BIT(10)
+-#define SW_TX_CTL_CON5(x)	UPDATE(x, 10, 10)
+-#define SW_TX_CTL_CON4_MASK	GENMASK(9, 8)
+-#define SW_TX_CTL_CON4(x)	UPDATE(x, 9, 8)
+-#define COMBTXPHY_CON8		REG(0x0020)
+-#define COMBTXPHY_CON9		REG(0x0024)
+-#define SW_DSI_FSET_EN_MASK	BIT(29)
+-#define SW_DSI_FSET_EN		BIT(29)
+-#define SW_DSI_RCAL_EN_MASK	BIT(28)
+-#define SW_DSI_RCAL_EN		BIT(28)
+-#define COMBTXPHY_CON10		REG(0x0028)
+-#define TX9_CKDRV_EN		BIT(9)
+-#define TX8_CKDRV_EN		BIT(8)
+-#define TX7_CKDRV_EN		BIT(7)
+-#define TX6_CKDRV_EN		BIT(6)
+-#define TX5_CKDRV_EN		BIT(5)
+-#define TX4_CKDRV_EN		BIT(4)
+-#define TX3_CKDRV_EN		BIT(3)
+-#define TX2_CKDRV_EN		BIT(2)
+-#define TX1_CKDRV_EN		BIT(1)
+-#define TX0_CKDRV_EN		BIT(0)
+-
+ struct rk628_combtxphy {
+ 	enum phy_mode mode;
+ 	unsigned int flags;
+-	uint8_t ref_div;
+-	uint8_t fb_div;
+-	uint16_t frac_div;
+-	uint8_t rate_div;
+-	uint32_t bus_width;
+-} gcombtxphy;
++	u8 ref_div;
++	u8 fb_div;
++	u16 frac_div;
++	u8 rate_div;
++	u32 bus_width;
++} g_combtxphy;
+ 
+-static struct rk628_combtxphy *combtxphy = &gcombtxphy;
++static struct rk628_combtxphy *txphy = &g_combtxphy;
+ 
+-void rk628_combtxphy_set_bus_width(uint32_t bus_width)
++void rk628_txphy_set_bus_width(struct rk628 *rk628, u32 bus_width)
+ {
+-	combtxphy->bus_width = bus_width;
++	txphy->bus_width = bus_width;
+ }
+ 
+-uint32_t rk628_combtxphy_get_bus_width(void)
++u32 rk628_txphy_get_bus_width(struct rk628 *rk628)
+ {
+-	return combtxphy->bus_width;
++	return txphy->bus_width;
+ }
+ 
+-static void rk628_combtxphy_dsi_power_on(void)
++static void rk628_combtxphy_dsi_power_on(struct rk628 *rk628)
+ {
+-	rk628_i2c_update_bits(COMBTXPHY_CON0, SW_BUS_WIDTH_MASK |
++	rk628_i2c_update_bits(rk628,  COMBTXPHY_CON0, SW_BUS_WIDTH_MASK |
+ 			      SW_GVI_LVDS_EN_MASK |
+ 			      SW_MIPI_DSI_EN_MASK,
+ 			      SW_BUS_WIDTH_8BIT | SW_MIPI_DSI_EN);
+ 
+-	if (combtxphy->flags & COMBTXPHY_MODULEA_EN)
+-		rk628_i2c_update_bits(COMBTXPHY_CON0, SW_MODULEA_EN_MASK,
++	if (txphy->flags & COMBTXPHY_MODULEA_EN)
++		rk628_i2c_update_bits(rk628,  COMBTXPHY_CON0, SW_MODULEA_EN_MASK,
+ 				      SW_MODULEA_EN);
+-	if (combtxphy->flags & COMBTXPHY_MODULEB_EN)
+-		rk628_i2c_update_bits(COMBTXPHY_CON0, SW_MODULEB_EN_MASK,
++	if (txphy->flags & COMBTXPHY_MODULEB_EN)
++		rk628_i2c_update_bits(rk628,  COMBTXPHY_CON0, SW_MODULEB_EN_MASK,
+ 				      SW_MODULEB_EN);
+ 
+-	rk628_i2c_write(COMBTXPHY_CON5, SW_REF_DIV(combtxphy->ref_div - 1) |
+-			SW_PLL_FB_DIV(combtxphy->fb_div) |
+-			SW_PLL_FRAC_DIV(combtxphy->frac_div) |
+-			SW_RATE(combtxphy->rate_div / 2));
+-	rk628_i2c_update_bits(COMBTXPHY_CON0, SW_PD_PLL, 0);
++	rk628_i2c_write(rk628,  COMBTXPHY_CON5, SW_REF_DIV(txphy->ref_div - 1) |
++			SW_PLL_FB_DIV(txphy->fb_div) |
++			SW_PLL_FRAC_DIV(txphy->frac_div) |
++			SW_RATE(txphy->rate_div / 2));
++	rk628_i2c_update_bits(rk628,  COMBTXPHY_CON0, SW_PD_PLL, 0);
+ 	msleep(1);
+-	rk628_i2c_update_bits(COMBTXPHY_CON9, SW_DSI_FSET_EN_MASK |
++	rk628_i2c_update_bits(rk628,  COMBTXPHY_CON9, SW_DSI_FSET_EN_MASK |
+ 			      SW_DSI_RCAL_EN_MASK, SW_DSI_FSET_EN |
+ 			      SW_DSI_RCAL_EN);
+ 	msleep(1);
+ }
+ 
+-static void rk628_combtxphy_lvds_power_on(void)
++static void rk628_combtxphy_lvds_power_on(struct rk628 *rk628)
+ {
+-	rk628_i2c_update_bits(COMBTXPHY_CON7, SW_TX_MODE_MASK, SW_TX_MODE(3));
+-	rk628_i2c_write(COMBTXPHY_CON10, TX7_CKDRV_EN | TX2_CKDRV_EN);
+-	rk628_i2c_update_bits(COMBTXPHY_CON0, SW_BUS_WIDTH_MASK |
++	rk628_i2c_update_bits(rk628,  COMBTXPHY_CON7, SW_TX_MODE_MASK, SW_TX_MODE(3));
++	rk628_i2c_write(rk628,  COMBTXPHY_CON10, TX7_CKDRV_EN | TX2_CKDRV_EN);
++	rk628_i2c_update_bits(rk628,  COMBTXPHY_CON0, SW_BUS_WIDTH_MASK |
+ 			      SW_GVI_LVDS_EN_MASK | SW_MIPI_DSI_EN_MASK,
+ 			      SW_BUS_WIDTH_7BIT | SW_GVI_LVDS_EN);
+ 
+-	if (combtxphy->flags & COMBTXPHY_MODULEA_EN)
+-		rk628_i2c_update_bits(COMBTXPHY_CON0, SW_MODULEA_EN_MASK,
++	if (txphy->flags & COMBTXPHY_MODULEA_EN)
++		rk628_i2c_update_bits(rk628,  COMBTXPHY_CON0, SW_MODULEA_EN_MASK,
+ 				      SW_MODULEA_EN);
+-	if (combtxphy->flags & COMBTXPHY_MODULEB_EN)
+-		rk628_i2c_update_bits(COMBTXPHY_CON0, SW_MODULEB_EN_MASK,
++	if (txphy->flags & COMBTXPHY_MODULEB_EN)
++		rk628_i2c_update_bits(rk628,  COMBTXPHY_CON0, SW_MODULEB_EN_MASK,
+ 				      SW_MODULEB_EN);
+ 
+-	rk628_i2c_write(COMBTXPHY_CON5, SW_REF_DIV(combtxphy->ref_div - 1) |
+-			SW_PLL_FB_DIV(combtxphy->fb_div) |
+-			SW_PLL_FRAC_DIV(combtxphy->frac_div) |
+-			SW_RATE(combtxphy->rate_div / 2));
+-	rk628_i2c_update_bits(COMBTXPHY_CON0, SW_PD_PLL | SW_TX_PD_MASK, 0);
++	rk628_i2c_write(rk628,  COMBTXPHY_CON5, SW_REF_DIV(txphy->ref_div - 1) |
++			SW_PLL_FB_DIV(txphy->fb_div) |
++			SW_PLL_FRAC_DIV(txphy->frac_div) |
++			SW_RATE(txphy->rate_div / 2));
++	rk628_i2c_update_bits(rk628,  COMBTXPHY_CON0, SW_PD_PLL | SW_TX_PD_MASK, 0);
+ 	msleep(1);
+-	rk628_i2c_update_bits(COMBTXPHY_CON0, SW_TX_IDLE_MASK, 0);
++	rk628_i2c_update_bits(rk628,  COMBTXPHY_CON0, SW_TX_IDLE_MASK, 0);
+ }
+ 
+-static void rk628_combtxphy_gvi_power_on(void)
++static void rk628_combtxphy_gvi_power_on(struct rk628 *rk628)
+ {
+-	rk628_i2c_write(COMBTXPHY_CON5, SW_REF_DIV(combtxphy->ref_div - 1) |
+-			SW_PLL_FB_DIV(combtxphy->fb_div) |
+-			SW_PLL_FRAC_DIV(combtxphy->frac_div) |
+-			SW_RATE(combtxphy->rate_div / 2));
+-	rk628_i2c_update_bits(COMBTXPHY_CON0, SW_BUS_WIDTH_MASK |
++	rk628_i2c_write(rk628,  COMBTXPHY_CON5, SW_REF_DIV(txphy->ref_div - 1) |
++			SW_PLL_FB_DIV(txphy->fb_div) |
++			SW_PLL_FRAC_DIV(txphy->frac_div) |
++			SW_RATE(txphy->rate_div / 2));
++	rk628_i2c_update_bits(rk628,  COMBTXPHY_CON0, SW_BUS_WIDTH_MASK |
+ 			      SW_GVI_LVDS_EN_MASK | SW_MIPI_DSI_EN_MASK |
+ 			      SW_MODULEB_EN_MASK | SW_MODULEA_EN_MASK,
+ 			      SW_BUS_WIDTH_10BIT | SW_GVI_LVDS_EN |
+ 			      SW_MODULEB_EN | SW_MODULEA_EN);
+-	rk628_i2c_update_bits(COMBTXPHY_CON0, SW_PD_PLL | SW_TX_PD_MASK, 0);
++	rk628_i2c_update_bits(rk628,  COMBTXPHY_CON0, SW_PD_PLL | SW_TX_PD_MASK, 0);
+ 	msleep(1);
+-	rk628_i2c_update_bits(COMBTXPHY_CON0, SW_TX_IDLE_MASK, 0);
++	rk628_i2c_update_bits(rk628,  COMBTXPHY_CON0, SW_TX_IDLE_MASK, 0);
+ }
+ 
+-void rk628_combtxphy_set_mode(enum phy_mode mode)
++void rk628_txphy_set_mode(struct rk628 *rk628, enum phy_mode mode)
+ {
+ 	unsigned int fvco, frac_rate, fin = 24;
+ 
+ 	switch (mode) {
+ 	case PHY_MODE_VIDEO_MIPI:
+ 	{
+-		int bus_width = rk628_combtxphy_get_bus_width();
++		int bus_width = rk628_txphy_get_bus_width(rk628);
+ 		unsigned int fhsc = bus_width >> 8;
+ 		unsigned int flags = bus_width & 0xff;
+ 
+@@ -171,127 +112,127 @@ void rk628_combtxphy_set_mode(enum phy_mode mode)
+ 		if (fhsc < 80 || fhsc > 1500)
+ 			return;
+ 		else if (fhsc < 375)
+-			combtxphy->rate_div = 4;
++			txphy->rate_div = 4;
+ 		else if (fhsc < 750)
+-			combtxphy->rate_div = 2;
++			txphy->rate_div = 2;
+ 		else
+-			combtxphy->rate_div = 1;
++			txphy->rate_div = 1;
+ 
+-		combtxphy->flags = flags;
++		txphy->flags = flags;
+ 
+-		fvco = fhsc * 2 * combtxphy->rate_div;
+-		combtxphy->ref_div = 1;
+-		combtxphy->fb_div = fvco / 8 / fin;
+-		frac_rate = fvco - (fin * 8 * combtxphy->fb_div);
++		fvco = fhsc * 2 * txphy->rate_div;
++		txphy->ref_div = 1;
++		txphy->fb_div = fvco / 8 / fin;
++		frac_rate = fvco - (fin * 8 * txphy->fb_div);
+ 		if (frac_rate) {
+ 			frac_rate <<= 10;
+ 			frac_rate /= fin * 8;
+-			combtxphy->frac_div = frac_rate;
++			txphy->frac_div = frac_rate;
+ 		} else {
+-			combtxphy->frac_div = 0;
++			txphy->frac_div = 0;
+ 		}
+ 
+-		fvco = fin * (1024 * combtxphy->fb_div + combtxphy->frac_div);
++		fvco = fin * (1024 * txphy->fb_div + txphy->frac_div);
+ 		fvco *= 8;
+-		fvco = DIV_ROUND_UP(fvco, 1024 * combtxphy->ref_div);
+-		fhsc = fvco / 2 / combtxphy->rate_div;
+-		combtxphy->bus_width = fhsc;
++		fvco = DIV_ROUND_UP(fvco, 1024 * txphy->ref_div);
++		fhsc = fvco / 2 / txphy->rate_div;
++		txphy->bus_width = fhsc;
+ 
+ 		break;
+ 	}
+ 	case PHY_MODE_VIDEO_LVDS:
+ 	{
+-		int bus_width = rk628_combtxphy_get_bus_width();
++		int bus_width = rk628_txphy_get_bus_width(rk628);
+ 		unsigned int flags = bus_width & 0xff;
+ 		unsigned int rate = (bus_width >> 8) * 7;
+ 
+-		combtxphy->flags = flags;
+-		combtxphy->ref_div = 1;
+-		combtxphy->fb_div = 14;
+-		combtxphy->frac_div = 0;
++		txphy->flags = flags;
++		txphy->ref_div = 1;
++		txphy->fb_div = 14;
++		txphy->frac_div = 0;
+ 
+ 		if (rate < 500)
+-			combtxphy->rate_div = 4;
++			txphy->rate_div = 4;
+ 		else if (rate < 1000)
+-			combtxphy->rate_div = 2;
++			txphy->rate_div = 2;
+ 		else
+-			combtxphy->rate_div = 1;
++			txphy->rate_div = 1;
+ 		break;
+ 	}
+ 	case PHY_MODE_VIDEO_GVI:
+ 	{
+-		unsigned int fhsc = rk628_combtxphy_get_bus_width() & 0xfff;
++		unsigned int fhsc = rk628_txphy_get_bus_width(rk628) & 0xfff;
+ 
+ 		if (fhsc < 500 || fhsc > 4000)
+ 			return;
+ 		else if (fhsc < 1000)
+-			combtxphy->rate_div = 4;
++			txphy->rate_div = 4;
+ 		else if (fhsc < 2000)
+-			combtxphy->rate_div = 2;
++			txphy->rate_div = 2;
+ 		else
+-			combtxphy->rate_div = 1;
+-		fvco = fhsc * combtxphy->rate_div;
++			txphy->rate_div = 1;
++		fvco = fhsc * txphy->rate_div;
+ 
+-		combtxphy->ref_div = 1;
+-		combtxphy->fb_div = fvco / 8 / fin;
+-		frac_rate = fvco - (fin * 8 * combtxphy->fb_div);
++		txphy->ref_div = 1;
++		txphy->fb_div = fvco / 8 / fin;
++		frac_rate = fvco - (fin * 8 * txphy->fb_div);
+ 
+ 		if (frac_rate) {
+ 			frac_rate <<= 10;
+ 			frac_rate /= fin * 8;
+-			combtxphy->frac_div = frac_rate;
++			txphy->frac_div = frac_rate;
+ 		} else {
+-			combtxphy->frac_div = 0;
++			txphy->frac_div = 0;
+ 		}
+ 
+-		fvco = fin * (1024 * combtxphy->fb_div + combtxphy->frac_div);
++		fvco = fin * (1024 * txphy->fb_div + txphy->frac_div);
+ 		fvco *= 8;
+-		fvco /= 1024 * combtxphy->ref_div;
+-		fhsc = fvco / combtxphy->rate_div;
+-		combtxphy->bus_width = fhsc;
++		fvco /= 1024 * txphy->ref_div;
++		fhsc = fvco / txphy->rate_div;
++		txphy->bus_width = fhsc;
+ 		break;
+ 	}
+ 	default:
+ 		break;
+ 	}
+ 
+-	combtxphy->mode = mode;
++	txphy->mode = mode;
+ }
+ 
+-void rk628_combtxphy_power_on(void)
++void rk628_txphy_power_on(struct rk628 *rk628)
+ {
+-	rk628_i2c_update_bits(COMBTXPHY_CON0, SW_TX_IDLE_MASK | SW_TX_PD_MASK |
++	rk628_i2c_update_bits(rk628,  COMBTXPHY_CON0, SW_TX_IDLE_MASK | SW_TX_PD_MASK |
+ 			      SW_PD_PLL_MASK, SW_TX_IDLE(0x3ff) |
+ 			      SW_TX_PD(0x3ff) | SW_PD_PLL);
+ 
+-	switch (combtxphy->mode) {
++	switch (txphy->mode) {
+ 	case PHY_MODE_VIDEO_MIPI:
+ 
+-		rk628_i2c_update_bits(GRF_POST_PROC_CON,
++		rk628_i2c_update_bits(rk628,  GRF_POST_PROC_CON,
+ 				      SW_TXPHY_REFCLK_SEL_MASK,
+ 				      SW_TXPHY_REFCLK_SEL(0));
+-		rk628_combtxphy_dsi_power_on();
++		rk628_combtxphy_dsi_power_on(rk628);
+ 		break;
+ 	case PHY_MODE_VIDEO_LVDS:
+-		rk628_i2c_update_bits(GRF_POST_PROC_CON,
++		rk628_i2c_update_bits(rk628,  GRF_POST_PROC_CON,
+ 				      SW_TXPHY_REFCLK_SEL_MASK,
+ 				      SW_TXPHY_REFCLK_SEL(1));
+-		rk628_combtxphy_lvds_power_on();
++		rk628_combtxphy_lvds_power_on(rk628);
+ 		break;
+ 	case PHY_MODE_VIDEO_GVI:
+-		rk628_i2c_update_bits(GRF_POST_PROC_CON,
++		rk628_i2c_update_bits(rk628,  GRF_POST_PROC_CON,
+ 				      SW_TXPHY_REFCLK_SEL_MASK,
+ 				      SW_TXPHY_REFCLK_SEL(0));
+-		rk628_combtxphy_gvi_power_on();
++		rk628_combtxphy_gvi_power_on(rk628);
+ 		break;
+ 	default:
+ 		break;
+ 	}
+ }
+ 
+-void rk628_combtxphy_power_off(void)
++void rk628_txphy_power_off(struct rk628 *rk628)
+ {
+-	rk628_i2c_update_bits(COMBTXPHY_CON0, SW_TX_IDLE_MASK | SW_TX_PD_MASK |
++	rk628_i2c_update_bits(rk628,  COMBTXPHY_CON0, SW_TX_IDLE_MASK | SW_TX_PD_MASK |
+ 			      SW_PD_PLL_MASK | SW_MODULEB_EN_MASK |
+ 			      SW_MODULEA_EN_MASK, SW_TX_IDLE(0x3ff) |
+ 			      SW_TX_PD(0x3ff) | SW_PD_PLL);
+diff --git a/drivers/media/i2c/rk628/rk628_combtxphy.h b/drivers/media/i2c/rk628/rk628_combtxphy.h
+index 3a2931b751e9f2..7bfe91d6d850fb 100644
+--- a/drivers/media/i2c/rk628/rk628_combtxphy.h
++++ b/drivers/media/i2c/rk628/rk628_combtxphy.h
+@@ -8,6 +8,66 @@
+ #ifndef _RK628_COMBTXPHY_H
+ #define _RK628_COMBTXPHY_H
+ 
++#define COMBTXPHY_BASE		0x90000
++#define COMBTXPHY_REG(x)	((x) + COMBTXPHY_BASE)
++
++#define COMBTXPHY_CON0		COMBTXPHY_REG(0x0000)
++#define SW_TX_IDLE_MASK		GENMASK(29, 20)
++#define SW_TX_IDLE(x)		UPDATE(x, 29, 20)
++#define SW_TX_PD_MASK		GENMASK(17, 8)
++#define SW_TX_PD(x)		UPDATE(x, 17, 8)
++#define SW_BUS_WIDTH_MASK	GENMASK(6, 5)
++#define SW_BUS_WIDTH_7BIT	UPDATE(0x3, 6, 5)
++#define SW_BUS_WIDTH_8BIT	UPDATE(0x2, 6, 5)
++#define SW_BUS_WIDTH_9BIT	UPDATE(0x1, 6, 5)
++#define SW_BUS_WIDTH_10BIT	UPDATE(0x0, 6, 5)
++#define SW_PD_PLL_MASK		BIT(4)
++#define SW_PD_PLL		BIT(4)
++#define SW_GVI_LVDS_EN_MASK	BIT(3)
++#define SW_GVI_LVDS_EN		BIT(3)
++#define SW_MIPI_DSI_EN_MASK	BIT(2)
++#define SW_MIPI_DSI_EN		BIT(2)
++#define SW_MODULEB_EN_MASK	BIT(1)
++#define SW_MODULEB_EN		BIT(1)
++#define SW_MODULEA_EN_MASK	BIT(0)
++#define SW_MODULEA_EN		BIT(0)
++#define COMBTXPHY_CON1		COMBTXPHY_REG(0x0004)
++#define COMBTXPHY_CON2		COMBTXPHY_REG(0x0008)
++#define COMBTXPHY_CON3		COMBTXPHY_REG(0x000c)
++#define COMBTXPHY_CON4		COMBTXPHY_REG(0x0010)
++#define COMBTXPHY_CON5		COMBTXPHY_REG(0x0014)
++#define SW_RATE(x)		UPDATE(x, 26, 24)
++#define SW_REF_DIV(x)		UPDATE(x, 20, 16)
++#define SW_PLL_FB_DIV(x)	UPDATE(x, 14, 10)
++#define SW_PLL_FRAC_DIV(x)	UPDATE(x, 9, 0)
++#define COMBTXPHY_CON6		COMBTXPHY_REG(0x0018)
++#define COMBTXPHY_CON7		COMBTXPHY_REG(0x001c)
++#define SW_TX_RTERM_MASK	GENMASK(22, 20)
++#define SW_TX_RTERM(x)		UPDATE(x, 22, 20)
++#define SW_TX_MODE_MASK		GENMASK(17, 16)
++#define SW_TX_MODE(x)		UPDATE(x, 17, 16)
++#define SW_TX_CTL_CON5_MASK	BIT(10)
++#define SW_TX_CTL_CON5(x)	UPDATE(x, 10, 10)
++#define SW_TX_CTL_CON4_MASK	GENMASK(9, 8)
++#define SW_TX_CTL_CON4(x)	UPDATE(x, 9, 8)
++#define COMBTXPHY_CON8		COMBTXPHY_REG(0x0020)
++#define COMBTXPHY_CON9		COMBTXPHY_REG(0x0024)
++#define SW_DSI_FSET_EN_MASK	BIT(29)
++#define SW_DSI_FSET_EN		BIT(29)
++#define SW_DSI_RCAL_EN_MASK	BIT(28)
++#define SW_DSI_RCAL_EN		BIT(28)
++#define COMBTXPHY_CON10		COMBTXPHY_REG(0x0028)
++#define TX9_CKDRV_EN		BIT(9)
++#define TX8_CKDRV_EN		BIT(8)
++#define TX7_CKDRV_EN		BIT(7)
++#define TX6_CKDRV_EN		BIT(6)
++#define TX5_CKDRV_EN		BIT(5)
++#define TX4_CKDRV_EN		BIT(4)
++#define TX3_CKDRV_EN		BIT(3)
++#define TX2_CKDRV_EN		BIT(2)
++#define TX1_CKDRV_EN		BIT(1)
++#define TX0_CKDRV_EN		BIT(0)
++
+ enum phy_mode {
+ 	PHY_MODE_INVALID,
+ 	PHY_MODE_VIDEO_MIPI,
+@@ -15,10 +75,10 @@ enum phy_mode {
+ 	PHY_MODE_VIDEO_GVI,
+ };
+ 
+-void rk628_combtxphy_set_mode(enum phy_mode mode);
+-void rk628_combtxphy_set_bus_width(uint32_t bus_width);
+-uint32_t rk628_combtxphy_get_bus_width(void);
+-void rk628_combtxphy_power_on(void);
+-void rk628_combtxphy_power_off(void);
++void rk628_txphy_set_mode(struct rk628 *rk628, enum phy_mode mode);
++void rk628_txphy_set_bus_width(struct rk628 *rk628, u32 bus_width);
++u32 rk628_txphy_get_bus_width(struct rk628 *rk628);
++void rk628_txphy_power_on(struct rk628 *rk628);
++void rk628_txphy_power_off(struct rk628 *rk628);
+ 
+ #endif
+diff --git a/drivers/media/i2c/rk628/rk628_cru.c b/drivers/media/i2c/rk628/rk628_cru.c
+index fa3e8d43e18afe..65c8fc88d1af44 100644
+--- a/drivers/media/i2c/rk628/rk628_cru.c
++++ b/drivers/media/i2c/rk628/rk628_cru.c
+@@ -9,96 +9,6 @@
+ #include "rk628.h"
+ #include "rk628_cru.h"
+ 
+-#define RK628_CRU_BASE		0xc0000
+-#define CRU_CPLL_CON00		0x0000
+-#define PLL_BYPASS_MASK		GENMASK(15, 15)
+-#define PLL_BYPASS		(1 << 15)
+-#define PLL_BYPASS_SHIFT	15
+-#define PLL_POSTDIV1_MASK	GENMASK(14, 12)
+-#define PLL_POSTDIV1(x)		((x) << 12)
+-#define PLL_POSTDIV1_SHIFT	12
+-#define PLL_FBDIV_MASK		GENMASK(11, 0)
+-#define PLL_FBDIV(x)		((x) << 0)
+-#define PLL_FBDIV_SHIFT		0
+-#define CRU_CPLL_CON01		0x0004
+-#define PLL_PD_MASK		GENMASK(13, 13)
+-#define PLL_PD			((1) << 13)
+-#define PLL_DSMPD_MASK		GENMASK(12, 12)
+-#define PLL_DSMPD(x)		((x) << 12)
+-#define PLL_DSMPD_SHIFT		12
+-#define PLL_LOCK		GENMASK(10, 10)
+-#define PLL_POSTDIV2_MASK	GENMASK(8, 6)
+-#define PLL_POSTDIV2(x)		((x) << 6)
+-#define PLL_POSTDIV2_SHIFT	6
+-#define PLL_REFDIV_MASK		GENMASK(5, 0)
+-#define PLL_REFDIV(x)		((x) << 0)
+-#define PLL_REFDIV_SHIFT	0
+-#define CRU_CPLL_CON02		0x0008
+-#define PLL_FRAC_MASK		GENMASK(23, 0)
+-#define PLL_FRAC(x)		((x) << 0)
+-#define PLL_FRAC_SHIFT		0
+-#define CRU_CPLL_CON03		0x000c
+-#define CRU_CPLL_CON04		0x0010
+-#define CRU_GPLL_CON00		0x0020
+-#define CRU_GPLL_CON01		0x0024
+-#define CRU_GPLL_CON02		0x0028
+-#define CRU_GPLL_CON03		0x002c
+-#define CRU_GPLL_CON04		0x0030
+-#define CRU_MODE_CON00		0x0060
+-#define CLK_GPLL_MODE_MASK	GENMASK(2, 2)
+-#define CLK_GPLL_MODE_GPLL	(1 << 2)
+-#define CLK_GPLL_MODE_OSC	(0 << 2)
+-#define CLK_CPLL_MODE_MASK	GENMASK(0, 0)
+-#define CLK_CPLL_MODE_CPLL	(1 << 0)
+-#define CLK_CPLL_MODE_OSC	(0 << 0)
+-#define CRU_CLKSEL_CON00	0x0080
+-#define CRU_CLKSEL_CON01	0x0084
+-#define CRU_CLKSEL_CON02	0x0088
+-#define SCLK_VOP_SEL_MASK	GENMASK(9, 9)
+-#define SCLK_VOP_SEL_GPLL	(1 << 9)
+-#define SCLK_VOP_SEL_CPLL	(0 << 9)
+-#define CLK_RX_READ_SEL_MASK	GENMASK(8, 8)
+-#define CLK_RX_READ_SEL_GPLL	(1 << 8)
+-#define CLK_RX_READ_SEL_CPLL	(0 << 8)
+-#define CRU_CLKSEL_CON03	0x008c
+-#define CRU_CLKSEL_CON04	0x0090
+-#define CRU_CLKSEL_CON05	0x0094
+-#define CLK_HDMIRX_AUD_SEL	BIT(15)
+-#define CRU_CLKSEL_CON06	0x0098
+-#define SCLK_UART_SEL_MASK	GENMASK(15, 14)
+-#define SCLK_UART_SEL_OSC	(2 << 14)
+-#define SCLK_UART_SEL_UART_FRAC	(1 << 14)
+-#define SCLK_UART_SEL_UART_SRC	(0 << 14)
+-#define CRU_CLKSEL_CON07	0x009c
+-#define CRU_CLKSEL_CON08	0x00a0
+-#define CRU_CLKSEL_CON09	0x00a4
+-#define CRU_CLKSEL_CON10	0x00a8
+-#define CRU_CLKSEL_CON11	0x00ac
+-#define CRU_CLKSEL_CON12	0x00b0
+-#define CRU_CLKSEL_CON13	0x00b4
+-#define CRU_CLKSEL_CON14	0x00b8
+-#define CRU_CLKSEL_CON15	0x00bc
+-#define CRU_CLKSEL_CON16	0x00c0
+-#define CRU_CLKSEL_CON17	0x00c4
+-#define CRU_CLKSEL_CON18	0x00c8
+-#define CRU_CLKSEL_CON20	0x00d0
+-#define CRU_CLKSEL_CON21	0x00d4
+-#define CLK_UART_SRC_SEL_MASK	GENMASK(15, 15)
+-#define CLK_UART_SRC_SEL_GPLL	(1 << 15)
+-#define CLK_UART_SRC_SEL_CPLL	(0 << 15)
+-#define CLK_UART_SRC_DIV_MASK	GENMASK(12, 8)
+-#define CLK_UART_SRC_DIV_SHIFT	8
+-#define CRU_GATE_CON00		0x0180
+-#define CRU_GATE_CON01		0x0184
+-#define CRU_GATE_CON02		0x0188
+-#define CRU_GATE_CON03		0x018c
+-#define CRU_GATE_CON04		0x0190
+-#define CRU_GATE_CON05		0x0194
+-#define CRU_SOFTRST_CON00	0x0200
+-#define CRU_SOFTRST_CON01	0x0204
+-#define CRU_SOFTRST_CON02	0x0208
+-#define CRU_SOFTRST_CON04	0x0210
+-
+ #define REFCLK_RATE		24000000UL
+ #define MIN_FREF_RATE		10000000UL
+ #define MAX_FREF_RATE		800000000UL
+@@ -109,27 +19,6 @@
+ #define MIN_FOUTPOSTDIV_RATE	12000000UL
+ #define MAX_FOUTPOSTDIV_RATE	1600000000UL
+ 
+-static inline void cru_write(uint32_t reg, uint32_t val)
+-{
+-	rk628_i2c_write(RK628_CRU_BASE + reg, val);
+-}
+-
+-static inline uint32_t cru_read(uint32_t reg)
+-{
+-	u32 val;
+-
+-	rk628_i2c_read(RK628_CRU_BASE + reg, &val);
+-
+-	return val;
+-}
+-
+-static inline void cru_update_bits(uint32_t reg, uint32_t mask, uint32_t val)
+-{
+-	val &= mask;
+-	val |= mask << 16;
+-	cru_write(reg, val);
+-}
+-
+ static void rational_best_approximation(unsigned long given_numerator,
+ 					unsigned long given_denominator,
+ 					unsigned long max_numerator,
+@@ -167,30 +56,35 @@ static void rational_best_approximation(unsigned long given_numerator,
+ 	*best_denominator = d1;
+ }
+ 
+-static unsigned long cru_clk_get_rate_pll(unsigned int id)
++static unsigned long rk628_cru_clk_get_rate_pll(struct rk628 *rk628,
++						unsigned int id)
+ {
+ 	unsigned long parent_rate = REFCLK_RATE;
+-	uint32_t postdiv1, fbdiv, dsmpd, postdiv2, refdiv, frac, bypass;
+-	uint32_t con0, con1, con2;
+-	uint64_t foutvco, foutpostdiv;
+-	uint32_t reg, val;
++	u32 postdiv1, fbdiv, dsmpd, postdiv2, refdiv, frac, bypass;
++	u32 con0, con1, con2;
++	u64 foutvco, foutpostdiv;
++	u32 offset, val;
+ 
+-	val = cru_read(CRU_MODE_CON00);
++	rk628_i2c_read(rk628, CRU_MODE_CON00, &val);
+ 	if (id == CGU_CLK_CPLL) {
+-		if (!(val & CLK_CPLL_MODE_MASK))
++		val &= CLK_CPLL_MODE_MASK;
++		val >>= CLK_CPLL_MODE_SHIFT;
++		if (val == CLK_CPLL_MODE_OSC)
+ 			return parent_rate;
+ 
+-		reg = CRU_CPLL_CON00;
++		offset = 0x00;
+ 	} else {
+-		if (!(val & CLK_GPLL_MODE_MASK))
++		val &= CLK_GPLL_MODE_MASK;
++		val >>= CLK_GPLL_MODE_SHIFT;
++		if (val == CLK_GPLL_MODE_OSC)
+ 			return parent_rate;
+ 
+-		reg = CRU_GPLL_CON00;
++		offset = 0x20;
+ 	}
+ 
+-	con0 = cru_read(reg + CRU_CPLL_CON00);
+-	con1 = cru_read(reg + CRU_CPLL_CON01);
+-	con2 = cru_read(reg + CRU_CPLL_CON02);
++	rk628_i2c_read(rk628, offset + CRU_CPLL_CON0, &con0);
++	rk628_i2c_read(rk628, offset + CRU_CPLL_CON1, &con1);
++	rk628_i2c_read(rk628, offset + CRU_CPLL_CON2, &con2);
+ 
+ 	bypass = (con0 & PLL_BYPASS_MASK) >> PLL_BYPASS_SHIFT;
+ 	postdiv1 = (con0 & PLL_POSTDIV1_MASK) >> PLL_POSTDIV1_SHIFT;
+@@ -207,7 +101,7 @@ static unsigned long cru_clk_get_rate_pll(unsigned int id)
+ 	do_div(foutvco, refdiv);
+ 
+ 	if (!dsmpd) {
+-		uint64_t frac_rate = (uint64_t)parent_rate * frac;
++		u64 frac_rate = (u64)parent_rate * frac;
+ 
+ 		do_div(frac_rate, refdiv);
+ 		foutvco += frac_rate >> 24;
+@@ -220,15 +114,17 @@ static unsigned long cru_clk_get_rate_pll(unsigned int id)
+ 	return foutpostdiv;
+ }
+ 
+-static unsigned long cru_clk_set_rate_pll(unsigned int id, unsigned long rate)
++static unsigned long rk628_cru_clk_set_rate_pll(struct rk628 *rk628,
++						unsigned int id,
++						unsigned long rate)
+ {
+ 	unsigned long fin = REFCLK_RATE, fout = rate;
+-	uint8_t min_refdiv, max_refdiv, postdiv, div1, div2;
+-	uint8_t dsmpd = 1, postdiv1 = 0, postdiv2 = 0, refdiv = 0;
+-	uint16_t fbdiv = 0;
+-	uint32_t frac = 0;
+-	uint64_t foutvco, foutpostdiv;
+-	uint32_t reg;
++	u8 min_refdiv, max_refdiv, postdiv, div1, div2;
++	u8 dsmpd = 1, postdiv1 = 0, postdiv2 = 0, refdiv = 0;
++	u16 fbdiv = 0;
++	u32 frac = 0;
++	u64 foutvco, foutpostdiv;
++	u32 offset, val;
+ 
+ 	/*
+ 	 * FREF : 10MHz ~ 800MHz
+@@ -243,15 +139,18 @@ static unsigned long cru_clk_set_rate_pll(unsigned int id, unsigned long rate)
+ 		return 0;
+ 
+ 	if (id == CGU_CLK_CPLL)
+-		reg = CRU_CPLL_CON00;
++		offset = 0x00;
+ 	else
+-		reg = CRU_GPLL_CON00;
++		offset = 0x20;
+ 
+ 	if (fin == fout) {
+-		cru_update_bits(reg + CRU_CPLL_CON00,
+-				PLL_BYPASS_MASK, PLL_BYPASS);
+-		cru_update_bits(reg + CRU_CPLL_CON01, PLL_PD_MASK, 0);
+-		while (!(cru_read(reg + CRU_CPLL_CON01) & PLL_LOCK));
++		rk628_i2c_write(rk628, offset + CRU_CPLL_CON0, PLL_BYPASS(1));
++		rk628_i2c_write(rk628, offset + CRU_CPLL_CON1, PLL_PD(0));
++		while (1) {
++			rk628_i2c_read(rk628, offset + CRU_CPLL_CON1, &val);
++			if (val & PLL_LOCK)
++				break;
++		}
+ 		return fin;
+ 	}
+ 
+@@ -274,33 +173,34 @@ static unsigned long cru_clk_set_rate_pll(unsigned int id, unsigned long rate)
+ 				if (postdiv1 > 0 && postdiv1 < 8)
+ 					break;
+ 			}
+-			if (postdiv2 > 7) {
++			if (postdiv2 > 7)
+ 				continue;
+-			} else {
++			else
+ 				break;
+-			}
+ 		}
+-		if (postdiv > div2) {
++
++		if (postdiv > div2)
+ 			return 0;
+-		}
++
+ 		fout *= postdiv1 * postdiv2;
+ 	} else {
+ 		postdiv1 = 1;
+ 		postdiv2 = 1;
+ 	}
++
+ 	for (refdiv = min_refdiv; refdiv <= max_refdiv; refdiv++) {
+-		uint64_t tmp, frac_rate;
++		u64 tmp, frac_rate;
+ 
+ 		if (fin % refdiv)
+ 			continue;
+ 
+-		tmp = (uint64_t)fout * refdiv;
++		tmp = (u64)fout * refdiv;
+ 		do_div(tmp, fin);
+ 		fbdiv = tmp;
+ 		if (fbdiv < 10 || fbdiv > 1600)
+ 			continue;
+ 
+-		tmp = (uint64_t)fbdiv * fin;
++		tmp = (u64)fbdiv * fin;
+ 		do_div(tmp, refdiv);
+ 		if (fout < MIN_FVCO_RATE || fout > MAX_FVCO_RATE)
+ 			continue;
+@@ -308,7 +208,7 @@ static unsigned long cru_clk_set_rate_pll(unsigned int id, unsigned long rate)
+ 		frac_rate = fout - tmp;
+ 
+ 		if (frac_rate) {
+-			tmp = (uint64_t)frac_rate * refdiv;
++			tmp = (u64)frac_rate * refdiv;
+ 			tmp <<= 24;
+ 			do_div(tmp, fin);
+ 			frac = tmp;
+@@ -331,7 +231,7 @@ static unsigned long cru_clk_set_rate_pll(unsigned int id, unsigned long rate)
+ 	do_div(foutvco, refdiv);
+ 
+ 	if (!dsmpd) {
+-		uint64_t frac_rate = (uint64_t)fin * frac;
++		u64 frac_rate = (u64)fin * frac;
+ 
+ 		do_div(frac_rate, refdiv);
+ 		foutvco += frac_rate >> 24;
+@@ -341,151 +241,188 @@ static unsigned long cru_clk_set_rate_pll(unsigned int id, unsigned long rate)
+ 	do_div(foutpostdiv, postdiv1);
+ 	do_div(foutpostdiv, postdiv2);
+ 
+-	cru_update_bits(reg + CRU_CPLL_CON00,
+-			PLL_BYPASS_MASK | PLL_POSTDIV1_MASK | PLL_FBDIV_MASK,
+-			PLL_POSTDIV1(postdiv1) | PLL_FBDIV(fbdiv));
+-	cru_update_bits(reg + CRU_CPLL_CON01,
+-			PLL_DSMPD_MASK | PLL_POSTDIV2_MASK | PLL_REFDIV_MASK,
+-			PLL_DSMPD(dsmpd) | PLL_POSTDIV2(postdiv2) | PLL_REFDIV(refdiv));
+-	cru_write(reg + CRU_CPLL_CON02, PLL_FRAC(frac));
+-	while (!(cru_read(reg + CRU_CPLL_CON01) & PLL_LOCK));
++	rk628_i2c_write(rk628, offset + CRU_CPLL_CON0,
++			PLL_BYPASS(0) | PLL_POSTDIV1(postdiv1) |
++			PLL_FBDIV(fbdiv));
++	rk628_i2c_write(rk628, offset + CRU_CPLL_CON1,
++			PLL_DSMPD(dsmpd) | PLL_POSTDIV2(postdiv2) |
++			PLL_REFDIV(refdiv));
++	rk628_i2c_write(rk628, offset + CRU_CPLL_CON2, PLL_FRAC(frac));
++
++	while (1) {
++		rk628_i2c_read(rk628, offset + CRU_CPLL_CON1, &val);
++		if (val & PLL_LOCK)
++			break;
++	}
+ 
+ 	return (unsigned long)foutpostdiv;
+ }
+ 
+-static unsigned long cru_clk_set_rate_sclk_vop(unsigned long rate)
++static unsigned long rk628_cru_clk_set_rate_sclk_vop(struct rk628 *rk628,
++						     unsigned long rate)
+ {
+ 	unsigned long m, n, parent_rate;
+-	uint32_t val;
++	u32 val;
+ 
+-	val = cru_read(CRU_CLKSEL_CON02) & SCLK_VOP_SEL_MASK;
++	rk628_i2c_read(rk628, CRU_CLKSEL_CON02, &val);
++	val &= SCLK_VOP_SEL_MASK;
++	val >>= SCLK_VOP_SEL_SHIFT;
+ 	if (val == SCLK_VOP_SEL_GPLL)
+-		parent_rate = cru_clk_get_rate_pll(CGU_CLK_GPLL);
++		parent_rate = rk628_cru_clk_get_rate_pll(rk628, CGU_CLK_GPLL);
+ 	else
+-		parent_rate = cru_clk_get_rate_pll(CGU_CLK_CPLL);
++		parent_rate = rk628_cru_clk_get_rate_pll(rk628, CGU_CLK_CPLL);
+ 
+ 	rational_best_approximation(rate, parent_rate,
+ 				    GENMASK(15, 0), GENMASK(15, 0),
+ 				    &m, &n);
+-	cru_write(CRU_CLKSEL_CON13, m << 16 | n);
++	rk628_i2c_write(rk628, CRU_CLKSEL_CON13, m << 16 | n);
+ 
+ 	return rate;
+ }
+ 
+-static unsigned long cru_clk_set_rate_sclk_hdmirx_aud(unsigned long rate)
++static unsigned long rk628_cru_clk_set_rate_sclk_hdmirx_aud(struct rk628 *rk628,
++						      unsigned long rate)
+ {
+-	uint64_t parent_rate;
+-	uint8_t div;
++	u64 parent_rate;
++	u8 div;
+ 
+-	parent_rate = cru_clk_set_rate_pll(CGU_CLK_GPLL, rate*4);
++	parent_rate = rk628_cru_clk_set_rate_pll(rk628, CGU_CLK_GPLL, rate*4);
+ 	div = DIV_ROUND_CLOSEST_ULL(parent_rate, rate);
+ 	do_div(parent_rate, div);
+ 	rate = parent_rate;
+-	cru_write(CRU_CLKSEL_CON05, 0x3fc0 << 16 | ((div - 1) << 6) |
++	rk628_i2c_write(rk628, CRU_CLKSEL_CON05, 0x3fc0 << 16 | ((div - 1) << 6) |
+ 		  CLK_HDMIRX_AUD_SEL << 16 | CLK_HDMIRX_AUD_SEL );
+ 	return rate;
+ }
+ 
+-static unsigned long cru_clk_get_rate_sclk_hdmirx_aud(void)
++static unsigned long rk628_cru_clk_get_rate_sclk_hdmirx_aud(struct rk628 *rk628)
+ {
+ 	unsigned long rate;
+-	uint64_t parent_rate;
+-	uint8_t div;
+-	uint32_t val;
++	u64 parent_rate;
++	u8 div;
++	u32 val;
+ 
+-	val = cru_read(CRU_CLKSEL_CON05);
++	rk628_i2c_read(rk628, CRU_CLKSEL_CON05, &val);
+ 	if (val & CLK_HDMIRX_AUD_SEL)
+-		parent_rate = cru_clk_get_rate_pll(CGU_CLK_GPLL);
++		parent_rate = rk628_cru_clk_get_rate_pll(rk628, CGU_CLK_GPLL);
+ 	else
+-		parent_rate = cru_clk_get_rate_pll(CGU_CLK_CPLL);
++		parent_rate = rk628_cru_clk_get_rate_pll(rk628, CGU_CLK_CPLL);
+ 	div = ((val&0x3fc0) >> 6) + 1;
+ 	do_div(parent_rate, div);
+ 	rate = parent_rate;
+ 	return rate;
+ }
+ 
+-static unsigned long cru_clk_set_rate_rx_read(unsigned long rate)
++static unsigned long rk628_cru_clk_get_rate_sclk_vop(struct rk628 *rk628)
++{
++	unsigned long rate, parent_rate, m, n;
++	u32 mux, div;
++
++	rk628_i2c_read(rk628, CRU_CLKSEL_CON02, &mux);
++	mux &= CLK_UART_SRC_SEL_MASK;
++	mux >>= SCLK_VOP_SEL_SHIFT;
++	if (mux == SCLK_VOP_SEL_GPLL)
++		parent_rate = rk628_cru_clk_get_rate_pll(rk628, CGU_CLK_GPLL);
++	else
++		parent_rate = rk628_cru_clk_get_rate_pll(rk628, CGU_CLK_CPLL);
++
++	rk628_i2c_read(rk628, CRU_CLKSEL_CON13, &div);
++	m = div >> 16 & 0xffff;
++	n = div & 0xffff;
++	rate = parent_rate * m / n;
++
++	return rate;
++}
++
++static unsigned long rk628_cru_clk_set_rate_rx_read(struct rk628 *rk628,
++						    unsigned long rate)
+ {
+ 	unsigned long m, n, parent_rate;
+-	uint32_t val;
++	u32 val;
+ 
+-	val = cru_read(CRU_CLKSEL_CON02) & CLK_RX_READ_SEL_MASK;
++	rk628_i2c_read(rk628, CRU_CLKSEL_CON02, &val);
++	val &= CLK_RX_READ_SEL_MASK;
++	val >>= CLK_RX_READ_SEL_SHIFT;
+ 	if (val == CLK_RX_READ_SEL_GPLL)
+-		parent_rate = cru_clk_get_rate_pll(CGU_CLK_GPLL);
++		parent_rate = rk628_cru_clk_get_rate_pll(rk628, CGU_CLK_GPLL);
+ 	else
+-		parent_rate = cru_clk_get_rate_pll(CGU_CLK_CPLL);
++		parent_rate = rk628_cru_clk_get_rate_pll(rk628, CGU_CLK_CPLL);
+ 
+ 	rational_best_approximation(rate, parent_rate,
+ 				    GENMASK(15, 0), GENMASK(15, 0),
+ 				    &m, &n);
+-	cru_write(CRU_CLKSEL_CON14, m << 16 | n);
++	rk628_i2c_write(rk628, CRU_CLKSEL_CON14, m << 16 | n);
+ 
+ 	return rate;
+ }
+ 
+-static unsigned long cru_clk_get_rate_uart_src(void)
++static unsigned long rk628_cru_clk_get_rate_uart_src(struct rk628 *rk628)
+ {
+ 	unsigned long rate, parent_rate;
+-	uint32_t mux, div;
++	u32 mux, div;
+ 
+-	mux = cru_read(CRU_CLKSEL_CON21) & CLK_UART_SRC_SEL_MASK;
++	rk628_i2c_read(rk628, CRU_CLKSEL_CON21, &mux);
++	mux &= SCLK_VOP_SEL_MASK;
+ 	if (mux == CLK_UART_SRC_SEL_GPLL)
+-		parent_rate = cru_clk_get_rate_pll(CGU_CLK_GPLL);
++		parent_rate = rk628_cru_clk_get_rate_pll(rk628, CGU_CLK_GPLL);
+ 	else
+-		parent_rate = cru_clk_get_rate_pll(CGU_CLK_CPLL);
++		parent_rate = rk628_cru_clk_get_rate_pll(rk628, CGU_CLK_CPLL);
+ 
+-	div = cru_read(CRU_CLKSEL_CON21) & CLK_UART_SRC_DIV_MASK;
++	rk628_i2c_read(rk628, CRU_CLKSEL_CON21, &div);
++	div &= CLK_UART_SRC_DIV_MASK;
+ 	div >>= CLK_UART_SRC_DIV_SHIFT;
+ 	rate = parent_rate / (div + 1);
+ 
+ 	return rate;
+ }
+ 
+-static unsigned long cru_clk_set_rate_sclk_uart(unsigned long rate)
++static unsigned long rk628_cru_clk_set_rate_sclk_uart(struct rk628 *rk628,
++						      unsigned long rate)
+ {
+ 	unsigned long m, n, parent_rate;
+ 
+-	parent_rate = cru_clk_get_rate_uart_src();
++	parent_rate = rk628_cru_clk_get_rate_uart_src(rk628);
+ 
+ 	if (rate == REFCLK_RATE) {
+-		cru_update_bits(CRU_CLKSEL_CON06, SCLK_UART_SEL_MASK,
+-				SCLK_UART_SEL_OSC);
++		rk628_i2c_write(rk628, CRU_CLKSEL_CON06,
++				SCLK_UART_SEL(SCLK_UART_SEL_OSC));
+ 		return rate;
+ 	} else if (rate == parent_rate) {
+-		cru_update_bits(CRU_CLKSEL_CON06, SCLK_UART_SEL_MASK,
+-				SCLK_UART_SEL_UART_SRC);
++		rk628_i2c_write(rk628, CRU_CLKSEL_CON06,
++				SCLK_UART_SEL(SCLK_UART_SEL_UART_SRC));
+ 		return rate;
+-	} else {
+-		cru_update_bits(CRU_CLKSEL_CON06, SCLK_UART_SEL_MASK,
+-				SCLK_UART_SEL_UART_FRAC);
+ 	}
+ 
++	rk628_i2c_write(rk628, CRU_CLKSEL_CON06,
++			SCLK_UART_SEL(SCLK_UART_SEL_UART_FRAC));
++
+ 	rational_best_approximation(rate, parent_rate,
+ 				    GENMASK(15, 0), GENMASK(15, 0),
+ 				    &m, &n);
+-	cru_write(CRU_CLKSEL_CON20, m << 16 | n);
++	rk628_i2c_write(rk628, CRU_CLKSEL_CON20, m << 16 | n);
+ 
+ 	return rate;
+ }
+ 
+-int rk628_cru_clk_set_rate(unsigned int id, unsigned long rate)
++int rk628_clk_set_rate(struct rk628 *rk628, unsigned int id,
++		       unsigned long rate)
+ {
+ 	switch (id) {
+ 	case CGU_CLK_CPLL:
+ 	case CGU_CLK_GPLL:
+-		cru_clk_set_rate_pll(id, rate);
++		rk628_cru_clk_set_rate_pll(rk628, id, rate);
+ 		break;
+ 	case CGU_CLK_RX_READ:
+-		cru_clk_set_rate_rx_read(rate);
++		rk628_cru_clk_set_rate_rx_read(rk628, rate);
+ 		break;
+ 	case CGU_SCLK_VOP:
+-		cru_clk_set_rate_sclk_vop(rate);
++		rk628_cru_clk_set_rate_sclk_vop(rk628, rate);
+ 		break;
+ 	case CGU_SCLK_UART:
+-		cru_clk_set_rate_sclk_uart(rate);
++		rk628_cru_clk_set_rate_sclk_uart(rk628, rate);
+ 		break;
+ 	case CGU_CLK_HDMIRX_AUD:
+-		cru_clk_set_rate_sclk_hdmirx_aud(rate);
++		rk628_cru_clk_set_rate_sclk_hdmirx_aud(rk628, rate);
+ 		break;
+ 	default:
+ 		return -1;
+@@ -494,17 +431,20 @@ int rk628_cru_clk_set_rate(unsigned int id, unsigned long rate)
+ 	return 0;
+ }
+ 
+-unsigned long rk628_cru_clk_get_rate(unsigned int id)
++unsigned long rk628_clk_get_rate(struct rk628 *rk628, unsigned int id)
+ {
+ 	unsigned long rate;
+ 
+ 	switch (id) {
+ 	case CGU_CLK_CPLL:
+ 	case CGU_CLK_GPLL:
+-		rate = cru_clk_get_rate_pll(id);
++		rate = rk628_cru_clk_get_rate_pll(rk628, id);
++		break;
++	case CGU_SCLK_VOP:
++		rate = rk628_cru_clk_get_rate_sclk_vop(rk628);
+ 		break;
+ 	case CGU_CLK_HDMIRX_AUD:
+-		rate = cru_clk_get_rate_sclk_hdmirx_aud();
++		rate = rk628_cru_clk_get_rate_sclk_hdmirx_aud(rk628);
+ 		break;
+ 	default:
+ 		return 0;
+@@ -513,33 +453,33 @@ unsigned long rk628_cru_clk_get_rate(unsigned int id)
+ 	return rate;
+ }
+ 
+-void rk628_cru_init(void)
++void rk628_cru_initialize(struct rk628 *rk628)
+ {
+ 	u32 val;
+ 	u8 mcu_mode;
+ 
+-	rk628_i2c_read(GRF_SYSTEM_STATUS0, &val);
++	rk628_i2c_read(rk628, GRF_SYSTEM_STATUS0, &val);
+ 	mcu_mode = (val & I2C_ONLY_FLAG) ? 0 : 1;
+ 	if (mcu_mode)
+ 		return;
+ 
+-	cru_write(CRU_GPLL_CON00, 0xffff701d);
+-	msleep(1);
+-	cru_write(CRU_MODE_CON00, 0xffff0004);
+-	msleep(1);
+-	cru_write(CRU_CLKSEL_CON00, 0x00ff0080);
+-	cru_write(CRU_CLKSEL_CON00, 0x00ff0083);
+-	cru_write(CRU_CPLL_CON00, 0xffff3063);
+-	msleep(1);
+-	cru_write(CRU_MODE_CON00, 0xffff0005);
+-	cru_write(CRU_CLKSEL_CON00, 0x00ff0003);
+-	cru_write(CRU_CLKSEL_CON00, 0x00ff000b);
+-	cru_write(CRU_GPLL_CON00, 0xffff1028);
+-	msleep(1);
+-	cru_write(CRU_CLKSEL_CON00, 0x00ff008b);
+-	cru_write(CRU_CPLL_CON00, 0xffff1063);
+-	msleep(1);
+-	cru_write(CRU_CLKSEL_CON00, 0x00ff000b);
++	rk628_i2c_write(rk628, CRU_GPLL_CON0, 0xffff701d);
++	mdelay(1);
++	rk628_i2c_write(rk628, CRU_MODE_CON00, 0xffff0004);
++	mdelay(1);
++	rk628_i2c_write(rk628, CRU_CLKSEL_CON00, 0x00ff0080);
++	rk628_i2c_write(rk628, CRU_CLKSEL_CON00, 0x00ff0083);
++	rk628_i2c_write(rk628, CRU_CPLL_CON0, 0xffff3063);
++	mdelay(1);
++	rk628_i2c_write(rk628, CRU_MODE_CON00, 0xffff0005);
++	rk628_i2c_write(rk628, CRU_CLKSEL_CON00, 0x00ff0003);
++	rk628_i2c_write(rk628, CRU_CLKSEL_CON00, 0x00ff000b);
++	rk628_i2c_write(rk628, CRU_GPLL_CON0, 0xffff1028);
++	mdelay(1);
++	rk628_i2c_write(rk628, CRU_CLKSEL_CON00, 0x00ff008b);
++	rk628_i2c_write(rk628, CRU_CPLL_CON0, 0xffff1063);
++	mdelay(1);
++	rk628_i2c_write(rk628, CRU_CLKSEL_CON00, 0x00ff000b);
+ }
+ 
+ MODULE_AUTHOR("Shunqing Chen <csq@rock-chips.com>");
+diff --git a/drivers/media/i2c/rk628/rk628_cru.h b/drivers/media/i2c/rk628/rk628_cru.h
+index 9db966e53935d4..042edb469dc839 100644
+--- a/drivers/media/i2c/rk628/rk628_cru.h
++++ b/drivers/media/i2c/rk628/rk628_cru.h
+@@ -5,11 +5,109 @@
+  * Author: Shunqing Chen <csq@rock-chips.com>
+  */
+ 
+-#ifndef _RK628_CRU_H
+-#define _RK628_CRU_H
++#ifndef RK628_CRU_H
++#define RK628_CRU_H
+ 
+ #include "rk628.h"
+ 
++#define CRU_REG(x)		((x) + 0xc0000)
++
++#define CRU_CPLL_CON0		CRU_REG(0x0000)
++#define PLL_BYPASS_MASK		BIT(15)
++#define PLL_BYPASS(x)		HIWORD_UPDATE(x, 15, 15)
++#define PLL_BYPASS_SHIFT	15
++#define PLL_POSTDIV1_MASK	GENMASK(14, 12)
++#define PLL_POSTDIV1(x)		HIWORD_UPDATE(x, 14, 12)
++#define PLL_POSTDIV1_SHIFT	12
++#define PLL_FBDIV_MASK		GENMASK(11, 0)
++#define PLL_FBDIV(x)		HIWORD_UPDATE(x, 11, 0)
++#define PLL_FBDIV_SHIFT		0
++#define CRU_CPLL_CON1		CRU_REG(0x0004)
++#define PLL_PD_MASK		BIT(13)
++#define PLL_PD(x)		HIWORD_UPDATE(x, 13, 13)
++#define PLL_DSMPD_MASK		BIT(12)
++#define PLL_DSMPD(x)		HIWORD_UPDATE(x, 12, 12)
++#define PLL_DSMPD_SHIFT		12
++#define PLL_LOCK		BIT(10)
++#define PLL_POSTDIV2_MASK	GENMASK(8, 6)
++#define PLL_POSTDIV2(x)		HIWORD_UPDATE(x, 8, 6)
++#define PLL_POSTDIV2_SHIFT	6
++#define PLL_REFDIV_MASK		GENMASK(5, 0)
++#define PLL_REFDIV(x)		HIWORD_UPDATE(x, 5, 0)
++#define PLL_REFDIV_SHIFT	0
++#define CRU_CPLL_CON2		CRU_REG(0x0008)
++#define PLL_FRAC_MASK		GENMASK(23, 0)
++#define PLL_FRAC(x)		((x) << 0)
++#define PLL_FRAC_SHIFT		0
++#define CRU_CPLL_CON3		CRU_REG(0x000c)
++#define CRU_CPLL_CON4		CRU_REG(0x0010)
++#define CRU_GPLL_CON0		CRU_REG(0x0020)
++#define CRU_GPLL_CON1		CRU_REG(0x0024)
++#define CRU_GPLL_CON2		CRU_REG(0x0028)
++#define CRU_GPLL_CON3		CRU_REG(0x002c)
++#define CRU_GPLL_CON4		CRU_REG(0x0030)
++#define CRU_MODE_CON00		CRU_REG(0x0060)
++#define CLK_GPLL_MODE_MASK	BIT(2)
++#define CLK_GPLL_MODE_SHIFT	2
++#define CLK_GPLL_MODE_GPLL	1
++#define CLK_GPLL_MODE_OSC	0
++#define CLK_CPLL_MODE_MASK	BIT(0)
++#define CLK_CPLL_MODE_SHIFT	0
++#define CLK_CPLL_MODE_CPLL	1
++#define CLK_CPLL_MODE_OSC	0
++#define CRU_CLKSEL_CON00	CRU_REG(0x0080)
++#define CRU_CLKSEL_CON01	CRU_REG(0x0084)
++#define CRU_CLKSEL_CON02	CRU_REG(0x0088)
++#define SCLK_VOP_SEL_MASK	BIT(9)
++#define SCLK_VOP_SEL_SHIFT	9
++#define SCLK_VOP_SEL_GPLL	1
++#define SCLK_VOP_SEL_CPLL	0
++#define CLK_RX_READ_SEL_MASK	BIT(8)
++#define CLK_RX_READ_SEL_SHIFT	8
++#define CLK_RX_READ_SEL_GPLL	1
++#define CLK_RX_READ_SEL_CPLL	0
++#define CRU_CLKSEL_CON03	CRU_REG(0x008c)
++#define CRU_CLKSEL_CON04	CRU_REG(0x0090)
++#define CRU_CLKSEL_CON05	CRU_REG(0x0094)
++#define CLK_HDMIRX_AUD_SEL	BIT(15)
++#define CRU_CLKSEL_CON06	CRU_REG(0x0098)
++#define SCLK_UART_SEL(x)	HIWORD_UPDATE(x, 15, 14)
++#define SCLK_UART_SEL_MASK	GENMASK(15, 14)
++#define SCLK_UART_SEL_SHIFT	14
++#define SCLK_UART_SEL_OSC	2
++#define SCLK_UART_SEL_UART_FRAC	1
++#define SCLK_UART_SEL_UART_SRC	0
++#define CRU_CLKSEL_CON07	CRU_REG(0x009c)
++#define CRU_CLKSEL_CON08	CRU_REG(0x00a0)
++#define CRU_CLKSEL_CON09	CRU_REG(0x00a4)
++#define CRU_CLKSEL_CON10	CRU_REG(0x00a8)
++#define CRU_CLKSEL_CON11	CRU_REG(0x00ac)
++#define CRU_CLKSEL_CON12	CRU_REG(0x00b0)
++#define CRU_CLKSEL_CON13	CRU_REG(0x00b4)
++#define CRU_CLKSEL_CON14	CRU_REG(0x00b8)
++#define CRU_CLKSEL_CON15	CRU_REG(0x00bc)
++#define CRU_CLKSEL_CON16	CRU_REG(0x00c0)
++#define CRU_CLKSEL_CON17	CRU_REG(0x00c4)
++#define CRU_CLKSEL_CON18	CRU_REG(0x00c8)
++#define CRU_CLKSEL_CON20	CRU_REG(0x00d0)
++#define CRU_CLKSEL_CON21	CRU_REG(0x00d4)
++#define CLK_UART_SRC_SEL_MASK	BIT(15)
++#define CLK_UART_SRC_SEL_GPLL	(1 << 15)
++#define CLK_UART_SRC_SEL_CPLL	(0 << 15)
++#define CLK_UART_SRC_DIV_MASK	GENMASK(12, 8)
++#define CLK_UART_SRC_DIV_SHIFT	8
++#define CRU_GATE_CON00		CRU_REG(0x0180)
++#define CRU_GATE_CON01		CRU_REG(0x0184)
++#define CRU_GATE_CON02		CRU_REG(0x0188)
++#define CRU_GATE_CON03		CRU_REG(0x018c)
++#define CRU_GATE_CON04		CRU_REG(0x0190)
++#define CRU_GATE_CON05		CRU_REG(0x0194)
++#define CRU_SOFTRST_CON00	CRU_REG(0x0200)
++#define CRU_SOFTRST_CON01	CRU_REG(0x0204)
++#define CRU_SOFTRST_CON02	CRU_REG(0x0208)
++#define CRU_SOFTRST_CON04	CRU_REG(0x0210)
++#define CRU_MAX_REGISTER	CRU_SOFTRST_CON04
++
+ #define CGU_CLK_CPLL		1
+ #define CGU_CLK_GPLL		2
+ #define CGU_CLK_CPLL_MUX	3
+@@ -49,8 +147,9 @@
+ #define CGU_BT1120DEC		37
+ #define CGU_SCLK_UART		38
+ 
+-unsigned long rk628_cru_clk_get_rate(unsigned int id);
+-int rk628_cru_clk_set_rate(unsigned int id, unsigned long rate);
+-void rk628_cru_init(void);
++unsigned long rk628_clk_get_rate(struct rk628 *rk628, unsigned int id);
++int rk628_clk_set_rate(struct rk628 *rk628, unsigned int id,
++		       unsigned long rate);
++void rk628_cru_initialize(struct rk628 *rk628);
+ 
+ #endif
+diff --git a/drivers/media/i2c/rk628/rk628_csi.c b/drivers/media/i2c/rk628/rk628_csi.c
+index 7f219e4a730428..69cace02a86150 100644
+--- a/drivers/media/i2c/rk628/rk628_csi.c
++++ b/drivers/media/i2c/rk628/rk628_csi.c
+@@ -66,6 +66,7 @@ struct rk628_csi {
+ 	struct rk628 *parent;
+ 	struct class *rk628_class;
+ 	struct i2c_client *i2c_client;
++	struct rk628 *rk628;
+ 	struct v4l2_dv_timings timings;
+ 	struct gpio_desc *enable_gpio;
+ 	struct gpio_desc *reset_gpio;
+@@ -347,27 +348,27 @@ static int rk628_csi_get_detected_timings(struct rk628_csi *csi,
+ 
+ 	memset(timings, 0, sizeof(struct v4l2_dv_timings));
+ 	timings->type = V4L2_DV_BT_656_1120;
+-	rk628_i2c_read(HDMI_RX_SCDC_REGS1, &val);
++	rk628_i2c_read(csi->rk628, HDMI_RX_SCDC_REGS1, &val);
+ 	status = val;
+ 
+-	rk628_i2c_read(HDMI_RX_MD_STS, &val);
++	rk628_i2c_read(csi->rk628, HDMI_RX_MD_STS, &val);
+ 	bt->interlaced = val & ILACE_STS ?
+ 		V4L2_DV_INTERLACED : V4L2_DV_PROGRESSIVE;
+ 
+-	rk628_i2c_read(HDMI_RX_MD_HACT_PX, &val);
++	rk628_i2c_read(csi->rk628, HDMI_RX_MD_HACT_PX, &val);
+ 	hact = val & 0xffff;
+-	rk628_i2c_read(HDMI_RX_MD_VAL, &val);
++	rk628_i2c_read(csi->rk628, HDMI_RX_MD_VAL, &val);
+ 	vact = val & 0xffff;
+-	rk628_i2c_read(HDMI_RX_MD_HT1, &val);
++	rk628_i2c_read(csi->rk628, HDMI_RX_MD_HT1, &val);
+ 	htotal = (val >> 16) & 0xffff;
+-	rk628_i2c_read(HDMI_RX_MD_VTL, &val);
++	rk628_i2c_read(csi->rk628, HDMI_RX_MD_VTL, &val);
+ 	vtotal = val & 0xffff;
+-	rk628_i2c_read(0x3014c, &val);
++	rk628_i2c_read(csi->rk628, 0x3014c, &val);
+ 	hofs_pix = val & 0xffff;
+-	rk628_i2c_read(0x30164, &val);
++	rk628_i2c_read(csi->rk628, 0x30164, &val);
+ 	vbp = (val & 0xffff) + 1;
+ 
+-	rk628_i2c_read(0x3009c, &val);
++	rk628_i2c_read(csi->rk628, 0x3009c, &val);
+ 	tmdsclk_cnt = val & 0xffff;
+ 	tmp_data = tmdsclk_cnt;
+ 	tmp_data = ((tmp_data * MODETCLK_HZ) + MODETCLK_CNT_NUM / 2);
+@@ -380,12 +381,12 @@ static int rk628_csi_get_detected_timings(struct rk628_csi *csi,
+ 	}
+ 	fps = (tmds_clk + (htotal * vtotal) / 2) / (htotal * vtotal);
+ 
+-	rk628_i2c_read(0x30148, &val);
++	rk628_i2c_read(csi->rk628, 0x30148, &val);
+ 	modetclk_cnt_hs = val & 0xffff;
+ 	hs = (tmdsclk_cnt * modetclk_cnt_hs + MODETCLK_CNT_NUM / 2) /
+ 		MODETCLK_CNT_NUM;
+ 
+-	rk628_i2c_read(0x3015c, &val);
++	rk628_i2c_read(csi->rk628, 0x3015c, &val);
+ 	modetclk_cnt_vs = val & 0xffff;
+ 	vs = (tmdsclk_cnt * modetclk_cnt_vs + MODETCLK_CNT_NUM / 2) /
+ 		MODETCLK_CNT_NUM;
+@@ -465,7 +466,7 @@ static void rk628_csi_delayed_work_enable_hotplug(struct work_struct *work)
+ 		rk628_hdmirx_hpd_ctrl(csi, true);
+ 		rk628_hdmirx_config_all(csi);
+ 		rk628_csi_enable_interrupts(csi, true);
+-		rk628_i2c_update_bits(GRF_SYSTEM_CON0,
++		rk628_i2c_update_bits(csi->rk628, GRF_SYSTEM_CON0,
+ 				SW_I2S_DATA_OEN_MASK, SW_I2S_DATA_OEN(0));
+ 		schedule_delayed_work(&csi->delayed_work_audio, 0);
+ 	} else {
+@@ -474,7 +475,7 @@ static void rk628_csi_delayed_work_enable_hotplug(struct work_struct *work)
+ 		cancel_delayed_work(&csi->delayed_work_res_change);
+ 		rk628_hdmirx_hpd_ctrl(csi, false);
+ 		csi->nosignal = true;
+-		rk628_i2c_update_bits(GRF_SYSTEM_CON0,
++		rk628_i2c_update_bits(csi->rk628, GRF_SYSTEM_CON0,
+ 				SW_I2S_DATA_OEN_MASK, SW_I2S_DATA_OEN(1));
+ 		cancel_delayed_work(&csi->delayed_work_audio);
+ 	}
+@@ -507,32 +508,32 @@ static void rk628_csi_set_hdmi_hdcp(struct rk628_csi *csi, bool en)
+ 	dev_dbg(csi->dev, "%s: %sable\n", __func__, en ? "en" : "dis");
+ 
+ 	if (en) {
+-		rk628_i2c_update_bits(HDMI_RX_HDCP_CTRL,
++		rk628_i2c_update_bits(csi->rk628, HDMI_RX_HDCP_CTRL,
+ 				HDCP_ENABLE_MASK |
+ 				HDCP_ENC_EN_MASK,
+ 				HDCP_ENABLE(1) |
+ 				HDCP_ENC_EN(1));
+-		rk628_i2c_update_bits(GRF_SYSTEM_CON0,
++		rk628_i2c_update_bits(csi->rk628, GRF_SYSTEM_CON0,
+ 				SW_ADAPTER_I2CSLADR_MASK |
+ 				SW_EFUSE_HDCP_EN_MASK,
+ 				SW_ADAPTER_I2CSLADR(0) |
+ 				SW_EFUSE_HDCP_EN(1));
+ 		for ( i = 0; i < ARRAY_SIZE(hdcp_key_data); i++) {
+-			rk628_i2c_write(HDCP_KEY_BASE + i * 4, hdcp_key_data[i]);
++			rk628_i2c_write(csi->rk628, HDCP_KEY_BASE + i * 4, hdcp_key_data[i]);
+ 		}
+ 
+-		rk628_i2c_update_bits(GRF_SYSTEM_CON0,
++		rk628_i2c_update_bits(csi->rk628, GRF_SYSTEM_CON0,
+ 				SW_ADAPTER_I2CSLADR_MASK |
+ 				SW_EFUSE_HDCP_EN_MASK,
+ 				SW_ADAPTER_I2CSLADR(0) |
+ 				SW_EFUSE_HDCP_EN(0));
+-		rk628_i2c_update_bits(HDMI_RX_HDCP_CTRL,
++		rk628_i2c_update_bits(csi->rk628, HDMI_RX_HDCP_CTRL,
+ 				HDCP_ENABLE_MASK |
+ 				HDCP_ENC_EN_MASK,
+ 				HDCP_ENABLE(1) |
+ 				HDCP_ENC_EN(1));
+ 	} else {
+-		rk628_i2c_update_bits(HDMI_RX_HDCP_CTRL,
++		rk628_i2c_update_bits(csi->rk628, HDMI_RX_HDCP_CTRL,
+ 				HDCP_ENABLE_MASK |
+ 				HDCP_ENC_EN_MASK,
+ 				HDCP_ENABLE(0) |
+@@ -548,15 +549,15 @@ static void rk628_hdmirx_hpd_ctrl(struct rk628_csi *csi, bool en)
+ 			en ? "en" : "dis", csi->hpd_output_inverted);
+ 	en_level = csi->hpd_output_inverted ? 0 : 1;
+ 	set_level = en ? en_level : !en_level;
+-	rk628_i2c_update_bits(HDMI_RX_HDMI_SETUP_CTRL,
++	rk628_i2c_update_bits(csi->rk628, HDMI_RX_HDMI_SETUP_CTRL,
+ 			HOT_PLUG_DETECT_MASK, HOT_PLUG_DETECT(set_level));
+ }
+ 
+ static void rk62_csi_reset(struct rk628_csi *csi)
+ {
+-	rk628_i2c_write(CSITX_SYS_CTRL0_IMD, 0x1);
++	rk628_i2c_write(csi->rk628, CSITX_SYS_CTRL0_IMD, 0x1);
+ 	usleep_range(1000, 1000);
+-	rk628_i2c_write(CSITX_SYS_CTRL0_IMD, 0x0);
++	rk628_i2c_write(csi->rk628, CSITX_SYS_CTRL0_IMD, 0x0);
+ }
+ 
+ static void enable_csitx(struct rk628_csi *csi)
+@@ -565,19 +566,19 @@ static void enable_csitx(struct rk628_csi *csi)
+ 
+ 	for (i = 0; i < CSITX_ERR_RETRY_TIMES; i++) {
+ 		rk628_csi_set_csi(csi);
+-		rk628_i2c_update_bits(CSITX_CSITX_EN,
++		rk628_i2c_update_bits(csi->rk628, CSITX_CSITX_EN,
+ 					DPHY_EN_MASK |
+ 					CSITX_EN_MASK,
+ 					DPHY_EN(1) |
+ 					CSITX_EN(1));
+-		rk628_i2c_write(CSITX_CONFIG_DONE, CONFIG_DONE_IMD);
++		rk628_i2c_write(csi->rk628, CSITX_CONFIG_DONE, CONFIG_DONE_IMD);
+ 		msleep(40);
+-		rk628_i2c_write(CSITX_ERR_INTR_CLR_IMD, 0xffffffff);
+-		rk628_i2c_update_bits(CSITX_SYS_CTRL1,
++		rk628_i2c_write(csi->rk628, CSITX_ERR_INTR_CLR_IMD, 0xffffffff);
++		rk628_i2c_update_bits(csi->rk628, CSITX_SYS_CTRL1,
+ 				BYPASS_SELECT_MASK, BYPASS_SELECT(0));
+-		rk628_i2c_write(CSITX_CONFIG_DONE, CONFIG_DONE_IMD);
++		rk628_i2c_write(csi->rk628, CSITX_CONFIG_DONE, CONFIG_DONE_IMD);
+ 		msleep(40);
+-		ret = rk628_i2c_read(CSITX_ERR_INTR_RAW_STATUS_IMD, &val);
++		ret = rk628_i2c_read(csi->rk628, CSITX_ERR_INTR_RAW_STATUS_IMD, &val);
+ 		if (!ret && !val)
+ 			break;
+ 
+@@ -596,12 +597,12 @@ static void enable_stream(struct rk628_csi *csi, bool en)
+ 		enable_csitx(csi);
+ 	} else {
+ 		rk628_hdmirx_vid_enable(csi, false);
+-		rk628_i2c_update_bits(CSITX_CSITX_EN,
++		rk628_i2c_update_bits(csi->rk628, CSITX_CSITX_EN,
+ 					DPHY_EN_MASK |
+ 					CSITX_EN_MASK,
+ 					DPHY_EN(0) |
+ 					CSITX_EN(0));
+-		rk628_i2c_write(CSITX_CONFIG_DONE, CONFIG_DONE_IMD);
++		rk628_i2c_write(csi->rk628, CSITX_CONFIG_DONE, CONFIG_DONE_IMD);
+ 	}
+ }
+ 
+@@ -739,29 +740,29 @@ static void rk628_post_process_scaler_init(struct rk628_csi *csi,
+ 		dev_dbg(csi->dev, "vertical scale up\n");
+ 	}
+ 
+-	rk628_i2c_update_bits(GRF_RGB_DEC_CON0,
++	rk628_i2c_update_bits(csi->rk628, GRF_RGB_DEC_CON0,
+ 			SW_HRES_MASK, SW_HRES(src->hactive));
+-	rk628_i2c_write(GRF_SCALER_CON0,
++	rk628_i2c_write(csi->rk628, GRF_SCALER_CON0,
+ 		     SCL_VER_DOWN_MODE(ver_down_mode) |
+ 		     SCL_HOR_DOWN_MODE(hor_down_mode) |
+ 		     SCL_VER_MODE(scl_ver_mode) | SCL_HOR_MODE(scl_hor_mode) |
+ 		     SCL_EN(1));
+-	rk628_i2c_write(GRF_SCALER_CON1,
++	rk628_i2c_write(csi->rk628, GRF_SCALER_CON1,
+ 		     SCL_V_FACTOR(scl_v_factor) | SCL_H_FACTOR(scl_h_factor));
+-	rk628_i2c_write(GRF_SCALER_CON2,
++	rk628_i2c_write(csi->rk628, GRF_SCALER_CON2,
+ 		     DSP_FRAME_VST(dsp_frame_vst) |
+ 		     DSP_FRAME_HST(dsp_frame_hst));
+-	rk628_i2c_write(GRF_SCALER_CON3,
++	rk628_i2c_write(csi->rk628, GRF_SCALER_CON3,
+ 		     DSP_HS_END(dsp_hs_end) | DSP_HTOTAL(dsp_htotal));
+-	rk628_i2c_write(GRF_SCALER_CON4,
++	rk628_i2c_write(csi->rk628, GRF_SCALER_CON4,
+ 		     DSP_HACT_END(dsp_hact_end) | DSP_HACT_ST(dsp_hact_st));
+-	rk628_i2c_write(GRF_SCALER_CON5,
++	rk628_i2c_write(csi->rk628, GRF_SCALER_CON5,
+ 		     DSP_VS_END(dsp_vs_end) | DSP_VTOTAL(dsp_vtotal));
+-	rk628_i2c_write(GRF_SCALER_CON6,
++	rk628_i2c_write(csi->rk628, GRF_SCALER_CON6,
+ 		     DSP_VACT_END(dsp_vact_end) | DSP_VACT_ST(dsp_vact_st));
+-	rk628_i2c_write(GRF_SCALER_CON7,
++	rk628_i2c_write(csi->rk628, GRF_SCALER_CON7,
+ 		     DSP_HBOR_END(dsp_hbor_end) | DSP_HBOR_ST(dsp_hbor_st));
+-	rk628_i2c_write(GRF_SCALER_CON8,
++	rk628_i2c_write(csi->rk628, GRF_SCALER_CON8,
+ 		     DSP_VBOR_END(dsp_vbor_end) | DSP_VBOR_ST(dsp_vbor_st));
+ }
+ 
+@@ -786,8 +787,8 @@ static void rk628_post_process_setup(struct rk628_csi *csi)
+ 	/* do not scale now */
+ 	dst = src;
+ 
+-	rk628_cru_clk_set_rate(CGU_CLK_RX_READ, src.pixelclock);
+-	rk628_cru_clk_set_rate(CGU_SCLK_VOP, src.pixelclock);
++	rk628_clk_set_rate(csi->rk628, CGU_CLK_RX_READ, src.pixelclock);
++	rk628_clk_set_rate(csi->rk628, CGU_SCLK_VOP, src.pixelclock);
+ 
+ 	rk628_post_process_scaler_init(csi, &src, &dst);
+ }
+@@ -819,7 +820,7 @@ static void rk628_csi_set_csi(struct rk628_csi *csi)
+ 	dev_dbg(csi->dev, "%s: txphy power on!\n", __func__);
+ 	usleep_range(1000, 1500);
+ 
+-	rk628_i2c_update_bits(CSITX_CSITX_EN,
++	rk628_i2c_update_bits(csi->rk628, CSITX_CSITX_EN,
+ 			VOP_UV_SWAP_MASK |
+ 			VOP_YUV422_EN_MASK |
+ 			VOP_P2_EN_MASK |
+@@ -832,12 +833,12 @@ static void rk628_csi_set_csi(struct rk628_csi *csi)
+ 			LANE_NUM(lane_num) |
+ 			DPHY_EN(0) |
+ 			CSITX_EN(0));
+-	rk628_i2c_update_bits(CSITX_SYS_CTRL1,
++	rk628_i2c_update_bits(csi->rk628, CSITX_SYS_CTRL1,
+ 			BYPASS_SELECT_MASK,
+ 			BYPASS_SELECT(1));
+-	rk628_i2c_write(CSITX_CONFIG_DONE, CONFIG_DONE_IMD);
+-	rk628_i2c_write(CSITX_SYS_CTRL2, VOP_WHOLE_FRM_EN | VSYNC_ENABLE);
+-	rk628_i2c_update_bits(CSITX_SYS_CTRL3_IMD,
++	rk628_i2c_write(csi->rk628, CSITX_CONFIG_DONE, CONFIG_DONE_IMD);
++	rk628_i2c_write(csi->rk628, CSITX_SYS_CTRL2, VOP_WHOLE_FRM_EN | VSYNC_ENABLE);
++	rk628_i2c_update_bits(csi->rk628, CSITX_SYS_CTRL3_IMD,
+ 			CONT_MODE_CLK_CLR_MASK |
+ 			CONT_MODE_CLK_SET_MASK |
+ 			NON_CONTINOUS_MODE_MASK,
+@@ -845,17 +846,17 @@ static void rk628_csi_set_csi(struct rk628_csi *csi)
+ 			CONT_MODE_CLK_SET(0) |
+ 			NON_CONTINOUS_MODE(1));
+ 
+-	rk628_i2c_write(CSITX_VOP_PATH_CTRL,
++	rk628_i2c_write(csi->rk628, CSITX_VOP_PATH_CTRL,
+ 			VOP_WC_USERDEFINE(wc_usrdef) |
+ 			VOP_DT_USERDEFINE(YUV422_8BIT) |
+ 			VOP_PIXEL_FORMAT(0) |
+ 			VOP_WC_USERDEFINE_EN(1) |
+ 			VOP_DT_USERDEFINE_EN(1) |
+ 			VOP_PATH_EN(1));
+-	rk628_i2c_update_bits(CSITX_DPHY_CTRL,
++	rk628_i2c_update_bits(csi->rk628, CSITX_DPHY_CTRL,
+ 				CSI_DPHY_EN_MASK,
+ 				CSI_DPHY_EN(dphy_lane_en));
+-	rk628_i2c_write(CSITX_CONFIG_DONE, CONFIG_DONE_IMD);
++	rk628_i2c_write(csi->rk628, CSITX_CONFIG_DONE, CONFIG_DONE_IMD);
+ 	dev_dbg(csi->dev, "%s csi cofig done\n", __func__);
+ 
+ 	for (i = 0; i < 10; i++) {
+@@ -867,18 +868,18 @@ static void rk628_csi_set_csi(struct rk628_csi *csi)
+ 	if (i == 10)
+ 		dev_err(csi->dev, "%s Have not rcv avi packet!\n", __func__);
+ 
+-	rk628_i2c_read(HDMI_RX_PDEC_AVI_PB, &val);
++	rk628_i2c_read(csi->rk628, HDMI_RX_PDEC_AVI_PB, &val);
+ 	video_fmt = (val & VIDEO_FORMAT_MASK) >> 5;
+ 	dev_dbg(csi->dev, "%s PDEC_AVI_PB:%#x, video format:%d\n",
+ 			__func__, val, video_fmt);
+ 	if (video_fmt) {
+ 		/* yuv data: cfg SW_YUV2VYU_SWP */
+-		rk628_i2c_write(GRF_CSC_CTRL_CON,
++		rk628_i2c_write(csi->rk628, GRF_CSC_CTRL_CON,
+ 				SW_YUV2VYU_SWP(1) |
+ 				SW_R2Y_EN(0));
+ 	} else {
+ 		/* rgb data: cfg SW_R2Y_EN */
+-		rk628_i2c_write(GRF_CSC_CTRL_CON,
++		rk628_i2c_write(csi->rk628, GRF_CSC_CTRL_CON,
+ 				SW_YUV2VYU_SWP(0) |
+ 				SW_R2Y_EN(1));
+ 	}
+@@ -900,7 +901,7 @@ static int rk628_hdmirx_phy_power_on(struct rk628_csi *csi)
+ 
+ 	if (csi->rxphy_pwron) {
+ 		dev_dbg(csi->dev, "rxphy already power on, power off!\n");
+-		ret = rk628_combrxphy_power_off();
++		ret = rk628_rxphy_power_off(csi->rk628);
+ 		if (ret)
+ 			dev_err(csi->dev, "hdmi rxphy power off failed!\n");
+ 		else
+@@ -909,7 +910,7 @@ static int rk628_hdmirx_phy_power_on(struct rk628_csi *csi)
+ 
+ 	usleep_range(100, 100);
+ 	if (csi->rxphy_pwron == false) {
+-		ret = rk628_combrxphy_power_on(f);
++		ret = rk628_rxphy_power_on(csi->rk628, f);
+ 		if (ret) {
+ 			csi->rxphy_pwron = false;
+ 			dev_err(csi->dev, "hdmi rxphy power on failed\n");
+@@ -925,20 +926,20 @@ static void rk628_hdmirx_vid_enable(struct rk628_csi *csi, bool en)
+ {
+ 	dev_dbg(csi->dev, "%s: %sable\n", __func__, en ? "en" : "dis");
+ 	if (en) {
+-		rk628_i2c_update_bits(HDMI_RX_DMI_DISABLE_IF,
++		rk628_i2c_update_bits(csi->rk628, HDMI_RX_DMI_DISABLE_IF,
+ 				VID_ENABLE_MASK, VID_ENABLE(1));
+ 	} else {
+-		rk628_i2c_update_bits(HDMI_RX_DMI_DISABLE_IF,
++		rk628_i2c_update_bits(csi->rk628, HDMI_RX_DMI_DISABLE_IF,
+ 				VID_ENABLE_MASK, VID_ENABLE(0));
+ 	}
+ }
+ 
+ static void rk628_hdmirx_controller_reset(struct rk628_csi *csi)
+ {
+-	rk628_i2c_write(HDMI_RX_DMI_SW_RST, 0x000101ff);
+-	rk628_i2c_write(HDMI_RX_DMI_DISABLE_IF, 0x00000000);
+-	rk628_i2c_write(HDMI_RX_DMI_DISABLE_IF, 0x0000017f);
+-	rk628_i2c_write(HDMI_RX_DMI_DISABLE_IF, 0x0001017f);
++	rk628_i2c_write(csi->rk628, HDMI_RX_DMI_SW_RST, 0x000101ff);
++	rk628_i2c_write(csi->rk628, HDMI_RX_DMI_DISABLE_IF, 0x00000000);
++	rk628_i2c_write(csi->rk628, HDMI_RX_DMI_DISABLE_IF, 0x0000017f);
++	rk628_i2c_write(csi->rk628, HDMI_RX_DMI_DISABLE_IF, 0x0001017f);
+ }
+ 
+ static void rk628_hdmirx_audio_setup(struct rk628_csi *csi)
+@@ -948,20 +949,20 @@ static void rk628_hdmirx_audio_setup(struct rk628_csi *csi)
+ 	audio_pll_n = 5644;
+ 	audio_pll_cts = 148500;
+ 
+-	rk628_cru_clk_set_rate(CGU_CLK_HDMIRX_AUD, 5644800);
++	rk628_clk_set_rate(csi->rk628, CGU_CLK_HDMIRX_AUD, 5644800);
+ 
+ 	/* manual aud CTS */
+-	rk628_i2c_write(HDMI_RX_AUDPLL_GEN_CTS, audio_pll_cts);
++	rk628_i2c_write(csi->rk628, HDMI_RX_AUDPLL_GEN_CTS, audio_pll_cts);
+ 	/* manual aud N */
+-	rk628_i2c_write(HDMI_RX_AUDPLL_GEN_N, audio_pll_n);
++	rk628_i2c_write(csi->rk628, HDMI_RX_AUDPLL_GEN_N, audio_pll_n);
+ 
+ 	/* aud CTS N en manual */
+-	rk628_i2c_update_bits(HDMI_RX_AUD_CLK_CTRL,
++	rk628_i2c_update_bits(csi->rk628, HDMI_RX_AUD_CLK_CTRL,
+ 			CTS_N_REF_MASK, CTS_N_REF(1));
+ 	/* aud pll ctrl */
+-	rk628_i2c_update_bits(HDMI_RX_AUD_PLL_CTRL,
++	rk628_i2c_update_bits(csi->rk628, HDMI_RX_AUD_PLL_CTRL,
+ 			PLL_LOCK_TOGGLE_DIV_MASK, PLL_LOCK_TOGGLE_DIV(0));
+-	rk628_i2c_update_bits(HDMI_RX_AUD_FIFO_TH,
++	rk628_i2c_update_bits(csi->rk628, HDMI_RX_AUD_FIFO_TH,
+ 		AFIF_TH_START_MASK |
+ 		AFIF_TH_MAX_MASK |
+ 		AFIF_TH_MIN_MASK,
+@@ -970,15 +971,15 @@ static void rk628_hdmirx_audio_setup(struct rk628_csi *csi)
+ 		AFIF_TH_MIN(8));
+ 
+ 	/* AUTO_VMUTE */
+-	rk628_i2c_update_bits(HDMI_RX_AUD_FIFO_CTRL,
++	rk628_i2c_update_bits(csi->rk628, HDMI_RX_AUD_FIFO_CTRL,
+ 			AFIF_SUBPACKET_DESEL_MASK |
+ 			AFIF_SUBPACKETS_MASK,
+ 			AFIF_SUBPACKET_DESEL(0) |
+ 			AFIF_SUBPACKETS(1));
+-	rk628_i2c_write(HDMI_RX_AUD_SAO_CTRL,
++	rk628_i2c_write(csi->rk628, HDMI_RX_AUD_SAO_CTRL,
+ 			I2S_LPCM_BPCUV(0) |
+ 			I2S_32_16(1));
+-	rk628_i2c_write(HDMI_RX_AUD_MUTE_CTRL,
++	rk628_i2c_write(csi->rk628, HDMI_RX_AUD_MUTE_CTRL,
+ 			APPLY_INT_MUTE(0)	|
+ 			APORT_SHDW_CTRL(3)	|
+ 			AUTO_ACLK_MUTE(2)	|
+@@ -987,13 +988,13 @@ static void rk628_hdmirx_audio_setup(struct rk628_csi *csi)
+ 			AUD_MUTE_SEL(1)		|
+ 			AUD_MUTE_MODE(1));
+ 
+-	rk628_i2c_write(HDMI_RX_AUD_PAO_CTRL,
++	rk628_i2c_write(csi->rk628, HDMI_RX_AUD_PAO_CTRL,
+ 			PAO_RATE(0));
+-	rk628_i2c_write(HDMI_RX_AUD_CHEXTR_CTRL,
++	rk628_i2c_write(csi->rk628, HDMI_RX_AUD_CHEXTR_CTRL,
+ 			AUD_LAYOUT_CTRL(1));
+ 
+ 	/* audio detect */
+-	rk628_i2c_write(HDMI_RX_PDEC_AUDIODET_CTRL,
++	rk628_i2c_write(csi->rk628, HDMI_RX_PDEC_AUDIODET_CTRL,
+ 			AUDIODET_THRESHOLD(0));
+ }
+ 
+@@ -1010,12 +1011,12 @@ static void rk628_csi_delayed_work_audio(struct work_struct *work)
+ 	static u64 pre_fs_audio;
+ 
+ 	/* fout=128*fs=ftmds*N/CTS */
+-	rk628_i2c_read(HDMI_RX_HDMI_CKM_RESULT, &clkrate);
++	rk628_i2c_read(csi->rk628, HDMI_RX_HDMI_CKM_RESULT, &clkrate);
+ 	clkrate = clkrate & 0xffff;
+ 	/* tmdsclk = (clkrate/1000) * 49500000 */
+ 	tmdsclk = clkrate * (49500000 / 1000);
+-	rk628_i2c_read(HDMI_RX_PDEC_ACR_CTS, &cts_decoded);
+-	rk628_i2c_read(HDMI_RX_PDEC_ACR_N, &n_decoded);
++	rk628_i2c_read(csi->rk628, HDMI_RX_PDEC_ACR_CTS, &cts_decoded);
++	rk628_i2c_read(csi->rk628, HDMI_RX_PDEC_ACR_N, &n_decoded);
+ 	/* fs_audio = ((tmdsclk * n_decoded) / cts_decoded ) / 128 */
+ 	if (cts_decoded != 0) {
+ 		fs_audio = div_u64((tmdsclk * n_decoded), cts_decoded);
+@@ -1044,20 +1045,20 @@ static void rk628_csi_delayed_work_audio(struct work_struct *work)
+ 		default:
+ 			break;
+ 		}
+-		rk628_cru_clk_set_rate(CGU_CLK_HDMIRX_AUD, hdmirx_aud_clkrate);
++		rk628_clk_set_rate(csi->rk628, CGU_CLK_HDMIRX_AUD, hdmirx_aud_clkrate);
+ 		dev_dbg(csi->dev,
+ 			"%s: audo switch clk_hdmirx_aud to %d  fs_audio:%llu pre_fs_audio:%llu\n",
+ 			__func__, hdmirx_aud_clkrate, fs_audio, pre_fs_audio);
+ 		if (pre_fs_audio != 0) {
+-			rk628_i2c_write(HDMI_RX_AUD_FIFO_ICLR, 0x1f);
+-			rk628_i2c_write(HDMI_RX_AUD_FIFO_CTRL, 0x10001);
+-			rk628_i2c_write(HDMI_RX_AUD_FIFO_CTRL, 0x10000);
++			rk628_i2c_write(csi->rk628, HDMI_RX_AUD_FIFO_ICLR, 0x1f);
++			rk628_i2c_write(csi->rk628, HDMI_RX_AUD_FIFO_CTRL, 0x10001);
++			rk628_i2c_write(csi->rk628, HDMI_RX_AUD_FIFO_CTRL, 0x10000);
+ 		}
+ 		pre_fs_audio = fs_audio;
+ 		csi->fs_audio = fs_audio;
+ 	}
+ 
+-	rk628_i2c_read(HDMI_RX_AUD_FIFO_FILLSTS1, &cur_state);
++	rk628_i2c_read(csi->rk628, HDMI_RX_AUD_FIFO_FILLSTS1, &cur_state);
+ 	dev_dbg(csi->dev,
+ 		"%s: HDMI_RX_AUD_FIFO_FILLSTS1:%#x, single offset:%d, total offset:%d\n",
+ 		__func__, cur_state, cur_state-pre_state, cur_state-init_state);
+@@ -1067,24 +1068,24 @@ static void rk628_csi_delayed_work_audio(struct work_struct *work)
+ 		csi->audio_present = false;
+ 	if ((cur_state-init_state) > 16 && (cur_state-pre_state) > 0) {
+ 		hdmirx_aud_clkrate += 10;
+-		rk628_cru_clk_set_rate(CGU_CLK_HDMIRX_AUD, hdmirx_aud_clkrate);
++		rk628_clk_set_rate(csi->rk628, CGU_CLK_HDMIRX_AUD, hdmirx_aud_clkrate);
+ 		dev_dbg(csi->dev, "%s: (cur_state-init_state) > 16 hdmirx_aud_clkrate:%d\n",
+ 				__func__, hdmirx_aud_clkrate);
+ 	} else if ((cur_state != 0) && (cur_state-init_state) < -16 && (cur_state-pre_state) < 0) {
+ 		hdmirx_aud_clkrate -= 10;
+-		rk628_cru_clk_set_rate(CGU_CLK_HDMIRX_AUD, hdmirx_aud_clkrate);
++		rk628_clk_set_rate(csi->rk628, CGU_CLK_HDMIRX_AUD, hdmirx_aud_clkrate);
+ 		dev_dbg(csi->dev, "%s: (cur_state-init_state) < -16 hdmirx_aud_clkrate:%d\n",
+ 				__func__, hdmirx_aud_clkrate);
+ 	}
+ 	pre_state = cur_state;
+ 
+-	rk628_i2c_read(HDMI_RX_AUD_FIFO_ISTS, &val);
++	rk628_i2c_read(csi->rk628, HDMI_RX_AUD_FIFO_ISTS, &val);
+ 	dev_dbg(csi->dev, "%s: HDMI_RX_AUD_FIFO_ISTS:%#x\n", __func__, val);
+ 	if ((val != 0x9) && ((val & 0x10) || (val & 0x8))) {
+-		rk628_i2c_write(HDMI_RX_AUD_FIFO_ICLR, 0x1f);
+-		rk628_i2c_write(HDMI_RX_AUD_FIFO_CTRL, 0x10001);
++		rk628_i2c_write(csi->rk628, HDMI_RX_AUD_FIFO_ICLR, 0x1f);
++		rk628_i2c_write(csi->rk628, HDMI_RX_AUD_FIFO_CTRL, 0x10001);
+ 		/*msleep(1);*/
+-		rk628_i2c_write(HDMI_RX_AUD_FIFO_CTRL, 0x10000);
++		rk628_i2c_write(csi->rk628, HDMI_RX_AUD_FIFO_CTRL, 0x10000);
+ 		pre_state = cur_state = 0;
+ 
+ 		dev_err(csi->dev, "%s: HDMI_RX_AUD_FIFO_ISTS:%#x, underflow or overflow\n",
+@@ -1096,28 +1097,28 @@ static void rk628_csi_delayed_work_audio(struct work_struct *work)
+ 
+ static void rk628_hdmirx_controller_setup(struct rk628_csi *csi)
+ {
+-	rk628_i2c_write(HDMI_RX_HDMI20_CONTROL, 0x10001f10);
+-	rk628_i2c_write(HDMI_RX_HDMI_MODE_RECOVER, 0x000000e1);
+-	rk628_i2c_write(HDMI_RX_PDEC_CTRL, 0xbfff8011);
+-	rk628_i2c_write(HDMI_RX_PDEC_ASP_CTRL, 0x00000040);
+-	rk628_i2c_write(HDMI_RX_HDMI_RESMPL_CTRL, 0x00000001);
+-	rk628_i2c_write(HDMI_RX_HDMI_SYNC_CTRL, 0x00000014);
+-	rk628_i2c_write(HDMI_RX_PDEC_ERR_FILTER, 0x00000008);
+-	rk628_i2c_write(HDMI_RX_SCDC_I2CCONFIG, 0x01000000);
+-	rk628_i2c_write(HDMI_RX_SCDC_CONFIG, 0x00000001);
+-	rk628_i2c_write(HDMI_RX_SCDC_WRDATA0, 0xabcdef01);
+-	rk628_i2c_write(HDMI_RX_CHLOCK_CONFIG, 0x0030c15c);
+-	rk628_i2c_write(HDMI_RX_HDMI_ERROR_PROTECT, 0x000d0c98);
+-	rk628_i2c_write(HDMI_RX_MD_HCTRL1, 0x00000010);
+-	rk628_i2c_write(HDMI_RX_MD_HCTRL2, 0x00001738);
+-	rk628_i2c_write(HDMI_RX_MD_VCTRL, 0x00000002);
+-	rk628_i2c_write(HDMI_RX_MD_VTH, 0x0000073a);
+-	rk628_i2c_write(HDMI_RX_MD_IL_POL, 0x00000004);
+-	rk628_i2c_write(HDMI_RX_PDEC_ACRM_CTRL, 0x00000000);
+-	rk628_i2c_write(HDMI_RX_HDMI_DCM_CTRL, 0x00040414);
+-	rk628_i2c_write(HDMI_RX_HDMI_CKM_EVLTM, 0x00103e70);
+-	rk628_i2c_write(HDMI_RX_HDMI_CKM_F, 0x0c1c0b54);
+-	rk628_i2c_write(HDMI_RX_HDMI_RESMPL_CTRL, 0x00000001);
++	rk628_i2c_write(csi->rk628, HDMI_RX_HDMI20_CONTROL, 0x10001f10);
++	rk628_i2c_write(csi->rk628, HDMI_RX_HDMI_MODE_RECOVER, 0x000000e1);
++	rk628_i2c_write(csi->rk628, HDMI_RX_PDEC_CTRL, 0xbfff8011);
++	rk628_i2c_write(csi->rk628, HDMI_RX_PDEC_ASP_CTRL, 0x00000040);
++	rk628_i2c_write(csi->rk628, HDMI_RX_HDMI_RESMPL_CTRL, 0x00000001);
++	rk628_i2c_write(csi->rk628, HDMI_RX_HDMI_SYNC_CTRL, 0x00000014);
++	rk628_i2c_write(csi->rk628, HDMI_RX_PDEC_ERR_FILTER, 0x00000008);
++	rk628_i2c_write(csi->rk628, HDMI_RX_SCDC_I2CCONFIG, 0x01000000);
++	rk628_i2c_write(csi->rk628, HDMI_RX_SCDC_CONFIG, 0x00000001);
++	rk628_i2c_write(csi->rk628, HDMI_RX_SCDC_WRDATA0, 0xabcdef01);
++	rk628_i2c_write(csi->rk628, HDMI_RX_CHLOCK_CONFIG, 0x0030c15c);
++	rk628_i2c_write(csi->rk628, HDMI_RX_HDMI_ERROR_PROTECT, 0x000d0c98);
++	rk628_i2c_write(csi->rk628, HDMI_RX_MD_HCTRL1, 0x00000010);
++	rk628_i2c_write(csi->rk628, HDMI_RX_MD_HCTRL2, 0x00001738);
++	rk628_i2c_write(csi->rk628, HDMI_RX_MD_VCTRL, 0x00000002);
++	rk628_i2c_write(csi->rk628, HDMI_RX_MD_VTH, 0x0000073a);
++	rk628_i2c_write(csi->rk628, HDMI_RX_MD_IL_POL, 0x00000004);
++	rk628_i2c_write(csi->rk628, HDMI_RX_PDEC_ACRM_CTRL, 0x00000000);
++	rk628_i2c_write(csi->rk628, HDMI_RX_HDMI_DCM_CTRL, 0x00040414);
++	rk628_i2c_write(csi->rk628, HDMI_RX_HDMI_CKM_EVLTM, 0x00103e70);
++	rk628_i2c_write(csi->rk628, HDMI_RX_HDMI_CKM_F, 0x0c1c0b54);
++	rk628_i2c_write(csi->rk628, HDMI_RX_HDMI_RESMPL_CTRL, 0x00000001);
+ }
+ 
+ static bool rk628_rcv_supported_res(struct rk628_csi *csi, u32 width,
+@@ -1151,15 +1152,15 @@ static int rk628_hdmirx_phy_setup(struct rk628_csi *csi)
+ 
+ 		do {
+ 			cnt++;
+-			rk628_i2c_read(HDMI_RX_MD_HACT_PX, &val);
++			rk628_i2c_read(csi->rk628, HDMI_RX_MD_HACT_PX, &val);
+ 			width = val & 0xffff;
+-			rk628_i2c_read(HDMI_RX_MD_VAL, &val);
++			rk628_i2c_read(csi->rk628, HDMI_RX_MD_VAL, &val);
+ 			height = val & 0xffff;
+-			rk628_i2c_read(HDMI_RX_MD_HT1, &val);
++			rk628_i2c_read(csi->rk628, HDMI_RX_MD_HT1, &val);
+ 			frame_width = (val >> 16) & 0xffff;
+-			rk628_i2c_read(HDMI_RX_MD_VTL, &val);
++			rk628_i2c_read(csi->rk628, HDMI_RX_MD_VTL, &val);
+ 			frame_height = val & 0xffff;
+-			rk628_i2c_read(HDMI_RX_SCDC_REGS1, &val);
++			rk628_i2c_read(csi->rk628, HDMI_RX_SCDC_REGS1, &val);
+ 			status = val;
+ 			dev_dbg(csi->dev,
+ 				"%s read wxh:%dx%d, total:%dx%d, SCDC_REGS1:%#x, cnt:%d\n",
+@@ -1200,18 +1201,18 @@ static void rk628_csi_initial_setup(struct rk628_csi *csi)
+ 	// TODO: clk reset
+ 
+ 	/* selete int io function */
+-	rk628_i2c_write(GRF_GPIO3AB_SEL_CON, 0x30002000);
+-	rk628_i2c_write(GRF_GPIO1AB_SEL_CON, HIWORD_UPDATE(0x7, 10, 8));
++	rk628_i2c_write(csi->rk628, GRF_GPIO3AB_SEL_CON, 0x30002000);
++	rk628_i2c_write(csi->rk628, GRF_GPIO1AB_SEL_CON, HIWORD_UPDATE(0x7, 10, 8));
+ 	/* I2S_SCKM0 */
+-	rk628_i2c_write(GRF_GPIO0AB_SEL_CON, HIWORD_UPDATE(0x1, 2, 2));
++	rk628_i2c_write(csi->rk628, GRF_GPIO0AB_SEL_CON, HIWORD_UPDATE(0x1, 2, 2));
+ 	/* I2SLR_M0 */
+-	rk628_i2c_write(GRF_GPIO0AB_SEL_CON, HIWORD_UPDATE(0x1, 3, 3));
++	rk628_i2c_write(csi->rk628, GRF_GPIO0AB_SEL_CON, HIWORD_UPDATE(0x1, 3, 3));
+ 	/* I2SM0D0 */
+-	rk628_i2c_write(GRF_GPIO0AB_SEL_CON, HIWORD_UPDATE(0x1, 5, 4));
++	rk628_i2c_write(csi->rk628, GRF_GPIO0AB_SEL_CON, HIWORD_UPDATE(0x1, 5, 4));
+ 	/* hdmirx int en */
+-	rk628_i2c_write(GRF_INTR0_EN, 0x01000100);
++	rk628_i2c_write(csi->rk628, GRF_INTR0_EN, 0x01000100);
+ 
+-	rk628_i2c_update_bits(GRF_SYSTEM_CON0,
++	rk628_i2c_update_bits(csi->rk628, GRF_SYSTEM_CON0,
+ 			SW_INPUT_MODE_MASK |
+ 			SW_OUTPUT_MODE_MASK |
+ 			SW_EFUSE_HDCP_EN_MASK |
+@@ -1237,7 +1238,7 @@ static void rk628_csi_initial_setup(struct rk628_csi *csi)
+ 	csi->txphy_pwron = true;
+ 	if (tx_5v_power_present(csi)) {
+ 		rk628_hdmirx_config_all(csi);
+-		rk628_i2c_update_bits(GRF_SYSTEM_CON0,
++		rk628_i2c_update_bits(csi->rk628, GRF_SYSTEM_CON0,
+ 				SW_I2S_DATA_OEN_MASK, SW_I2S_DATA_OEN(0));
+ 		schedule_delayed_work(&csi->delayed_work_audio, msecs_to_jiffies(1000));
+ 	}
+@@ -1258,21 +1259,21 @@ static void rk628_csi_enable_interrupts(struct rk628_csi *csi, bool en)
+ 
+ 	dev_dbg(csi->dev, "%s: %sable\n", __func__, en ? "en" : "dis");
+ 	/* clr irq */
+-	rk628_i2c_write(HDMI_RX_MD_ICLR, 0xffffffff);
+-	rk628_i2c_write(HDMI_RX_PDEC_ICLR, 0xffffffff);
++	rk628_i2c_write(csi->rk628, HDMI_RX_MD_ICLR, 0xffffffff);
++	rk628_i2c_write(csi->rk628, HDMI_RX_PDEC_ICLR, 0xffffffff);
+ 
+ 	if (en) {
+-		rk628_i2c_write(HDMI_RX_MD_IEN_SET,
++		rk628_i2c_write(csi->rk628, HDMI_RX_MD_IEN_SET,
+ 				VACT_LIN_ENSET | HACT_PIX_ENSET);
+-		rk628_i2c_write(HDMI_RX_PDEC_IEN_SET, AVI_RCV_ENSET);
++		rk628_i2c_write(csi->rk628, HDMI_RX_PDEC_IEN_SET, AVI_RCV_ENSET);
+ 	} else {
+-		rk628_i2c_write(HDMI_RX_MD_IEN_CLR, 0xffffffff);
+-		rk628_i2c_write(HDMI_RX_PDEC_IEN_CLR, 0xffffffff);
++		rk628_i2c_write(csi->rk628, HDMI_RX_MD_IEN_CLR, 0xffffffff);
++		rk628_i2c_write(csi->rk628, HDMI_RX_PDEC_IEN_CLR, 0xffffffff);
+ 	}
+ 	usleep_range(5000, 5000);
+ 
+-	rk628_i2c_read(HDMI_RX_MD_IEN, &val_a);
+-	rk628_i2c_read(HDMI_RX_PDEC_IEN, &val_b);
++	rk628_i2c_read(csi->rk628, HDMI_RX_MD_IEN, &val_a);
++	rk628_i2c_read(csi->rk628, HDMI_RX_PDEC_IEN, &val_b);
+ 	dev_dbg(csi->dev, "%s MD_IEN:%#x, PDEC_IEN:%#x\n",
+ 			__func__, val_a, val_b);
+ }
+@@ -1287,15 +1288,15 @@ static int rk628_csi_isr(struct rk628_csi *csi, u32 status, bool *handled)
+ 		return -EINVAL;
+ 	}
+ 
+-	rk628_i2c_read(HDMI_RX_MD_ISTS, &md_ints);
+-	rk628_i2c_read(HDMI_RX_PDEC_ISTS, &pdec_ints);
++	rk628_i2c_read(csi->rk628, HDMI_RX_MD_ISTS, &md_ints);
++	rk628_i2c_read(csi->rk628, HDMI_RX_PDEC_ISTS, &pdec_ints);
+ 	plugin = tx_5v_power_present(csi);
+ 	dev_dbg(csi->dev, "%s: md_ints: %#x, pdec_ints:%#x, plugin: %d\n",
+ 		__func__, md_ints, pdec_ints, plugin);
+ 
+ 	if ((md_ints & (VACT_LIN_ISTS | HACT_PIX_ISTS)) && plugin) {
+-		rk628_i2c_read(HDMI_RX_MD_HACT_PX, &hact);
+-		rk628_i2c_read(HDMI_RX_MD_VAL, &vact);
++		rk628_i2c_read(csi->rk628, HDMI_RX_MD_HACT_PX, &hact);
++		rk628_i2c_read(csi->rk628, HDMI_RX_MD_VAL, &vact);
+ 		dev_dbg(csi->dev, "%s: HACT:%#x, VACT:%#x\n",
+ 				__func__, hact, vact);
+ 
+@@ -1314,7 +1315,7 @@ static int rk628_csi_isr(struct rk628_csi *csi, u32 status, bool *handled)
+ 		dev_dbg(csi->dev, "%s: AVI RCV INT!\n", __func__);
+ 		csi->avi_rcv_rdy = true;
+ 		/* After get the AVI_RCV interrupt state, disable interrupt. */
+-		rk628_i2c_write(HDMI_RX_PDEC_IEN_CLR, 0xffffffff);
++		rk628_i2c_write(csi->rk628, HDMI_RX_PDEC_IEN_CLR, 0xffffffff);
+ 
+ 		*handled = true;
+ 	}
+@@ -1323,9 +1324,9 @@ static int rk628_csi_isr(struct rk628_csi *csi, u32 status, bool *handled)
+ 		dev_dbg(csi->dev, "%s: unhandled interrupt!\n", __func__);
+ 
+ 	/* clear interrupts */
+-	rk628_i2c_write(HDMI_RX_MD_ICLR, 0xffffffff);
+-	rk628_i2c_write(HDMI_RX_PDEC_ICLR, 0xffffffff);
+-	rk628_i2c_write(GRF_INTR0_CLR_EN, 0x01000100);
++	rk628_i2c_write(csi->rk628, HDMI_RX_MD_ICLR, 0xffffffff);
++	rk628_i2c_write(csi->rk628, HDMI_RX_PDEC_ICLR, 0xffffffff);
++	rk628_i2c_write(csi->rk628, GRF_INTR0_CLR_EN, 0x01000100);
+ 
+ 	return 0;
+ }
+@@ -1407,21 +1408,21 @@ static int rk628_csi_s_edid(struct rk628_csi *csi,
+ 	}
+ 
+ 	/* edid access by apb when write, i2c slave addr: 0x0 */
+-	rk628_i2c_update_bits(GRF_SYSTEM_CON0,
++	rk628_i2c_update_bits(csi->rk628, GRF_SYSTEM_CON0,
+ 			SW_ADAPTER_I2CSLADR_MASK |
+ 			SW_EDID_MODE_MASK,
+ 			SW_ADAPTER_I2CSLADR(0) |
+ 			SW_EDID_MODE(1));
+ 
+ 	for (i = 0; i < edid_len; i++) {
+-		rk628_i2c_write(EDID_BASE + i * 4, edid->edid[i]);
++		rk628_i2c_write(csi->rk628, EDID_BASE + i * 4, edid->edid[i]);
+ 	}
+ 
+ 	/* read out for debug */
+ 	if (debug) {
+ 		printk("%s: Read EDID: ======\n", __func__);
+ 		for (i = 0; i < edid_len; i++) {
+-			rk628_i2c_read(EDID_BASE + i * 4, &val);
++			rk628_i2c_read(csi->rk628, EDID_BASE + i * 4, &val);
+ 			printk("0x%02x ", val);
+ 			if ((i + 1) % 8 == 0)
+ 				printk("\n");
+@@ -1430,7 +1431,7 @@ static int rk628_csi_s_edid(struct rk628_csi *csi,
+ 	}
+ 
+ 	/* edid access by RX's i2c, i2c slave addr: 0x0 */
+-	rk628_i2c_update_bits(GRF_SYSTEM_CON0,
++	rk628_i2c_update_bits(csi->rk628, GRF_SYSTEM_CON0,
+ 			SW_ADAPTER_I2CSLADR_MASK |
+ 			SW_EDID_MODE_MASK,
+ 			SW_ADAPTER_I2CSLADR(0) |
+@@ -1446,49 +1447,49 @@ static int rk628_csi_s_edid(struct rk628_csi *csi,
+ 
+ static inline void testif_testclk_assert(struct rk628_csi *csi)
+ {
+-	rk628_i2c_update_bits(GRF_MIPI_TX0_CON,
++	rk628_i2c_update_bits(csi->rk628, GRF_MIPI_TX0_CON,
+ 			   PHY_TESTCLK, PHY_TESTCLK);
+ 	udelay(1);
+ }
+ 
+ static inline void testif_testclk_deassert(struct rk628_csi *csi)
+ {
+-	rk628_i2c_update_bits(GRF_MIPI_TX0_CON,
++	rk628_i2c_update_bits(csi->rk628, GRF_MIPI_TX0_CON,
+ 			   PHY_TESTCLK, 0);
+ 	udelay(1);
+ }
+ 
+ static inline void testif_testclr_assert(struct rk628_csi *csi)
+ {
+-	rk628_i2c_update_bits(GRF_MIPI_TX0_CON,
++	rk628_i2c_update_bits(csi->rk628, GRF_MIPI_TX0_CON,
+ 			   PHY_TESTCLR, PHY_TESTCLR);
+ 	udelay(1);
+ }
+ 
+ static inline void testif_testclr_deassert(struct rk628_csi *csi)
+ {
+-	rk628_i2c_update_bits(GRF_MIPI_TX0_CON,
++	rk628_i2c_update_bits(csi->rk628, GRF_MIPI_TX0_CON,
+ 			   PHY_TESTCLR, 0);
+ 	udelay(1);
+ }
+ 
+ static inline void testif_testen_assert(struct rk628_csi *csi)
+ {
+-	rk628_i2c_update_bits(GRF_MIPI_TX0_CON,
++	rk628_i2c_update_bits(csi->rk628, GRF_MIPI_TX0_CON,
+ 			   PHY_TESTEN, PHY_TESTEN);
+ 	udelay(1);
+ }
+ 
+ static inline void testif_testen_deassert(struct rk628_csi *csi)
+ {
+-	rk628_i2c_update_bits(GRF_MIPI_TX0_CON,
++	rk628_i2c_update_bits(csi->rk628, GRF_MIPI_TX0_CON,
+ 			   PHY_TESTEN, 0);
+ 	udelay(1);
+ }
+ 
+ static inline void testif_set_data(struct rk628_csi *csi, u8 data)
+ {
+-	rk628_i2c_update_bits(GRF_MIPI_TX0_CON,
++	rk628_i2c_update_bits(csi->rk628, GRF_MIPI_TX0_CON,
+ 			   PHY_TESTDIN_MASK, PHY_TESTDIN(data));
+ 	udelay(1);
+ }
+@@ -1497,7 +1498,7 @@ static inline u8 testif_get_data(struct rk628_csi *csi)
+ {
+ 	u32 data = 0;
+ 
+-	rk628_i2c_read(GRF_DPHY0_STATUS, &data);
++	rk628_i2c_read(csi->rk628, GRF_DPHY0_STATUS, &data);
+ 
+ 	return data >> PHY_TESTDOUT_SHIFT;
+ }
+@@ -1546,39 +1547,39 @@ static inline u8 testif_read(struct rk628_csi *csi, u8 test_code)
+ 
+ static inline void mipi_dphy_enableclk_assert(struct rk628_csi *csi)
+ {
+-	rk628_i2c_update_bits(CSITX_DPHY_CTRL, DPHY_ENABLECLK,
++	rk628_i2c_update_bits(csi->rk628, CSITX_DPHY_CTRL, DPHY_ENABLECLK,
+ 			DPHY_ENABLECLK);
+ 	udelay(1);
+ }
+ 
+ static inline void mipi_dphy_enableclk_deassert(struct rk628_csi *csi)
+ {
+-	rk628_i2c_update_bits(CSITX_DPHY_CTRL, DPHY_ENABLECLK, 0);
++	rk628_i2c_update_bits(csi->rk628, CSITX_DPHY_CTRL, DPHY_ENABLECLK, 0);
+ 	udelay(1);
+ }
+ 
+ static inline void mipi_dphy_shutdownz_assert(struct rk628_csi *csi)
+ {
+-	rk628_i2c_update_bits(GRF_MIPI_TX0_CON, CSI_PHYSHUTDOWNZ, 0);
++	rk628_i2c_update_bits(csi->rk628, GRF_MIPI_TX0_CON, CSI_PHYSHUTDOWNZ, 0);
+ 	udelay(1);
+ }
+ 
+ static inline void mipi_dphy_shutdownz_deassert(struct rk628_csi *csi)
+ {
+-	rk628_i2c_update_bits(GRF_MIPI_TX0_CON, CSI_PHYSHUTDOWNZ,
++	rk628_i2c_update_bits(csi->rk628, GRF_MIPI_TX0_CON, CSI_PHYSHUTDOWNZ,
+ 			CSI_PHYSHUTDOWNZ);
+ 	udelay(1);
+ }
+ 
+ static inline void mipi_dphy_rstz_assert(struct rk628_csi *csi)
+ {
+-	rk628_i2c_update_bits(GRF_MIPI_TX0_CON, CSI_PHYRSTZ, 0);
++	rk628_i2c_update_bits(csi->rk628, GRF_MIPI_TX0_CON, CSI_PHYRSTZ, 0);
+ 	udelay(1);
+ }
+ 
+ static inline void mipi_dphy_rstz_deassert(struct rk628_csi *csi)
+ {
+-	rk628_i2c_update_bits(GRF_MIPI_TX0_CON, CSI_PHYRSTZ,
++	rk628_i2c_update_bits(csi->rk628, GRF_MIPI_TX0_CON, CSI_PHYRSTZ,
+ 			CSI_PHYRSTZ);
+ 	udelay(1);
+ }
+@@ -1624,7 +1625,7 @@ static int mipi_dphy_reset(struct rk628_csi *csi)
+ 	testif_testclr_assert(csi);
+ 
+ 	/* Set all REQUEST inputs to zero */
+-	rk628_i2c_update_bits(GRF_MIPI_TX0_CON,
++	rk628_i2c_update_bits(csi->rk628, GRF_MIPI_TX0_CON,
+ 		     FORCETXSTOPMODE_MASK | FORCERXMODE_MASK,
+ 		     FORCETXSTOPMODE(0) | FORCERXMODE(0));
+ 	udelay(1);
+@@ -1635,7 +1636,7 @@ static int mipi_dphy_reset(struct rk628_csi *csi)
+ 	usleep_range(1500, 2000);
+ 
+ 	mask = STOPSTATE_CLK | STOPSTATE_LANE0;
+-	rk628_i2c_read(CSITX_CSITX_STATUS1, &val);
++	rk628_i2c_read(csi->rk628, CSITX_CSITX_STATUS1, &val);
+ 	if ((val & mask) != mask) {
+ 		dev_err(csi->dev, "lane module is not in stop state\n");
+ 		return -1;
+@@ -1660,16 +1661,16 @@ static int mipi_dphy_power_on(struct rk628_csi *csi)
+ 	bus_width |= COMBTXPHY_MODULEA_EN;
+ 	dev_dbg(csi->dev, "%s mipi bitrate:%llu mbps\n", __func__,
+ 			csi->lane_mbps);
+-	rk628_combtxphy_set_bus_width(bus_width);
+-	rk628_combtxphy_set_mode(PHY_MODE_VIDEO_MIPI);
++	rk628_txphy_set_bus_width(csi->rk628, bus_width);
++	rk628_txphy_set_mode(csi->rk628, PHY_MODE_VIDEO_MIPI);
+ 
+ 	mipi_dphy_init_hsfreqrange(csi);
+ 	usleep_range(1500, 2000);
+-	rk628_combtxphy_power_on();
++	rk628_txphy_power_on(csi->rk628);
+ 
+ 	usleep_range(1500, 2000);
+ 	mask = DPHY_PLL_LOCK;
+-	rk628_i2c_read(CSITX_CSITX_STATUS1, &val);
++	rk628_i2c_read(csi->rk628, CSITX_CSITX_STATUS1, &val);
+ 	if ((val & mask) != mask) {
+ 		dev_err(csi->dev, "PHY is not locked\n");
+ 		return -1;
+@@ -1682,7 +1683,7 @@ static int mipi_dphy_power_on(struct rk628_csi *csi)
+ 
+ static void mipi_dphy_power_off(struct rk628_csi *csi)
+ {
+-	rk628_combtxphy_power_off();
++	rk628_txphy_power_off(csi->rk628);
+ }
+ 
+ static irqreturn_t plugin_detect_irq(int irq, void *dev_id)
+@@ -1798,6 +1799,7 @@ static int rk628_csi_probe(struct i2c_client *client,
+ 	struct device *dev = &client->dev;
+ 	int err;
+ 	u32 val;
++	struct rk628 *rk628;
+ 
+ 	dev_info(dev, "RK628 I2C driver version: %02x.%02x.%02x",
+ 		DRIVER_VERSION >> 16,
+@@ -1813,7 +1815,10 @@ static int rk628_csi_probe(struct i2c_client *client,
+ 
+ 	csi->dev = dev;
+ 	csi->i2c_client = client;
+-	rk628_i2c = client;
++	rk628 = rk628_i2c_register(client);
++	if (!rk628)
++		return -ENOMEM;
++	csi->rk628 = rk628;
+ 	csi->cur_mode = &supported_modes[0];
+ 	csi->hdmirx_irq = client->irq;
+ 
+@@ -1823,10 +1828,10 @@ static int rk628_csi_probe(struct i2c_client *client,
+ 		return err;
+ 	}
+ 
+-	rk628_cru_init();
++	rk628_cru_initialize(csi->rk628);
+ 
+ 	/* i2c access, read chip id*/
+-	err = rk628_i2c_read(CSITX_CSITX_VERSION, &val);
++	err = rk628_i2c_read(csi->rk628, CSITX_CSITX_VERSION, &val);
+ 	if (err) {
+ 		dev_err(csi->dev, "i2c access failed! err:%d\n", err);
+ 		return -ENODEV;
+@@ -1888,7 +1893,6 @@ static int rk628_csi_probe(struct i2c_client *client,
+ 
+ 	rk628_csi_enable_interrupts(csi, tx_5v_power_present(csi));
+ 
+-	rk628_register_debugfs(csi->dev);
+ 
+ 	dev_info(csi->dev, "%s found @ 0x%x (%s)\n", client->name,
+ 		  client->addr << 1, client->adapter->name);
+@@ -1919,7 +1923,7 @@ static int rk628_csi_remove(struct i2c_client *client)
+ 	cancel_delayed_work_sync(&csi->delayed_work_audio);
+ 
+ 	if (csi->rxphy_pwron)
+-		rk628_combrxphy_power_off();
++		rk628_rxphy_power_off(csi->rk628);
+ 	if (csi->txphy_pwron)
+ 		mipi_dphy_power_off(csi);
+ 
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index 99bb384d2b6094..41aeabe1dcb1c8 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -110,6 +110,7 @@ struct rk628_audiostate {
+ struct rk628_csi {
+ 	struct device *dev;
+ 	struct i2c_client *i2c_client;
++	struct rk628 *rk628;
+ 	struct media_pad pad;
+ 	struct v4l2_subdev sd;
+ 	struct v4l2_dv_timings timings;
+@@ -349,17 +350,18 @@ static int get_audio_sampling_rate(struct v4l2_subdev *sd)
+ static void rk628_hdmirx_ctrl_enable(struct v4l2_subdev *sd, int en)
+ {
+ 	u32 mask;
++	struct rk628_csi *csi = to_csi(sd);
+ 
+ 	if (en) {
+ 		/* don't enable audio until N CTS updated */
+ 		mask = HDMI_ENABLE_MASK;
+ 		v4l2_dbg(1, debug, sd, "%s: %#x %d\n", __func__, mask, en);
+-		rk628_i2c_update_bits(HDMI_RX_DMI_DISABLE_IF,
++		rk628_i2c_update_bits(csi->rk628, HDMI_RX_DMI_DISABLE_IF,
+ 				   mask, HDMI_ENABLE(1) | AUD_ENABLE(1));
+ 	} else {
+ 		mask = AUD_ENABLE_MASK | HDMI_ENABLE_MASK;
+ 		v4l2_dbg(1, debug, sd, "%s: %#x %d\n", __func__, mask, en);
+-		rk628_i2c_update_bits(HDMI_RX_DMI_DISABLE_IF,
++		rk628_i2c_update_bits(csi->rk628, HDMI_RX_DMI_DISABLE_IF,
+ 				   mask, HDMI_ENABLE(0) | AUD_ENABLE(0));
+ 	}
+ }
+@@ -378,27 +380,27 @@ static int rk628_csi_get_detected_timings(struct v4l2_subdev *sd,
+ 
+ 	memset(timings, 0, sizeof(struct v4l2_dv_timings));
+ 	timings->type = V4L2_DV_BT_656_1120;
+-	rk628_i2c_read(HDMI_RX_SCDC_REGS1, &val);
++	rk628_i2c_read(csi->rk628, HDMI_RX_SCDC_REGS1, &val);
+ 	status = val;
+ 
+-	rk628_i2c_read(HDMI_RX_MD_STS, &val);
++	rk628_i2c_read(csi->rk628, HDMI_RX_MD_STS, &val);
+ 	bt->interlaced = val & ILACE_STS ?
+ 		V4L2_DV_INTERLACED : V4L2_DV_PROGRESSIVE;
+ 
+-	rk628_i2c_read(HDMI_RX_MD_HACT_PX, &val);
++	rk628_i2c_read(csi->rk628, HDMI_RX_MD_HACT_PX, &val);
+ 	hact = val & 0xffff;
+-	rk628_i2c_read(HDMI_RX_MD_VAL, &val);
++	rk628_i2c_read(csi->rk628, HDMI_RX_MD_VAL, &val);
+ 	vact = val & 0xffff;
+-	rk628_i2c_read(HDMI_RX_MD_HT1, &val);
++	rk628_i2c_read(csi->rk628, HDMI_RX_MD_HT1, &val);
+ 	htotal = (val >> 16) & 0xffff;
+-	rk628_i2c_read(HDMI_RX_MD_VTL, &val);
++	rk628_i2c_read(csi->rk628, HDMI_RX_MD_VTL, &val);
+ 	vtotal = val & 0xffff;
+-	rk628_i2c_read(HDMI_RX_MD_HT1, &val);
++	rk628_i2c_read(csi->rk628, HDMI_RX_MD_HT1, &val);
+ 	hofs_pix = val & 0xffff;
+-	rk628_i2c_read(HDMI_RX_MD_VOL, &val);
++	rk628_i2c_read(csi->rk628, HDMI_RX_MD_VOL, &val);
+ 	vbp = (val & 0xffff) + 1;
+ 
+-	rk628_i2c_read(HDMI_RX_HDMI_CKM_RESULT, &val);
++	rk628_i2c_read(csi->rk628, HDMI_RX_HDMI_CKM_RESULT, &val);
+ 	tmdsclk_cnt = val & 0xffff;
+ 	tmp_data = tmdsclk_cnt;
+ 	tmp_data = ((tmp_data * MODETCLK_HZ) + MODETCLK_CNT_NUM / 2);
+@@ -411,12 +413,12 @@ static int rk628_csi_get_detected_timings(struct v4l2_subdev *sd,
+ 	}
+ 	fps = (tmds_clk + (htotal * vtotal) / 2) / (htotal * vtotal);
+ 
+-	rk628_i2c_read(HDMI_RX_MD_HT0, &val);
++	rk628_i2c_read(csi->rk628, HDMI_RX_MD_HT0, &val);
+ 	modetclk_cnt_hs = val & 0xffff;
+ 	hs = (tmdsclk_cnt * modetclk_cnt_hs + MODETCLK_CNT_NUM / 2) /
+ 		MODETCLK_CNT_NUM;
+ 
+-	rk628_i2c_read(HDMI_RX_MD_VSC, &val);
++	rk628_i2c_read(csi->rk628, HDMI_RX_MD_VSC, &val);
+ 	modetclk_cnt_vs = val & 0xffff;
+ 	vs = (tmdsclk_cnt * modetclk_cnt_vs + MODETCLK_CNT_NUM / 2) /
+ 		MODETCLK_CNT_NUM;
+@@ -498,7 +500,7 @@ static void rk628_csi_delayed_work_enable_hotplug(struct work_struct *work)
+ 		rk628_hdmirx_hpd_ctrl(sd, true);
+ 		rk628_hdmirx_config_all(sd);
+ 		rk628_csi_enable_interrupts(sd, true);
+-		rk628_i2c_update_bits(GRF_SYSTEM_CON0,
++		rk628_i2c_update_bits(csi->rk628, GRF_SYSTEM_CON0,
+ 				SW_I2S_DATA_OEN_MASK, SW_I2S_DATA_OEN(0));
+ 	} else {
+ 		rk628_csi_enable_interrupts(sd, false);
+@@ -520,9 +522,9 @@ static int rk628_check_resulotion_change(struct v4l2_subdev *sd)
+ 	u32 old_htotal, old_vtotal;
+ 	struct v4l2_bt_timings *bt = &csi->timings.bt;
+ 
+-	rk628_i2c_read(HDMI_RX_MD_HT1, &val);
++	rk628_i2c_read(csi->rk628, HDMI_RX_MD_HT1, &val);
+ 	htotal = (val >> 16) & 0xffff;
+-	rk628_i2c_read(HDMI_RX_MD_VTL, &val);
++	rk628_i2c_read(csi->rk628, HDMI_RX_MD_VTL, &val);
+ 	vtotal = val & 0xffff;
+ 
+ 	old_htotal = bt->hfrontporch + bt->hsync + bt->width + bt->hbackporch;
+@@ -559,7 +561,7 @@ static void rk628_delayed_work_res_change(struct work_struct *work)
+ 			rk628_hdmirx_hpd_ctrl(sd, true);
+ 			rk628_hdmirx_config_all(sd);
+ 			rk628_csi_enable_interrupts(sd, true);
+-			rk628_i2c_update_bits(GRF_SYSTEM_CON0,
++			rk628_i2c_update_bits(csi->rk628, GRF_SYSTEM_CON0,
+ 					      SW_I2S_DATA_OEN_MASK,
+ 					      SW_I2S_DATA_OEN(0));
+ 		} else {
+@@ -621,31 +623,31 @@ static int rk628_hdmi_hdcp_load_key(struct rk628_csi *csi)
+ 	}
+ 	hdcp_keys = hdcp->keys;
+ 
+-	rk628_i2c_update_bits(HDMI_RX_HDCP_CTRL,
++	rk628_i2c_update_bits(csi->rk628, HDMI_RX_HDCP_CTRL,
+ 			HDCP_ENABLE_MASK |
+ 			HDCP_ENC_EN_MASK,
+ 			HDCP_ENABLE(0) |
+ 			HDCP_ENC_EN(0));
+-	rk628_i2c_update_bits(GRF_SYSTEM_CON0,
++	rk628_i2c_update_bits(csi->rk628, GRF_SYSTEM_CON0,
+ 			SW_ADAPTER_I2CSLADR_MASK |
+ 			SW_EFUSE_HDCP_EN_MASK,
+ 			SW_ADAPTER_I2CSLADR(0) |
+ 			SW_EFUSE_HDCP_EN(1));
+ 	/* The useful data in ksv should be 5 byte */
+ 	for (i = 0; i < KSV_LEN; i++)
+-		rk628_i2c_write(HDCP_KEY_KSV0 + i * 4,
++		rk628_i2c_write(csi->rk628, HDCP_KEY_KSV0 + i * 4,
+ 					hdcp_keys->KSV[i]);
+ 
+ 	for (i = 0; i < HDCP_PRIVATE_KEY_SIZE; i++)
+-		rk628_i2c_write(HDCP_KEY_DPK0 + i * 4,
++		rk628_i2c_write(csi->rk628, HDCP_KEY_DPK0 + i * 4,
+ 				hdcp_keys->devicekey[i]);
+ 
+-	rk628_i2c_update_bits(GRF_SYSTEM_CON0,
++	rk628_i2c_update_bits(csi->rk628, GRF_SYSTEM_CON0,
+ 			SW_ADAPTER_I2CSLADR_MASK |
+ 			SW_EFUSE_HDCP_EN_MASK,
+ 			SW_ADAPTER_I2CSLADR(0) |
+ 			SW_EFUSE_HDCP_EN(0));
+-	rk628_i2c_update_bits(HDMI_RX_HDCP_CTRL,
++	rk628_i2c_update_bits(csi->rk628, HDMI_RX_HDCP_CTRL,
+ 			HDCP_ENABLE_MASK |
+ 			HDCP_ENC_EN_MASK,
+ 			HDCP_ENABLE(1) |
+@@ -657,12 +659,12 @@ static int rk628_hdmi_hdcp_load_key(struct rk628_csi *csi)
+ 		seeds |= (hdcp->seeds[1] & 0xff);
+ 	}
+ 	if (seeds) {
+-		rk628_i2c_update_bits(HDMI_RX_HDCP_CTRL,
++		rk628_i2c_update_bits(csi->rk628, HDMI_RX_HDCP_CTRL,
+ 				   KEY_DECRIPT_ENABLE_MASK,
+ 				   KEY_DECRIPT_ENABLE(1));
+-		rk628_i2c_write(HDMI_RX_HDCP_SEED, seeds);
++		rk628_i2c_write(csi->rk628, HDMI_RX_HDCP_SEED, seeds);
+ 	} else {
+-		rk628_i2c_update_bits(HDMI_RX_HDCP_CTRL,
++		rk628_i2c_update_bits(csi->rk628, HDMI_RX_HDCP_CTRL,
+ 				   KEY_DECRIPT_ENABLE_MASK,
+ 				   KEY_DECRIPT_ENABLE(0));
+ 	}
+@@ -679,7 +681,7 @@ static void rk628_csi_set_hdmi_hdcp(struct v4l2_subdev *sd, bool en)
+ 	if (en) {
+ 		rk628_hdmi_hdcp_load_key(csi);
+ 	} else {
+-		rk628_i2c_update_bits(HDMI_RX_HDCP_CTRL,
++		rk628_i2c_update_bits(csi->rk628, HDMI_RX_HDCP_CTRL,
+ 				HDCP_ENABLE_MASK |
+ 				HDCP_ENC_EN_MASK,
+ 				HDCP_ENABLE(0) |
+@@ -696,7 +698,7 @@ static void rk628_hdmirx_hpd_ctrl(struct v4l2_subdev *sd, bool en)
+ 			en ? "en" : "dis", csi->hpd_output_inverted);
+ 	en_level = csi->hpd_output_inverted ? 0 : 1;
+ 	set_level = en ? en_level : !en_level;
+-	rk628_i2c_update_bits(HDMI_RX_HDMI_SETUP_CTRL,
++	rk628_i2c_update_bits(csi->rk628, HDMI_RX_HDMI_SETUP_CTRL,
+ 			HOT_PLUG_DETECT_MASK, HOT_PLUG_DETECT(set_level));
+ }
+ 
+@@ -738,30 +740,33 @@ static int rk628_csi_update_controls(struct v4l2_subdev *sd)
+ 
+ static void rk62_csi_reset(struct v4l2_subdev *sd)
+ {
+-	rk628_i2c_write(CSITX_SYS_CTRL0_IMD, 0x1);
++	struct rk628_csi *csi = to_csi(sd);
++
++	rk628_i2c_write(csi->rk628, CSITX_SYS_CTRL0_IMD, 0x1);
+ 	usleep_range(1000, 1000);
+-	rk628_i2c_write(CSITX_SYS_CTRL0_IMD, 0x0);
++	rk628_i2c_write(csi->rk628, CSITX_SYS_CTRL0_IMD, 0x0);
+ }
+ 
+ static void enable_csitx(struct v4l2_subdev *sd)
+ {
+ 	u32 i, ret, val;
++	struct rk628_csi *csi = to_csi(sd);
+ 
+ 	for (i = 0; i < CSITX_ERR_RETRY_TIMES; i++) {
+ 		rk628_csi_set_csi(sd);
+-		rk628_i2c_update_bits(CSITX_CSITX_EN,
++		rk628_i2c_update_bits(csi->rk628, CSITX_CSITX_EN,
+ 					DPHY_EN_MASK |
+ 					CSITX_EN_MASK,
+ 					DPHY_EN(1) |
+ 					CSITX_EN(1));
+-		rk628_i2c_write(CSITX_CONFIG_DONE, CONFIG_DONE_IMD);
++		rk628_i2c_write(csi->rk628, CSITX_CONFIG_DONE, CONFIG_DONE_IMD);
+ 		msleep(40);
+-		rk628_i2c_write(CSITX_ERR_INTR_CLR_IMD, 0xffffffff);
+-		rk628_i2c_update_bits(CSITX_SYS_CTRL1,
++		rk628_i2c_write(csi->rk628, CSITX_ERR_INTR_CLR_IMD, 0xffffffff);
++		rk628_i2c_update_bits(csi->rk628, CSITX_SYS_CTRL1,
+ 				BYPASS_SELECT_MASK, BYPASS_SELECT(0));
+-		rk628_i2c_write(CSITX_CONFIG_DONE, CONFIG_DONE_IMD);
++		rk628_i2c_write(csi->rk628, CSITX_CONFIG_DONE, CONFIG_DONE_IMD);
+ 		msleep(40);
+-		ret = rk628_i2c_read(CSITX_ERR_INTR_RAW_STATUS_IMD, &val);
++		ret = rk628_i2c_read(csi->rk628, CSITX_ERR_INTR_RAW_STATUS_IMD, &val);
+ 		if (!ret && !val)
+ 			break;
+ 
+@@ -773,6 +778,7 @@ static void enable_csitx(struct v4l2_subdev *sd)
+ 
+ static void enable_stream(struct v4l2_subdev *sd, bool en)
+ {
++	struct rk628_csi *csi = to_csi(sd);
+ 
+ 	v4l2_dbg(1, debug, sd, "%s: %sable\n", __func__, en ? "en" : "dis");
+ 	if (en) {
+@@ -780,12 +786,12 @@ static void enable_stream(struct v4l2_subdev *sd, bool en)
+ 		enable_csitx(sd);
+ 	} else {
+ 		rk628_hdmirx_vid_enable(sd, false);
+-		rk628_i2c_update_bits(CSITX_CSITX_EN,
++		rk628_i2c_update_bits(csi->rk628, CSITX_CSITX_EN,
+ 					DPHY_EN_MASK |
+ 					CSITX_EN_MASK,
+ 					DPHY_EN(0) |
+ 					CSITX_EN(0));
+-		rk628_i2c_write(CSITX_CONFIG_DONE, CONFIG_DONE_IMD);
++		rk628_i2c_write(csi->rk628, CSITX_CONFIG_DONE, CONFIG_DONE_IMD);
+ 	}
+ }
+ 
+@@ -839,6 +845,7 @@ static void rk628_post_process_scaler_init(struct v4l2_subdev *sd,
+ 					   const struct videomode *src,
+ 					   const struct videomode *dst)
+ {
++	struct rk628_csi *csi = to_csi(sd);
+ 	u32 dsp_frame_hst, dsp_frame_vst;
+ 	u32 scl_hor_mode, scl_ver_mode;
+ 	u32 scl_v_factor, scl_h_factor;
+@@ -923,29 +930,29 @@ static void rk628_post_process_scaler_init(struct v4l2_subdev *sd,
+ 		v4l2_dbg(1, debug, sd, "vertical scale up\n");
+ 	}
+ 
+-	rk628_i2c_update_bits(GRF_RGB_DEC_CON0,
++	rk628_i2c_update_bits(csi->rk628, GRF_RGB_DEC_CON0,
+ 			SW_HRES_MASK, SW_HRES(src->hactive));
+-	rk628_i2c_write(GRF_SCALER_CON0,
++	rk628_i2c_write(csi->rk628, GRF_SCALER_CON0,
+ 		     SCL_VER_DOWN_MODE(ver_down_mode) |
+ 		     SCL_HOR_DOWN_MODE(hor_down_mode) |
+ 		     SCL_VER_MODE(scl_ver_mode) | SCL_HOR_MODE(scl_hor_mode) |
+ 		     SCL_EN(1));
+-	rk628_i2c_write(GRF_SCALER_CON1,
++	rk628_i2c_write(csi->rk628, GRF_SCALER_CON1,
+ 		     SCL_V_FACTOR(scl_v_factor) | SCL_H_FACTOR(scl_h_factor));
+-	rk628_i2c_write(GRF_SCALER_CON2,
++	rk628_i2c_write(csi->rk628, GRF_SCALER_CON2,
+ 		     DSP_FRAME_VST(dsp_frame_vst) |
+ 		     DSP_FRAME_HST(dsp_frame_hst));
+-	rk628_i2c_write(GRF_SCALER_CON3,
++	rk628_i2c_write(csi->rk628, GRF_SCALER_CON3,
+ 		     DSP_HS_END(dsp_hs_end) | DSP_HTOTAL(dsp_htotal));
+-	rk628_i2c_write(GRF_SCALER_CON4,
++	rk628_i2c_write(csi->rk628, GRF_SCALER_CON4,
+ 		     DSP_HACT_END(dsp_hact_end) | DSP_HACT_ST(dsp_hact_st));
+-	rk628_i2c_write(GRF_SCALER_CON5,
++	rk628_i2c_write(csi->rk628, GRF_SCALER_CON5,
+ 		     DSP_VS_END(dsp_vs_end) | DSP_VTOTAL(dsp_vtotal));
+-	rk628_i2c_write(GRF_SCALER_CON6,
++	rk628_i2c_write(csi->rk628, GRF_SCALER_CON6,
+ 		     DSP_VACT_END(dsp_vact_end) | DSP_VACT_ST(dsp_vact_st));
+-	rk628_i2c_write(GRF_SCALER_CON7,
++	rk628_i2c_write(csi->rk628, GRF_SCALER_CON7,
+ 		     DSP_HBOR_END(dsp_hbor_end) | DSP_HBOR_ST(dsp_hbor_st));
+-	rk628_i2c_write(GRF_SCALER_CON8,
++	rk628_i2c_write(csi->rk628, GRF_SCALER_CON8,
+ 		     DSP_VBOR_END(dsp_vbor_end) | DSP_VBOR_ST(dsp_vbor_st));
+ }
+ 
+@@ -978,8 +985,8 @@ static void rk628_post_process_setup(struct v4l2_subdev *sd)
+ 	/* do not scale now */
+ 	dst = src;
+ 
+-	rk628_cru_clk_set_rate(CGU_CLK_RX_READ, src.pixelclock);
+-	rk628_cru_clk_set_rate(CGU_SCLK_VOP, src.pixelclock);
++	rk628_clk_set_rate(csi->rk628, CGU_CLK_RX_READ, src.pixelclock);
++	rk628_clk_set_rate(csi->rk628, CGU_SCLK_VOP, src.pixelclock);
+ 
+ 	rk628_post_process_scaler_init(sd, &src, &dst);
+ }
+@@ -1014,7 +1021,7 @@ static void rk628_csi_set_csi(struct v4l2_subdev *sd)
+ 	v4l2_dbg(2, debug, sd, "%s: txphy power on!\n", __func__);
+ 	usleep_range(1000, 1500);
+ 
+-	rk628_i2c_update_bits(CSITX_CSITX_EN,
++	rk628_i2c_update_bits(csi->rk628, CSITX_CSITX_EN,
+ 			VOP_UV_SWAP_MASK |
+ 			VOP_YUV422_EN_MASK |
+ 			VOP_P2_EN_MASK |
+@@ -1027,12 +1034,12 @@ static void rk628_csi_set_csi(struct v4l2_subdev *sd)
+ 			LANE_NUM(lane_num) |
+ 			DPHY_EN(0) |
+ 			CSITX_EN(0));
+-	rk628_i2c_update_bits(CSITX_SYS_CTRL1,
++	rk628_i2c_update_bits(csi->rk628, CSITX_SYS_CTRL1,
+ 			BYPASS_SELECT_MASK,
+ 			BYPASS_SELECT(1));
+-	rk628_i2c_write(CSITX_CONFIG_DONE, CONFIG_DONE_IMD);
+-	rk628_i2c_write(CSITX_SYS_CTRL2, VOP_WHOLE_FRM_EN | VSYNC_ENABLE);
+-	rk628_i2c_update_bits(CSITX_SYS_CTRL3_IMD,
++	rk628_i2c_write(csi->rk628, CSITX_CONFIG_DONE, CONFIG_DONE_IMD);
++	rk628_i2c_write(csi->rk628, CSITX_SYS_CTRL2, VOP_WHOLE_FRM_EN | VSYNC_ENABLE);
++	rk628_i2c_update_bits(csi->rk628, CSITX_SYS_CTRL3_IMD,
+ 			CONT_MODE_CLK_CLR_MASK |
+ 			CONT_MODE_CLK_SET_MASK |
+ 			NON_CONTINOUS_MODE_MASK,
+@@ -1040,33 +1047,33 @@ static void rk628_csi_set_csi(struct v4l2_subdev *sd)
+ 			CONT_MODE_CLK_SET(0) |
+ 			NON_CONTINOUS_MODE(1));
+ 
+-	rk628_i2c_write(CSITX_VOP_PATH_CTRL,
++	rk628_i2c_write(csi->rk628, CSITX_VOP_PATH_CTRL,
+ 			VOP_WC_USERDEFINE(wc_usrdef) |
+ 			VOP_DT_USERDEFINE(YUV422_8BIT) |
+ 			VOP_PIXEL_FORMAT(0) |
+ 			VOP_WC_USERDEFINE_EN(1) |
+ 			VOP_DT_USERDEFINE_EN(1) |
+ 			VOP_PATH_EN(1));
+-	rk628_i2c_update_bits(CSITX_DPHY_CTRL,
++	rk628_i2c_update_bits(csi->rk628, CSITX_DPHY_CTRL,
+ 				CSI_DPHY_EN_MASK,
+ 				CSI_DPHY_EN(dphy_lane_en));
+-	rk628_i2c_write(CSITX_CONFIG_DONE, CONFIG_DONE_IMD);
++	rk628_i2c_write(csi->rk628, CSITX_CONFIG_DONE, CONFIG_DONE_IMD);
+ 	v4l2_dbg(1, debug, sd, "%s csi cofig done\n", __func__);
+ 
+ 	mutex_lock(&csi->confctl_mutex);
+-	rk628_i2c_read(HDMI_RX_HDCP_CTRL, &val);
++	rk628_i2c_read(csi->rk628, HDMI_RX_HDCP_CTRL, &val);
+ 	if ((val & HDCP_ENABLE_MASK))
+ 		max_cnt = 5;
+ 
+ 	for (i = 0; i < 100; i++) {
+-		rk628_i2c_read(HDMI_RX_PDEC_AVI_PB, &val);
++		rk628_i2c_read(csi->rk628, HDMI_RX_PDEC_AVI_PB, &val);
+ 		v4l2_dbg(2, debug, sd, "%s PDEC_AVI_PB:%#x, avi_rcv_rdy:%d\n",
+ 			 __func__, val, csi->avi_rcv_rdy);
+ 		if (i > 30 && !(hdcp_ctrl_val & 0x400)) {
+-			rk628_i2c_read(HDMI_RX_HDCP_CTRL, &hdcp_ctrl_val);
++			rk628_i2c_read(csi->rk628, HDMI_RX_HDCP_CTRL, &hdcp_ctrl_val);
+ 			/* force hdcp avmute */
+ 			hdcp_ctrl_val |= 0x400;
+-			rk628_i2c_write(HDMI_RX_HDCP_CTRL, hdcp_ctrl_val);
++			rk628_i2c_write(csi->rk628, HDMI_RX_HDCP_CTRL, hdcp_ctrl_val);
+ 		}
+ 
+ 		if (val && val == avi_pb && csi->avi_rcv_rdy) {
+@@ -1085,12 +1092,12 @@ static void rk628_csi_set_csi(struct v4l2_subdev *sd)
+ 			__func__, val, video_fmt);
+ 	if (video_fmt) {
+ 		/* yuv data: cfg SW_YUV2VYU_SWP */
+-		rk628_i2c_write(GRF_CSC_CTRL_CON,
++		rk628_i2c_write(csi->rk628, GRF_CSC_CTRL_CON,
+ 				SW_YUV2VYU_SWP(1) |
+ 				SW_R2Y_EN(0));
+ 	} else {
+ 		/* rgb data: cfg SW_R2Y_EN */
+-		rk628_i2c_write(GRF_CSC_CTRL_CON,
++		rk628_i2c_write(csi->rk628, GRF_CSC_CTRL_CON,
+ 				SW_YUV2VYU_SWP(0) |
+ 				SW_R2Y_EN(1));
+ 	}
+@@ -1117,7 +1124,7 @@ static int rk628_hdmirx_phy_power_on(struct v4l2_subdev *sd)
+ 
+ 	if (csi->rxphy_pwron) {
+ 		v4l2_dbg(1, debug, sd, "rxphy already power on, power off!\n");
+-		ret = rk628_combrxphy_power_off();
++		ret = rk628_rxphy_power_off(csi->rk628);
+ 		if (ret)
+ 			v4l2_err(sd, "hdmi rxphy power off failed!\n");
+ 		else
+@@ -1127,7 +1134,7 @@ static int rk628_hdmirx_phy_power_on(struct v4l2_subdev *sd)
+ 	usleep_range(100, 100);
+ 	if (csi->rxphy_pwron == false) {
+ 		rk628_hdmirx_ctrl_enable(sd, 0);
+-		ret = rk628_combrxphy_power_on(f);
++		ret = rk628_rxphy_power_on(csi->rk628, f);
+ 		if (ret) {
+ 			csi->rxphy_pwron = false;
+ 			v4l2_err(sd, "hdmi rxphy power on failed\n");
+@@ -1143,23 +1150,27 @@ static int rk628_hdmirx_phy_power_on(struct v4l2_subdev *sd)
+ 
+ static void rk628_hdmirx_vid_enable(struct v4l2_subdev *sd, bool en)
+ {
++	struct rk628_csi *csi = to_csi(sd);
++
+ 	v4l2_dbg(1, debug, sd, "%s: %sable\n", __func__, en ? "en" : "dis");
+ 	if (en) {
+-		rk628_i2c_update_bits(HDMI_RX_DMI_DISABLE_IF,
++		rk628_i2c_update_bits(csi->rk628, HDMI_RX_DMI_DISABLE_IF,
+ 				VID_ENABLE_MASK, VID_ENABLE(1));
+ 	} else {
+-		rk628_i2c_update_bits(HDMI_RX_DMI_DISABLE_IF,
++		rk628_i2c_update_bits(csi->rk628, HDMI_RX_DMI_DISABLE_IF,
+ 				VID_ENABLE_MASK, VID_ENABLE(0));
+ 	}
+ }
+ 
+ static void rk628_hdmirx_controller_reset(struct v4l2_subdev *sd)
+ {
++	struct rk628_csi *csi = to_csi(sd);
++
+ 	v4l2_dbg(1, debug, sd, "%s reset hdmirx_controller\n", __func__);
+-	rk628_i2c_write(HDMI_RX_DMI_SW_RST, 0x000101ff);
+-	rk628_i2c_write(HDMI_RX_DMI_DISABLE_IF, 0x00000000);
+-	rk628_i2c_write(HDMI_RX_DMI_DISABLE_IF, 0x0000017f);
+-	rk628_i2c_write(HDMI_RX_DMI_DISABLE_IF, 0x0001017f);
++	rk628_i2c_write(csi->rk628, HDMI_RX_DMI_SW_RST, 0x000101ff);
++	rk628_i2c_write(csi->rk628, HDMI_RX_DMI_DISABLE_IF, 0x00000000);
++	rk628_i2c_write(csi->rk628, HDMI_RX_DMI_DISABLE_IF, 0x0000017f);
++	rk628_i2c_write(csi->rk628, HDMI_RX_DMI_DISABLE_IF, 0x0001017f);
+ }
+ 
+ static void rk628_hdmirx_audio_fifo_init(struct v4l2_subdev *sd)
+@@ -1167,9 +1178,9 @@ static void rk628_hdmirx_audio_fifo_init(struct v4l2_subdev *sd)
+ 	struct rk628_csi *csi = to_csi(sd);
+ 
+ 	v4l2_dbg(1, debug, sd, "%s\n", __func__);
+-	rk628_i2c_write(HDMI_RX_AUD_FIFO_ICLR, 0x1f);
+-	rk628_i2c_write(HDMI_RX_AUD_FIFO_CTRL, 0x10001);
+-	rk628_i2c_write(HDMI_RX_AUD_FIFO_CTRL, 0x10000);
++	rk628_i2c_write(csi->rk628, HDMI_RX_AUD_FIFO_ICLR, 0x1f);
++	rk628_i2c_write(csi->rk628, HDMI_RX_AUD_FIFO_CTRL, 0x10001);
++	rk628_i2c_write(csi->rk628, HDMI_RX_AUD_FIFO_CTRL, 0x10000);
+ 	csi->audio_state.pre_state = csi->audio_state.init_state = INIT_FIFO_STATE*4;
+ }
+ 
+@@ -1178,32 +1189,33 @@ static void rk628_hdmirx_audio_fifo_initd(struct v4l2_subdev *sd)
+ 	struct rk628_csi *csi = to_csi(sd);
+ 
+ 	v4l2_dbg(1, debug, sd, "%s\n", __func__);
+-	rk628_i2c_write(HDMI_RX_AUD_FIFO_ICLR, 0x1f);
+-	rk628_i2c_update_bits(HDMI_RX_AUD_FIFO_TH,
++	rk628_i2c_write(csi->rk628, HDMI_RX_AUD_FIFO_ICLR, 0x1f);
++	rk628_i2c_update_bits(csi->rk628, HDMI_RX_AUD_FIFO_TH,
+ 			   AFIF_TH_START_MASK,
+ 			   AFIF_TH_START(192));
+-	rk628_i2c_write(HDMI_RX_AUD_FIFO_CTRL, 0x10001);
+-	rk628_i2c_write(HDMI_RX_AUD_FIFO_CTRL, 0x10000);
+-	rk628_i2c_write(HDMI_RX_AUD_FIFO_CTRL, 0x10001);
+-	rk628_i2c_write(HDMI_RX_AUD_FIFO_CTRL, 0x10000);
+-	rk628_i2c_update_bits(HDMI_RX_AUD_FIFO_TH,
++	rk628_i2c_write(csi->rk628, HDMI_RX_AUD_FIFO_CTRL, 0x10001);
++	rk628_i2c_write(csi->rk628, HDMI_RX_AUD_FIFO_CTRL, 0x10000);
++	rk628_i2c_write(csi->rk628, HDMI_RX_AUD_FIFO_CTRL, 0x10001);
++	rk628_i2c_write(csi->rk628, HDMI_RX_AUD_FIFO_CTRL, 0x10000);
++	rk628_i2c_update_bits(csi->rk628, HDMI_RX_AUD_FIFO_TH,
+ 			   AFIF_TH_START_MASK,
+ 			   AFIF_TH_START(INIT_FIFO_STATE));
+ 	csi->audio_state.pre_state = csi->audio_state.init_state = INIT_FIFO_STATE*4;
+ }
+ 
+-static uint32_t rk628_hdmirx_audio_fs(struct v4l2_subdev *sd)
++static u32 rk628_hdmirx_audio_fs(struct v4l2_subdev *sd)
+ {
+ 	u64 tmdsclk = 0;
+ 	u32 clkrate = 0, cts_decoded = 0, n_decoded = 0, fs_audio = 0;
++	struct rk628_csi *csi = to_csi(sd);
+ 
+ 	/* fout=128*fs=ftmds*N/CTS */
+-	rk628_i2c_read(HDMI_RX_HDMI_CKM_RESULT, &clkrate);
++	rk628_i2c_read(csi->rk628, HDMI_RX_HDMI_CKM_RESULT, &clkrate);
+ 	clkrate = clkrate & 0xffff;
+ 	/* tmdsclk = (clkrate/1000) * 49500000 */
+ 	tmdsclk = clkrate * (49500000 / 1000);
+-	rk628_i2c_read(HDMI_RX_PDEC_ACR_CTS, &cts_decoded);
+-	rk628_i2c_read(HDMI_RX_PDEC_ACR_N, &n_decoded);
++	rk628_i2c_read(csi->rk628, HDMI_RX_PDEC_ACR_CTS, &cts_decoded);
++	rk628_i2c_read(csi->rk628, HDMI_RX_PDEC_ACR_N, &n_decoded);
+ 	if (cts_decoded != 0) {
+ 		fs_audio = div_u64((tmdsclk * n_decoded), cts_decoded);
+ 		fs_audio /= 128;
+@@ -1224,7 +1236,7 @@ static void rk628_hdmirx_audio_clk_set_rate(struct v4l2_subdev *sd, u32 rate)
+ 
+ 	v4l2_dbg(2, debug, sd, "%s: %u to %u\n",
+ 		 __func__, csi->audio_state.hdmirx_aud_clkrate, rate);
+-	rk628_cru_clk_set_rate(CGU_CLK_HDMIRX_AUD, rate);
++	rk628_clk_set_rate(csi->rk628, CGU_CLK_HDMIRX_AUD, rate);
+ 	csi->audio_state.hdmirx_aud_clkrate = rate;
+ }
+ 
+@@ -1255,17 +1267,17 @@ static void rk628_hdmirx_audio_setup(struct v4l2_subdev *sd)
+ 
+ 	rk628_hdmirx_audio_clk_set_rate(sd, 5644800);
+ 	/* manual aud CTS */
+-	rk628_i2c_write(HDMI_RX_AUDPLL_GEN_CTS, audio_pll_cts);
++	rk628_i2c_write(csi->rk628, HDMI_RX_AUDPLL_GEN_CTS, audio_pll_cts);
+ 	/* manual aud N */
+-	rk628_i2c_write(HDMI_RX_AUDPLL_GEN_N, audio_pll_n);
++	rk628_i2c_write(csi->rk628, HDMI_RX_AUDPLL_GEN_N, audio_pll_n);
+ 
+ 	/* aud CTS N en manual */
+-	rk628_i2c_update_bits(HDMI_RX_AUD_CLK_CTRL,
++	rk628_i2c_update_bits(csi->rk628, HDMI_RX_AUD_CLK_CTRL,
+ 			CTS_N_REF_MASK, CTS_N_REF(1));
+ 	/* aud pll ctrl */
+-	rk628_i2c_update_bits(HDMI_RX_AUD_PLL_CTRL,
++	rk628_i2c_update_bits(csi->rk628, HDMI_RX_AUD_PLL_CTRL,
+ 			PLL_LOCK_TOGGLE_DIV_MASK, PLL_LOCK_TOGGLE_DIV(0));
+-	rk628_i2c_update_bits(HDMI_RX_AUD_FIFO_TH,
++	rk628_i2c_update_bits(csi->rk628, HDMI_RX_AUD_FIFO_TH,
+ 		AFIF_TH_START_MASK |
+ 		AFIF_TH_MAX_MASK |
+ 		AFIF_TH_MIN_MASK,
+@@ -1274,15 +1286,15 @@ static void rk628_hdmirx_audio_setup(struct v4l2_subdev *sd)
+ 		AFIF_TH_MIN(8));
+ 
+ 	/* AUTO_VMUTE */
+-	rk628_i2c_update_bits(HDMI_RX_AUD_FIFO_CTRL,
++	rk628_i2c_update_bits(csi->rk628, HDMI_RX_AUD_FIFO_CTRL,
+ 			AFIF_SUBPACKET_DESEL_MASK |
+ 			AFIF_SUBPACKETS_MASK,
+ 			AFIF_SUBPACKET_DESEL(0) |
+ 			AFIF_SUBPACKETS(1));
+-	rk628_i2c_write(HDMI_RX_AUD_SAO_CTRL,
++	rk628_i2c_write(csi->rk628, HDMI_RX_AUD_SAO_CTRL,
+ 			I2S_LPCM_BPCUV(0) |
+ 			I2S_32_16(1));
+-	rk628_i2c_write(HDMI_RX_AUD_MUTE_CTRL,
++	rk628_i2c_write(csi->rk628, HDMI_RX_AUD_MUTE_CTRL,
+ 			APPLY_INT_MUTE(0)	|
+ 			APORT_SHDW_CTRL(3)	|
+ 			AUTO_ACLK_MUTE(2)	|
+@@ -1291,13 +1303,13 @@ static void rk628_hdmirx_audio_setup(struct v4l2_subdev *sd)
+ 			AUD_MUTE_SEL(0)		|
+ 			AUD_MUTE_MODE(1));
+ 
+-	rk628_i2c_write(HDMI_RX_AUD_PAO_CTRL,
++	rk628_i2c_write(csi->rk628, HDMI_RX_AUD_PAO_CTRL,
+ 			PAO_RATE(0));
+-	rk628_i2c_write(HDMI_RX_AUD_CHEXTR_CTRL,
++	rk628_i2c_write(csi->rk628, HDMI_RX_AUD_CHEXTR_CTRL,
+ 			AUD_LAYOUT_CTRL(1));
+-	rk628_i2c_write(HDMI_RX_PDEC_IEN_SET, ACR_N_CHG_ICLR | ACR_CTS_CHG_ICLR);
++	rk628_i2c_write(csi->rk628, HDMI_RX_PDEC_IEN_SET, ACR_N_CHG_ICLR | ACR_CTS_CHG_ICLR);
+ 	/* audio detect */
+-	rk628_i2c_write(HDMI_RX_PDEC_AUDIODET_CTRL,
++	rk628_i2c_write(csi->rk628, HDMI_RX_PDEC_AUDIODET_CTRL,
+ 			AUDIODET_THRESHOLD(0));
+ }
+ 
+@@ -1325,7 +1337,7 @@ static void rk628_csi_delayed_work_audio(struct work_struct *work)
+ 			 __func__, audio_state->fs_audio, fs_audio);
+ 		audio_state->fs_audio = fs_audio;
+ 	}
+-	rk628_i2c_read(HDMI_RX_AUD_FIFO_FILLSTS1, &cur_state);
++	rk628_i2c_read(csi->rk628, HDMI_RX_AUD_FIFO_FILLSTS1, &cur_state);
+ 	v4l2_dbg(2, debug, sd, "%s: HDMI_RX_AUD_FIFO_FILLSTS1:%#x, single offset:%d, total offset:%d\n",
+ 		 __func__, cur_state, cur_state - pre_state, cur_state - init_state);
+ 	if (cur_state != 0)
+@@ -1361,14 +1373,14 @@ static void rk628_csi_delayed_work_audio_rate_change(struct work_struct *work)
+ 			rk628_hdmirx_audio_clk_set_rate(sd, hdmirx_aud_clkrate);
+ 			csi->audio_state.fs_audio = fs_audio;
+ 		}
+-		rk628_i2c_read(HDMI_RX_AUD_FIFO_ISTS, &fifo_ints);
++		rk628_i2c_read(csi->rk628, HDMI_RX_AUD_FIFO_ISTS, &fifo_ints);
+ 		if ((fifo_ints & 0x18) == 0x18)
+ 			rk628_hdmirx_audio_fifo_initd(sd);
+ 		else if (fifo_ints & 0x18)
+ 			rk628_hdmirx_audio_fifo_init(sd);
+-		rk628_i2c_update_bits(HDMI_RX_DMI_DISABLE_IF,
++		rk628_i2c_update_bits(csi->rk628, HDMI_RX_DMI_DISABLE_IF,
+ 				   AUD_ENABLE_MASK, AUD_ENABLE(1));
+-		rk628_i2c_write(HDMI_RX_AUD_FIFO_IEN_SET, AFIF_OVERFL_ISTS);
++		rk628_i2c_write(csi->rk628, HDMI_RX_AUD_FIFO_IEN_SET, AFIF_OVERFL_ISTS);
+ 		schedule_delayed_work(&csi->delayed_work_audio, msecs_to_jiffies(1000));
+ 	}
+ 	if (csi->audio_state.fifo_flag) {
+@@ -1381,30 +1393,32 @@ static void rk628_csi_delayed_work_audio_rate_change(struct work_struct *work)
+ 
+ static void rk628_hdmirx_controller_setup(struct v4l2_subdev *sd)
+ {
+-	rk628_i2c_write(HDMI_RX_HDMI20_CONTROL, 0x10001f10);
+-	rk628_i2c_write(HDMI_RX_HDMI_MODE_RECOVER, 0x000000e1);
+-	rk628_i2c_write(HDMI_RX_PDEC_CTRL, 0xbfff8011);
+-	rk628_i2c_write(HDMI_RX_PDEC_ASP_CTRL, 0x00000040);
+-	rk628_i2c_write(HDMI_RX_HDMI_RESMPL_CTRL, 0x00000001);
+-	rk628_i2c_write(HDMI_RX_HDMI_SYNC_CTRL, 0x00000014);
+-	rk628_i2c_write(HDMI_RX_PDEC_ERR_FILTER, 0x00000008);
+-	rk628_i2c_write(HDMI_RX_SCDC_I2CCONFIG, 0x01000000);
+-	rk628_i2c_write(HDMI_RX_SCDC_CONFIG, 0x00000001);
+-	rk628_i2c_write(HDMI_RX_SCDC_WRDATA0, 0xabcdef01);
+-	rk628_i2c_write(HDMI_RX_CHLOCK_CONFIG, 0x0030c15c);
+-	rk628_i2c_write(HDMI_RX_HDMI_ERROR_PROTECT, 0x000d0c98);
+-	rk628_i2c_write(HDMI_RX_MD_HCTRL1, 0x00000010);
+-	rk628_i2c_write(HDMI_RX_MD_HCTRL2, 0x00001738);
+-	rk628_i2c_write(HDMI_RX_MD_VCTRL, 0x00000002);
+-	rk628_i2c_write(HDMI_RX_MD_VTH, 0x0000073a);
+-	rk628_i2c_write(HDMI_RX_MD_IL_POL, 0x00000004);
+-	rk628_i2c_write(HDMI_RX_PDEC_ACRM_CTRL, 0x00000000);
+-	rk628_i2c_write(HDMI_RX_HDMI_DCM_CTRL, 0x00040414);
+-	rk628_i2c_write(HDMI_RX_HDMI_CKM_EVLTM, 0x00103e70);
+-	rk628_i2c_write(HDMI_RX_HDMI_CKM_F, 0x0c1c0b54);
+-	rk628_i2c_write(HDMI_RX_HDMI_RESMPL_CTRL, 0x00000001);
+-
+-	rk628_i2c_update_bits(HDMI_RX_HDCP_SETTINGS,
++	struct rk628_csi *csi = to_csi(sd);
++
++	rk628_i2c_write(csi->rk628, HDMI_RX_HDMI20_CONTROL, 0x10001f10);
++	rk628_i2c_write(csi->rk628, HDMI_RX_HDMI_MODE_RECOVER, 0x000000e1);
++	rk628_i2c_write(csi->rk628, HDMI_RX_PDEC_CTRL, 0xbfff8011);
++	rk628_i2c_write(csi->rk628, HDMI_RX_PDEC_ASP_CTRL, 0x00000040);
++	rk628_i2c_write(csi->rk628, HDMI_RX_HDMI_RESMPL_CTRL, 0x00000001);
++	rk628_i2c_write(csi->rk628, HDMI_RX_HDMI_SYNC_CTRL, 0x00000014);
++	rk628_i2c_write(csi->rk628, HDMI_RX_PDEC_ERR_FILTER, 0x00000008);
++	rk628_i2c_write(csi->rk628, HDMI_RX_SCDC_I2CCONFIG, 0x01000000);
++	rk628_i2c_write(csi->rk628, HDMI_RX_SCDC_CONFIG, 0x00000001);
++	rk628_i2c_write(csi->rk628, HDMI_RX_SCDC_WRDATA0, 0xabcdef01);
++	rk628_i2c_write(csi->rk628, HDMI_RX_CHLOCK_CONFIG, 0x0030c15c);
++	rk628_i2c_write(csi->rk628, HDMI_RX_HDMI_ERROR_PROTECT, 0x000d0c98);
++	rk628_i2c_write(csi->rk628, HDMI_RX_MD_HCTRL1, 0x00000010);
++	rk628_i2c_write(csi->rk628, HDMI_RX_MD_HCTRL2, 0x00001738);
++	rk628_i2c_write(csi->rk628, HDMI_RX_MD_VCTRL, 0x00000002);
++	rk628_i2c_write(csi->rk628, HDMI_RX_MD_VTH, 0x0000073a);
++	rk628_i2c_write(csi->rk628, HDMI_RX_MD_IL_POL, 0x00000004);
++	rk628_i2c_write(csi->rk628, HDMI_RX_PDEC_ACRM_CTRL, 0x00000000);
++	rk628_i2c_write(csi->rk628, HDMI_RX_HDMI_DCM_CTRL, 0x00040414);
++	rk628_i2c_write(csi->rk628, HDMI_RX_HDMI_CKM_EVLTM, 0x00103e70);
++	rk628_i2c_write(csi->rk628, HDMI_RX_HDMI_CKM_F, 0x0c1c0b54);
++	rk628_i2c_write(csi->rk628, HDMI_RX_HDMI_RESMPL_CTRL, 0x00000001);
++
++	rk628_i2c_update_bits(csi->rk628, HDMI_RX_HDCP_SETTINGS,
+ 			   HDMI_RESERVED_MASK |
+ 			   FAST_I2C_MASK |
+ 			   ONE_DOT_ONE_MASK |
+@@ -1439,6 +1453,7 @@ static int rk628_hdmirx_phy_setup(struct v4l2_subdev *sd)
+ {
+ 	u32 i, cnt, val;
+ 	u32 width, height, frame_width, frame_height, status;
++	struct rk628_csi *csi = to_csi(sd);
+ 
+ 	for ( i = 0; i < RXPHY_CFG_MAX_TIMES; i++) {
+ 		rk628_hdmirx_phy_power_on(sd);
+@@ -1446,15 +1461,15 @@ static int rk628_hdmirx_phy_setup(struct v4l2_subdev *sd)
+ 
+ 		do {
+ 			cnt++;
+-			rk628_i2c_read(HDMI_RX_MD_HACT_PX, &val);
++			rk628_i2c_read(csi->rk628, HDMI_RX_MD_HACT_PX, &val);
+ 			width = val & 0xffff;
+-			rk628_i2c_read(HDMI_RX_MD_VAL, &val);
++			rk628_i2c_read(csi->rk628, HDMI_RX_MD_VAL, &val);
+ 			height = val & 0xffff;
+-			rk628_i2c_read(HDMI_RX_MD_HT1, &val);
++			rk628_i2c_read(csi->rk628, HDMI_RX_MD_HT1, &val);
+ 			frame_width = (val >> 16) & 0xffff;
+-			rk628_i2c_read(HDMI_RX_MD_VTL, &val);
++			rk628_i2c_read(csi->rk628, HDMI_RX_MD_VTL, &val);
+ 			frame_height = val & 0xffff;
+-			rk628_i2c_read(HDMI_RX_SCDC_REGS1, &val);
++			rk628_i2c_read(csi->rk628, HDMI_RX_SCDC_REGS1, &val);
+ 			status = val;
+ 			v4l2_dbg(1, debug, sd, "%s read wxh:%dx%d, total:%dx%d,"
+ 					" SCDC_REGS1:%#x, cnt:%d\n", __func__,
+@@ -1494,18 +1509,18 @@ static void rk628_csi_initial_setup(struct v4l2_subdev *sd)
+ 	struct v4l2_subdev_edid def_edid;
+ 
+ 	/* selete int io function */
+-	rk628_i2c_write(GRF_GPIO3AB_SEL_CON, 0x30002000);
+-	rk628_i2c_write(GRF_GPIO1AB_SEL_CON, HIWORD_UPDATE(0x7, 10, 8));
++	rk628_i2c_write(csi->rk628, GRF_GPIO3AB_SEL_CON, 0x30002000);
++	rk628_i2c_write(csi->rk628, GRF_GPIO1AB_SEL_CON, HIWORD_UPDATE(0x7, 10, 8));
+ 	/* I2S_SCKM0 */
+-	rk628_i2c_write(GRF_GPIO0AB_SEL_CON, HIWORD_UPDATE(0x1, 2, 2));
++	rk628_i2c_write(csi->rk628, GRF_GPIO0AB_SEL_CON, HIWORD_UPDATE(0x1, 2, 2));
+ 	/* I2SLR_M0 */
+-	rk628_i2c_write(GRF_GPIO0AB_SEL_CON, HIWORD_UPDATE(0x1, 3, 3));
++	rk628_i2c_write(csi->rk628, GRF_GPIO0AB_SEL_CON, HIWORD_UPDATE(0x1, 3, 3));
+ 	/* I2SM0D0 */
+-	rk628_i2c_write(GRF_GPIO0AB_SEL_CON, HIWORD_UPDATE(0x1, 5, 4));
++	rk628_i2c_write(csi->rk628, GRF_GPIO0AB_SEL_CON, HIWORD_UPDATE(0x1, 5, 4));
+ 	/* hdmirx int en */
+-	rk628_i2c_write(GRF_INTR0_EN, 0x01000100);
++	rk628_i2c_write(csi->rk628, GRF_INTR0_EN, 0x01000100);
+ 
+-	rk628_i2c_update_bits(GRF_SYSTEM_CON0,
++	rk628_i2c_update_bits(csi->rk628, GRF_SYSTEM_CON0,
+ 			SW_INPUT_MODE_MASK |
+ 			SW_OUTPUT_MODE_MASK |
+ 			SW_EFUSE_HDCP_EN_MASK |
+@@ -1565,21 +1580,21 @@ static void rk628_csi_enable_interrupts(struct v4l2_subdev *sd, bool en)
+ 		  DE_ACTIVITY_ENSET | VS_ACT_ENSET | HS_ACT_ENSET;
+ 	v4l2_dbg(1, debug, sd, "%s: %sable\n", __func__, en ? "en" : "dis");
+ 	/* clr irq */
+-	rk628_i2c_write(HDMI_RX_MD_ICLR, md_mask);
+-	rk628_i2c_write(HDMI_RX_PDEC_ICLR, pdec_mask);
++	rk628_i2c_write(csi->rk628, HDMI_RX_MD_ICLR, md_mask);
++	rk628_i2c_write(csi->rk628, HDMI_RX_PDEC_ICLR, pdec_mask);
+ 	if (en) {
+-		rk628_i2c_write(HDMI_RX_MD_IEN_SET, md_mask);
+-		rk628_i2c_write(HDMI_RX_PDEC_IEN_SET, pdec_mask);
++		rk628_i2c_write(csi->rk628, HDMI_RX_MD_IEN_SET, md_mask);
++		rk628_i2c_write(csi->rk628, HDMI_RX_PDEC_IEN_SET, pdec_mask);
+ 		csi->vid_ints_rdy = true;
+ 	} else {
+-		rk628_i2c_write(HDMI_RX_MD_IEN_CLR, md_mask);
+-		rk628_i2c_write(HDMI_RX_PDEC_IEN_CLR, pdec_mask);
+-		rk628_i2c_write(HDMI_RX_AUD_FIFO_IEN_CLR, 0x1f);
++		rk628_i2c_write(csi->rk628, HDMI_RX_MD_IEN_CLR, md_mask);
++		rk628_i2c_write(csi->rk628, HDMI_RX_PDEC_IEN_CLR, pdec_mask);
++		rk628_i2c_write(csi->rk628, HDMI_RX_AUD_FIFO_IEN_CLR, 0x1f);
+ 		csi->vid_ints_rdy = false;
+ 	}
+ 	usleep_range(5000, 5000);
+-	rk628_i2c_read(HDMI_RX_MD_IEN, &md_ien);
+-	rk628_i2c_read(HDMI_RX_PDEC_IEN, &pdec_ien);
++	rk628_i2c_read(csi->rk628, HDMI_RX_MD_IEN, &md_ien);
++	rk628_i2c_read(csi->rk628, HDMI_RX_PDEC_IEN, &pdec_ien);
+ 	v4l2_dbg(1, debug, sd, "%s MD_IEN:%#x, PDEC_IEN:%#x\n", __func__, md_ien, pdec_ien);
+ }
+ 
+@@ -1594,7 +1609,7 @@ static void rk628_csi_isr_ctsn(struct v4l2_subdev *sd, u32 pdec_ints)
+ 		csi->audio_state.ctsn_flag |= (pdec_ints & ctsn_mask);
+ 		if (csi->audio_state.ctsn_flag == ctsn_mask) {
+ 			v4l2_dbg(1, debug, sd, "%s: ctsn updated, disable ctsn int\n", __func__);
+-			rk628_i2c_write(HDMI_RX_PDEC_IEN_CLR, ctsn_mask);
++			rk628_i2c_write(csi->rk628, HDMI_RX_PDEC_IEN_CLR, ctsn_mask);
+ 			csi->audio_state.ctsn_updated = true;
+ 			csi->ctsn_ints_rdy = false;
+ 			csi->audio_state.ctsn_flag = 0;
+@@ -1605,14 +1620,14 @@ static void rk628_csi_isr_ctsn(struct v4l2_subdev *sd, u32 pdec_ints)
+ 		csi->audio_state.ctsn_flag |= ACR_CTS_CHG_ICLR;
+ 		if (csi->audio_state.ctsn_flag == (ACR_N_CHG_ICLR | ACR_CTS_CHG_ICLR)) {
+ 			v4l2_dbg(1, debug, sd, "%s: ctsn updated, disable ctsn int\n", __func__);
+-			rk628_i2c_write(HDMI_RX_PDEC_IEN_CLR, ctsn_mask);
++			rk628_i2c_write(csi->rk628, HDMI_RX_PDEC_IEN_CLR, ctsn_mask);
+ 			csi->audio_state.ctsn_updated = true;
+ 			csi->ctsn_ints_rdy = false;
+ 			csi->audio_state.ctsn_flag = 0;
+ 			schedule_delayed_work(&csi->delayed_work_audio_rate_change, 0);
+ 		}
+ 	}
+-	rk628_i2c_write(HDMI_RX_PDEC_ICLR, pdec_ints & ctsn_mask);
++	rk628_i2c_write(csi->rk628, HDMI_RX_PDEC_ICLR, pdec_ints & ctsn_mask);
+ }
+ 
+ static int rk628_csi_isr(struct v4l2_subdev *sd, u32 status, bool *handled)
+@@ -1626,7 +1641,7 @@ static int rk628_csi_isr(struct v4l2_subdev *sd, u32 status, bool *handled)
+ 		return -EINVAL;
+ 	}
+ 
+-	rk628_i2c_read(HDMI_RX_PDEC_ISTS, &pdec_ints);
++	rk628_i2c_read(csi->rk628, HDMI_RX_PDEC_ISTS, &pdec_ints);
+ 	if (csi->ctsn_ints_rdy) {
+ 		if (pdec_ints & (ACR_N_CHG_ICLR | ACR_CTS_CHG_ICLR)) {
+ 			rk628_csi_isr_ctsn(sd, pdec_ints);
+@@ -1634,7 +1649,7 @@ static int rk628_csi_isr(struct v4l2_subdev *sd, u32 status, bool *handled)
+ 			*handled = true;
+ 		}
+ 	} else {
+-		rk628_i2c_read(HDMI_RX_AUD_FIFO_ISTS, &fifo_ints);
++		rk628_i2c_read(csi->rk628, HDMI_RX_AUD_FIFO_ISTS, &fifo_ints);
+ 		if ((fifo_ints & 0x18) == 0x18) {
+ 			v4l2_dbg(1, debug, sd, "%s: Audio FIFO unedrflow and overflow\n", __func__);
+ 			csi->audio_state.fifo_flag = 1;
+@@ -1643,7 +1658,7 @@ static int rk628_csi_isr(struct v4l2_subdev *sd, u32 status, bool *handled)
+ 		}
+ 	}
+ 	if (csi->vid_ints_rdy) {
+-		rk628_i2c_read(HDMI_RX_MD_ISTS, &md_ints);
++		rk628_i2c_read(csi->rk628, HDMI_RX_MD_ISTS, &md_ints);
+ 		plugin = tx_5v_power_present(sd);
+ 		v4l2_dbg(1, debug, sd, "%s: md_ints: %#x, pdec_ints:%#x, plugin: %d\n",
+ 			 __func__, md_ints, pdec_ints, plugin);
+@@ -1653,8 +1668,8 @@ static int rk628_csi_isr(struct v4l2_subdev *sd, u32 status, bool *handled)
+ 				VS_ACT_ISTS | HS_ACT_ISTS))
+ 				&& plugin) {
+ 
+-			rk628_i2c_read(HDMI_RX_MD_HACT_PX, &hact);
+-			rk628_i2c_read(HDMI_RX_MD_VAL, &vact);
++			rk628_i2c_read(csi->rk628, HDMI_RX_MD_HACT_PX, &hact);
++			rk628_i2c_read(csi->rk628, HDMI_RX_MD_VAL, &vact);
+ 			v4l2_dbg(1, debug, sd, "%s: HACT:%#x, VACT:%#x\n",
+ 				 __func__, hact, vact);
+ 
+@@ -1672,7 +1687,7 @@ static int rk628_csi_isr(struct v4l2_subdev *sd, u32 status, bool *handled)
+ 			v4l2_dbg(1, debug, sd, "%s: AVI RCV INT!\n", __func__);
+ 			csi->avi_rcv_rdy = true;
+ 			/* After get the AVI_RCV interrupt state, disable interrupt. */
+-			rk628_i2c_write(HDMI_RX_PDEC_IEN_CLR, AVI_RCV_ISTS);
++			rk628_i2c_write(csi->rk628, HDMI_RX_PDEC_IEN_CLR, AVI_RCV_ISTS);
+ 
+ 			*handled = true;
+ 		}
+@@ -1681,9 +1696,9 @@ static int rk628_csi_isr(struct v4l2_subdev *sd, u32 status, bool *handled)
+ 		v4l2_dbg(1, debug, sd, "%s: unhandled interrupt!\n", __func__);
+ 
+ 	/* clear interrupts */
+-	rk628_i2c_write(HDMI_RX_MD_ICLR, 0xffffffff);
+-	rk628_i2c_write(HDMI_RX_PDEC_ICLR, 0xffffffff);
+-	rk628_i2c_write(GRF_INTR0_CLR_EN, 0x01000100);
++	rk628_i2c_write(csi->rk628, HDMI_RX_MD_ICLR, 0xffffffff);
++	rk628_i2c_write(csi->rk628, HDMI_RX_PDEC_ICLR, 0xffffffff);
++	rk628_i2c_write(csi->rk628, GRF_INTR0_CLR_EN, 0x01000100);
+ 
+ 	return 0;
+ }
+@@ -2066,19 +2081,19 @@ static int rk628_csi_g_edid(struct v4l2_subdev *sd,
+ 		edid->blocks = csi->edid_blocks_written - edid->start_block;
+ 
+ 	/* edid access by apb when read, i2c slave addr: 0x0 */
+-	rk628_i2c_update_bits(GRF_SYSTEM_CON0,
++	rk628_i2c_update_bits(csi->rk628, GRF_SYSTEM_CON0,
+ 			SW_ADAPTER_I2CSLADR_MASK |
+ 			SW_EDID_MODE_MASK,
+ 			SW_ADAPTER_I2CSLADR(0) |
+ 			SW_EDID_MODE(1));
+ 
+ 	for (i = 0; i < (edid->blocks * EDID_BLOCK_SIZE); i ++) {
+-		rk628_i2c_read(EDID_BASE + ((edid->start_block *
++		rk628_i2c_read(csi->rk628, EDID_BASE + ((edid->start_block *
+ 				EDID_BLOCK_SIZE) + i) * 4, &val);
+ 		edid->edid[i] = val;
+ 	}
+ 
+-	rk628_i2c_update_bits(GRF_SYSTEM_CON0,
++	rk628_i2c_update_bits(csi->rk628, GRF_SYSTEM_CON0,
+ 			SW_EDID_MODE_MASK,
+ 			SW_EDID_MODE(0));
+ 
+@@ -2116,21 +2131,21 @@ static int rk628_csi_s_edid(struct v4l2_subdev *sd,
+ 	}
+ 
+ 	/* edid access by apb when write, i2c slave addr: 0x0 */
+-	rk628_i2c_update_bits(GRF_SYSTEM_CON0,
++	rk628_i2c_update_bits(csi->rk628, GRF_SYSTEM_CON0,
+ 			SW_ADAPTER_I2CSLADR_MASK |
+ 			SW_EDID_MODE_MASK,
+ 			SW_ADAPTER_I2CSLADR(0) |
+ 			SW_EDID_MODE(1));
+ 
+ 	for (i = 0; i < edid_len; i++) {
+-		rk628_i2c_write(EDID_BASE + i * 4, edid->edid[i]);
++		rk628_i2c_write(csi->rk628, EDID_BASE + i * 4, edid->edid[i]);
+ 	}
+ 
+ 	/* read out for debug */
+ 	if (debug >= 3) {
+ 		printk("%s: Read EDID: ======\n", __func__);
+ 		for (i = 0; i < edid_len; i++) {
+-			rk628_i2c_read(EDID_BASE + i * 4, &val);
++			rk628_i2c_read(csi->rk628, EDID_BASE + i * 4, &val);
+ 			printk("0x%02x ", val);
+ 			if ((i + 1) % 8 == 0)
+ 				printk("\n");
+@@ -2139,7 +2154,7 @@ static int rk628_csi_s_edid(struct v4l2_subdev *sd,
+ 	}
+ 
+ 	/* edid access by RX's i2c, i2c slave addr: 0x0 */
+-	rk628_i2c_update_bits(GRF_SYSTEM_CON0,
++	rk628_i2c_update_bits(csi->rk628, GRF_SYSTEM_CON0,
+ 			SW_ADAPTER_I2CSLADR_MASK |
+ 			SW_EDID_MODE_MASK,
+ 			SW_ADAPTER_I2CSLADR(0) |
+@@ -2195,49 +2210,49 @@ static long rk628_csi_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
+ 
+ static inline void testif_testclk_assert(struct rk628_csi *csi)
+ {
+-	rk628_i2c_update_bits(GRF_MIPI_TX0_CON,
++	rk628_i2c_update_bits(csi->rk628, GRF_MIPI_TX0_CON,
+ 			   PHY_TESTCLK, PHY_TESTCLK);
+ 	udelay(1);
+ }
+ 
+ static inline void testif_testclk_deassert(struct rk628_csi *csi)
+ {
+-	rk628_i2c_update_bits(GRF_MIPI_TX0_CON,
++	rk628_i2c_update_bits(csi->rk628, GRF_MIPI_TX0_CON,
+ 			   PHY_TESTCLK, 0);
+ 	udelay(1);
+ }
+ 
+ static inline void testif_testclr_assert(struct rk628_csi *csi)
+ {
+-	rk628_i2c_update_bits(GRF_MIPI_TX0_CON,
++	rk628_i2c_update_bits(csi->rk628, GRF_MIPI_TX0_CON,
+ 			   PHY_TESTCLR, PHY_TESTCLR);
+ 	udelay(1);
+ }
+ 
+ static inline void testif_testclr_deassert(struct rk628_csi *csi)
+ {
+-	rk628_i2c_update_bits(GRF_MIPI_TX0_CON,
++	rk628_i2c_update_bits(csi->rk628, GRF_MIPI_TX0_CON,
+ 			   PHY_TESTCLR, 0);
+ 	udelay(1);
+ }
+ 
+ static inline void testif_testen_assert(struct rk628_csi *csi)
+ {
+-	rk628_i2c_update_bits(GRF_MIPI_TX0_CON,
++	rk628_i2c_update_bits(csi->rk628, GRF_MIPI_TX0_CON,
+ 			   PHY_TESTEN, PHY_TESTEN);
+ 	udelay(1);
+ }
+ 
+ static inline void testif_testen_deassert(struct rk628_csi *csi)
+ {
+-	rk628_i2c_update_bits(GRF_MIPI_TX0_CON,
++	rk628_i2c_update_bits(csi->rk628, GRF_MIPI_TX0_CON,
+ 			   PHY_TESTEN, 0);
+ 	udelay(1);
+ }
+ 
+ static inline void testif_set_data(struct rk628_csi *csi, u8 data)
+ {
+-	rk628_i2c_update_bits(GRF_MIPI_TX0_CON,
++	rk628_i2c_update_bits(csi->rk628, GRF_MIPI_TX0_CON,
+ 			   PHY_TESTDIN_MASK, PHY_TESTDIN(data));
+ 	udelay(1);
+ }
+@@ -2246,7 +2261,7 @@ static inline u8 testif_get_data(struct rk628_csi *csi)
+ {
+ 	u32 data = 0;
+ 
+-	rk628_i2c_read(GRF_DPHY0_STATUS, &data);
++	rk628_i2c_read(csi->rk628, GRF_DPHY0_STATUS, &data);
+ 
+ 	return data >> PHY_TESTDOUT_SHIFT;
+ }
+@@ -2296,39 +2311,39 @@ static inline u8 testif_read(struct rk628_csi *csi, u8 test_code)
+ 
+ static inline void mipi_dphy_enableclk_assert(struct rk628_csi *csi)
+ {
+-	rk628_i2c_update_bits(CSITX_DPHY_CTRL, DPHY_ENABLECLK,
++	rk628_i2c_update_bits(csi->rk628, CSITX_DPHY_CTRL, DPHY_ENABLECLK,
+ 			DPHY_ENABLECLK);
+ 	udelay(1);
+ }
+ 
+ static inline void mipi_dphy_enableclk_deassert(struct rk628_csi *csi)
+ {
+-	rk628_i2c_update_bits(CSITX_DPHY_CTRL, DPHY_ENABLECLK, 0);
++	rk628_i2c_update_bits(csi->rk628, CSITX_DPHY_CTRL, DPHY_ENABLECLK, 0);
+ 	udelay(1);
+ }
+ 
+ static inline void mipi_dphy_shutdownz_assert(struct rk628_csi *csi)
+ {
+-	rk628_i2c_update_bits(GRF_MIPI_TX0_CON, CSI_PHYSHUTDOWNZ, 0);
++	rk628_i2c_update_bits(csi->rk628, GRF_MIPI_TX0_CON, CSI_PHYSHUTDOWNZ, 0);
+ 	udelay(1);
+ }
+ 
+ static inline void mipi_dphy_shutdownz_deassert(struct rk628_csi *csi)
+ {
+-	rk628_i2c_update_bits(GRF_MIPI_TX0_CON, CSI_PHYSHUTDOWNZ,
++	rk628_i2c_update_bits(csi->rk628, GRF_MIPI_TX0_CON, CSI_PHYSHUTDOWNZ,
+ 			CSI_PHYSHUTDOWNZ);
+ 	udelay(1);
+ }
+ 
+ static inline void mipi_dphy_rstz_assert(struct rk628_csi *csi)
+ {
+-	rk628_i2c_update_bits(GRF_MIPI_TX0_CON, CSI_PHYRSTZ, 0);
++	rk628_i2c_update_bits(csi->rk628, GRF_MIPI_TX0_CON, CSI_PHYRSTZ, 0);
+ 	udelay(1);
+ }
+ 
+ static inline void mipi_dphy_rstz_deassert(struct rk628_csi *csi)
+ {
+-	rk628_i2c_update_bits(GRF_MIPI_TX0_CON, CSI_PHYRSTZ,
++	rk628_i2c_update_bits(csi->rk628, GRF_MIPI_TX0_CON, CSI_PHYRSTZ,
+ 			CSI_PHYRSTZ);
+ 	udelay(1);
+ }
+@@ -2374,7 +2389,7 @@ static int mipi_dphy_reset(struct rk628_csi *csi)
+ 	testif_testclr_assert(csi);
+ 
+ 	/* Set all REQUEST inputs to zero */
+-	rk628_i2c_update_bits(GRF_MIPI_TX0_CON,
++	rk628_i2c_update_bits(csi->rk628, GRF_MIPI_TX0_CON,
+ 		     FORCETXSTOPMODE_MASK | FORCERXMODE_MASK,
+ 		     FORCETXSTOPMODE(0) | FORCERXMODE(0));
+ 	udelay(1);
+@@ -2385,7 +2400,7 @@ static int mipi_dphy_reset(struct rk628_csi *csi)
+ 	usleep_range(1500, 2000);
+ 
+ 	mask = STOPSTATE_CLK | STOPSTATE_LANE0;
+-	rk628_i2c_read(CSITX_CSITX_STATUS1, &val);
++	rk628_i2c_read(csi->rk628, CSITX_CSITX_STATUS1, &val);
+ 	if ((val & mask) != mask) {
+ 		dev_err(csi->dev, "lane module is not in stop state\n");
+ 		return -1;
+@@ -2411,16 +2426,16 @@ static int mipi_dphy_power_on(struct rk628_csi *csi)
+ 	bus_width |= COMBTXPHY_MODULEA_EN;
+ 	v4l2_dbg(1, debug, sd, "%s mipi bitrate:%llu mbps\n", __func__,
+ 			csi->lane_mbps);
+-	rk628_combtxphy_set_bus_width(bus_width);
+-	rk628_combtxphy_set_mode(PHY_MODE_VIDEO_MIPI);
++	rk628_txphy_set_bus_width(csi->rk628, bus_width);
++	rk628_txphy_set_mode(csi->rk628, PHY_MODE_VIDEO_MIPI);
+ 
+ 	mipi_dphy_init_hsfreqrange(csi);
+ 	usleep_range(1500, 2000);
+-	rk628_combtxphy_power_on();
++	rk628_txphy_power_on(csi->rk628);
+ 
+ 	usleep_range(1500, 2000);
+ 	mask = DPHY_PLL_LOCK;
+-	rk628_i2c_read(CSITX_CSITX_STATUS1, &val);
++	rk628_i2c_read(csi->rk628, CSITX_CSITX_STATUS1, &val);
+ 	if ((val & mask) != mask) {
+ 		dev_err(csi->dev, "PHY is not locked\n");
+ 		return -1;
+@@ -2433,7 +2448,7 @@ static int mipi_dphy_power_on(struct rk628_csi *csi)
+ 
+ static void mipi_dphy_power_off(struct rk628_csi *csi)
+ {
+-	rk628_combtxphy_power_off();
++	rk628_txphy_power_off(csi->rk628);
+ }
+ 
+ #ifdef CONFIG_COMPAT
+@@ -2647,6 +2662,7 @@ static int rk628_csi_probe(struct i2c_client *client,
+ 	char facing[2];
+ 	int err;
+ 	u32 val;
++	struct rk628 *rk628;
+ 
+ 	dev_info(dev, "RK628 I2C driver version: %02x.%02x.%02x",
+ 		DRIVER_VERSION >> 16,
+@@ -2662,7 +2678,10 @@ static int rk628_csi_probe(struct i2c_client *client,
+ 
+ 	csi->dev = dev;
+ 	csi->i2c_client = client;
+-	rk628_i2c = client;
++	rk628 = rk628_i2c_register(client);
++	if (!rk628)
++		return -ENOMEM;
++	csi->rk628 = rk628;
+ 	csi->cur_mode = &supported_modes[0];
+ 	csi->hdmirx_irq = client->irq;
+ 	sd = &csi->sd;
+@@ -2689,13 +2708,13 @@ static int rk628_csi_probe(struct i2c_client *client,
+ 		return err;
+ 	}
+ 
+-	rk628_cru_init();
++	rk628_cru_initialize(csi->rk628);
+ 
+ 	v4l2_subdev_init(sd, &rk628_csi_ops);
+ 	sd->flags |= V4L2_SUBDEV_FL_HAS_DEVNODE | V4L2_SUBDEV_FL_HAS_EVENTS;
+ 
+ 	/* i2c access, read chip id*/
+-	err = rk628_i2c_read(CSITX_CSITX_VERSION, &val);
++	err = rk628_i2c_read(csi->rk628, CSITX_CSITX_VERSION, &val);
+ 	if (err) {
+ 		v4l2_err(sd, "i2c access failed! err:%d\n", err);
+ 		return -ENODEV;
+@@ -2815,8 +2834,6 @@ static int rk628_csi_probe(struct i2c_client *client,
+ 		goto err_work_queues;
+ 	}
+ 
+-	rk628_register_debugfs(csi->dev);
+-
+ 	v4l2_info(sd, "%s found @ 0x%x (%s)\n", client->name,
+ 		  client->addr << 1, client->adapter->name);
+ 
+@@ -2849,7 +2866,7 @@ static int rk628_csi_remove(struct i2c_client *client)
+ 	cancel_delayed_work_sync(&csi->delayed_work_audio);
+ 
+ 	if (csi->rxphy_pwron)
+-		rk628_combrxphy_power_off();
++		rk628_rxphy_power_off(csi->rk628);
+ 	if (csi->txphy_pwron)
+ 		mipi_dphy_power_off(csi);
+ 
+diff --git a/drivers/media/i2c/rk628/rk628_hdmirx.h b/drivers/media/i2c/rk628/rk628_hdmirx.h
+index 46cb6831f4a1d7..63c37e7b297f9b 100644
+--- a/drivers/media/i2c/rk628/rk628_hdmirx.h
++++ b/drivers/media/i2c/rk628/rk628_hdmirx.h
+@@ -341,6 +341,6 @@
+ #define HDMI_ENABLE_MASK		BIT(2)
+ 
+ #define HDMI_RX_IVECTOR_INDEX_CB	(HDMI_RX_BASE + 0x32e4)
+-#define HDMIRX_MAX_REGISTER		HDMI_RX_IVECTOR_INDEX_CB
++#define HDMI_RX_MAX_REGISTER		HDMI_RX_IVECTOR_INDEX_CB
+ 
+ #endif
+-- 
+2.17.1
+

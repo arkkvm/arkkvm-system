@@ -1,0 +1,343 @@
+From afe9e6e1ccd7cf61503fad57c70f49224286a085 Mon Sep 17 00:00:00 2001
+From: Chen Shunqing <csq@rock-chips.com>
+Date: Sat, 28 Oct 2023 03:13:45 +0000
+Subject: [PATCH 07/30] media: i2c: rk628: hdmirx: compatible with rk628f
+
+Change-Id: I82c1159ed5307c9bad695fdc8e66dfa1724768e3
+Signed-off-by: Chen Shunqing <csq@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628.c        |   5 +-
+ drivers/media/i2c/rk628/rk628.h        |   1 +
+ drivers/media/i2c/rk628/rk628_hdmirx.c | 176 +++++++++++++++++++++++++
+ drivers/media/i2c/rk628/rk628_hdmirx.h |  27 ++++
+ 4 files changed, 207 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628.c b/drivers/media/i2c/rk628/rk628.c
+index 8b29c6ab85a30..0bd46aeb39ed6 100644
+--- a/drivers/media/i2c/rk628/rk628.c
++++ b/drivers/media/i2c/rk628/rk628.c
+@@ -46,7 +46,7 @@ static const struct regmap_access_table rk628_combrxphy_readable_table = {
+ };
+ 
+ static const struct regmap_range rk628_hdmirx_readable_ranges[] = {
+-	regmap_reg_range(HDMI_RX_HDMI_SETUP_CTRL, HDMI_RX_HDMI_SETUP_CTRL),
++	regmap_reg_range(HDMI_RX_HDMI_SETUP_CTRL, HDMI_RX_HDMI_TIMER_CTRL),
+ 	regmap_reg_range(HDMI_RX_HDMI_PCB_CTRL, HDMI_RX_HDMI_PCB_CTRL),
+ 	regmap_reg_range(HDMI_RX_HDMI_MODE_RECOVER, HDMI_RX_HDMI_ERROR_PROTECT),
+ 	regmap_reg_range(HDMI_RX_HDMI_SYNC_CTRL, HDMI_RX_HDMI_CKM_RESULT),
+@@ -67,6 +67,7 @@ static const struct regmap_range rk628_hdmirx_readable_ranges[] = {
+ 	regmap_reg_range(HDMI_RX_AUD_CHEXTR_CTRL, HDMI_RX_AUD_PAO_CTRL),
+ 	regmap_reg_range(HDMI_RX_AUD_FIFO_STS, HDMI_RX_AUD_FIFO_STS),
+ 	regmap_reg_range(HDMI_RX_AUDPLL_GEN_CTS, HDMI_RX_AUDPLL_GEN_N),
++	regmap_reg_range(HDMI_RX_I2CM_PHYG3_DATAI, HDMI_RX_I2CM_PHYG3_DATAI),
+ 	regmap_reg_range(HDMI_RX_PDEC_CTRL, HDMI_RX_PDEC_CTRL),
+ 	regmap_reg_range(HDMI_RX_PDEC_AUDIODET_CTRL, HDMI_RX_PDEC_AUDIODET_CTRL),
+ 	regmap_reg_range(HDMI_RX_PDEC_ERR_FILTER, HDMI_RX_PDEC_ASP_CTRL),
+@@ -76,7 +77,7 @@ static const struct regmap_range rk628_hdmirx_readable_ranges[] = {
+ 	regmap_reg_range(HDMI_RX_PDEC_AIF_CTRL, HDMI_RX_PDEC_AIF_PB0),
+ 	regmap_reg_range(HDMI_RX_PDEC_AVI_PB, HDMI_RX_PDEC_AVI_PB),
+ 	regmap_reg_range(HDMI_RX_HDMI20_CONTROL, HDMI_RX_CHLOCK_CONFIG),
+-	regmap_reg_range(HDMI_RX_SCDC_REGS1, HDMI_RX_SCDC_REGS2),
++	regmap_reg_range(HDMI_RX_SCDC_REGS0, HDMI_RX_SCDC_REGS2),
+ 	regmap_reg_range(HDMI_RX_SCDC_WRDATA0, HDMI_RX_SCDC_WRDATA0),
+ 	regmap_reg_range(HDMI_RX_PDEC_ISTS, HDMI_RX_PDEC_IEN),
+ 	regmap_reg_range(HDMI_RX_AUD_FIFO_ISTS, HDMI_RX_AUD_FIFO_IEN),
+diff --git a/drivers/media/i2c/rk628/rk628.h b/drivers/media/i2c/rk628/rk628.h
+index 755153e8b0524..3f96164710716 100644
+--- a/drivers/media/i2c/rk628/rk628.h
++++ b/drivers/media/i2c/rk628/rk628.h
+@@ -173,6 +173,7 @@
+ #define GRF_GPIO3A_D1_CON		0x00e4
+ #define GRF_GPIO3B_D_CON		0x00e8
+ #define GRF_GPIO_SR_CON			0x00ec
++#define GRF_SW_HDMIRXPHY_CRTL		0x00f4
+ #define GRF_INTR0_EN			0x0100
+ #define GRF_INTR0_CLR_EN		0x0104
+ #define GRF_INTR0_STATUS		0x0108
+diff --git a/drivers/media/i2c/rk628/rk628_hdmirx.c b/drivers/media/i2c/rk628/rk628_hdmirx.c
+index b59378fed27fb..c27d9bd797d43 100644
+--- a/drivers/media/i2c/rk628/rk628_hdmirx.c
++++ b/drivers/media/i2c/rk628/rk628_hdmirx.c
+@@ -53,6 +53,13 @@ struct rk628_audioinfo {
+ 	struct device *dev;
+ };
+ 
++struct hdmirx_tmdsclk_cnt {
++	u32 tmds_cnt;
++	u8  cnt;
++};
++
++#define HDMIRX_GET_TMDSCLK_TIME		21
++
+ static int hdcp_load_keys_cb(struct rk628 *rk628, struct rk628_hdcp *hdcp)
+ {
+ 	int size;
+@@ -190,6 +197,7 @@ void rk628_hdmirx_controller_setup(struct rk628 *rk628)
+ 	rk628_i2c_write(rk628, HDMI_RX_HDMI_CKM_EVLTM, 0x00103e70);
+ 	rk628_i2c_write(rk628, HDMI_RX_HDMI_CKM_F, 0x0c1c0b54);
+ 	rk628_i2c_write(rk628, HDMI_RX_HDMI_RESMPL_CTRL, 0x00000001);
++	rk628_i2c_update_bits(rk628, HDMI_RX_HDMI_TIMER_CTRL, VIDEO_PERIOD_MASK, VIDEO_PERIOD(1));
+ 
+ 	rk628_i2c_update_bits(rk628, HDMI_RX_HDCP_SETTINGS,
+ 			      HDMI_RESERVED_MASK |
+@@ -616,6 +624,9 @@ int rk628_is_avi_ready(struct rk628 *rk628, bool avi_rcv_rdy)
+ 	u8 cnt = 0, max_cnt = 2;
+ 	u32 hdcp_ctrl_val = 0;
+ 
++	if (rk628->version == RK628F_VERSION)
++		return 1;
++
+ 	rk628_i2c_read(rk628, HDMI_RX_HDCP_CTRL, &val);
+ 	if ((val & HDCP_ENABLE_MASK))
+ 		max_cnt = 5;
+@@ -646,3 +657,168 @@ int rk628_is_avi_ready(struct rk628 *rk628, bool avi_rcv_rdy)
+ 	return 1;
+ }
+ EXPORT_SYMBOL(rk628_is_avi_ready);
++
++static void hdmirxphy_write(struct rk628 *rk628,  u32 offset, u32 val)
++{
++	rk628_i2c_write(rk628, HDMI_RX_I2CM_PHYG3_ADDRESS, offset);
++	rk628_i2c_write(rk628, HDMI_RX_I2CM_PHYG3_DATAO, val);
++	rk628_i2c_write(rk628, HDMI_RX_I2CM_PHYG3_OPERATION, 1);
++}
++
++u32 hdmirxphy_read(struct rk628 *rk628,  u32 offset)
++{
++	u32 val;
++
++	rk628_i2c_write(rk628, HDMI_RX_I2CM_PHYG3_ADDRESS, offset);
++	rk628_i2c_write(rk628, HDMI_RX_I2CM_PHYG3_OPERATION, 2);
++	rk628_i2c_read(rk628, HDMI_RX_I2CM_PHYG3_DATAI, &val);
++
++	return val;
++}
++
++static void rk628_hdmirxphy_enable(struct rk628 *rk628, bool is_hdmi2)
++{
++	hdmirxphy_write(rk628, 0x02, 0x1860);
++	hdmirxphy_write(rk628, 0x03, 0x0060);
++	hdmirxphy_write(rk628, 0x0d, 0x00c0);
++	hdmirxphy_write(rk628, 0x0d, 0x00c0);
++	hdmirxphy_write(rk628, 0x27, 0x1c94);
++	hdmirxphy_write(rk628, 0x28, 0x3713);
++	hdmirxphy_write(rk628, 0x29, 0x24da);
++	hdmirxphy_write(rk628, 0x2a, 0x5492);
++	hdmirxphy_write(rk628, 0x2b, 0x4b0d);
++	hdmirxphy_write(rk628, 0x2d, 0x008c);
++	hdmirxphy_write(rk628, 0x2e, 0x0001);
++
++	if (is_hdmi2)
++		hdmirxphy_write(rk628, 0x0e, 0x0108);
++	else
++		hdmirxphy_write(rk628, 0x0e, 0x0008);
++
++}
++
++static void rk628_hdmirxphy_set_clrdpt(struct rk628 *rk628, bool is_8bit)
++{
++	if (is_8bit)
++		hdmirxphy_write(rk628, 0x03, 0x0000);
++	else
++		hdmirxphy_write(rk628, 0x03, 0x0060);
++}
++
++void rk628_hdmirx_verisyno_phy_power_on(struct rk628 *rk628)
++{
++	bool is_hdmi2 = false;
++	u32 val;
++	int i;
++
++	/* wait tx to write scdc tmds ratio */
++	for (i = 0; i < 50; i++) {
++		rk628_i2c_read(rk628, HDMI_RX_SCDC_REGS0, &val);
++		if (val & SCDC_TMDSBITCLKRATIO)
++			break;
++		msleep(20);
++	}
++
++	if (val & SCDC_TMDSBITCLKRATIO)
++		is_hdmi2 = true;
++
++	dev_info(rk628->dev, "%s: %s\n", __func__, is_hdmi2 ? "hdmi2.0" : "hdmi1.4");
++	/* power down phy */
++	rk628_i2c_write(rk628, GRF_SW_HDMIRXPHY_CRTL, 0x17);
++	usleep_range(20, 30);
++	rk628_i2c_write(rk628, GRF_SW_HDMIRXPHY_CRTL, 0x15);
++	/* init phy i2c */
++	rk628_i2c_write(rk628, HDMI_RX_SNPS_PHYG3_CTRL, 0);
++	rk628_i2c_write(rk628, HDMI_RX_I2CM_PHYG3_SS_CNTS, 0x018c01d2);
++	rk628_i2c_write(rk628, HDMI_RX_I2CM_PHYG3_FS_HCNT, 0x003c0081);
++	rk628_i2c_write(rk628, HDMI_RX_I2CM_PHYG3_MODE, 1);
++	rk628_i2c_write(rk628, GRF_SW_HDMIRXPHY_CRTL, 0x11);
++	/* enable rx phy */
++	rk628_hdmirxphy_enable(rk628, is_hdmi2);
++	rk628_i2c_write(rk628, GRF_SW_HDMIRXPHY_CRTL, 0x14);
++	msleep(20);
++}
++EXPORT_SYMBOL(rk628_hdmirx_verisyno_phy_power_on);
++
++void rk628_hdmirx_phy_prepclk_cfg(struct rk628 *rk628)
++{
++	u32 format;
++	bool is_clrdpt_8bit = false;
++
++	usleep_range(20 * 1000, 30 * 1000);
++	rk628_i2c_read(rk628, HDMI_RX_PDEC_AVI_PB, &format);
++	format = (format & VIDEO_FORMAT_MASK) >> 5;
++	dev_info(rk628->dev, "%s: format = %d from AVI\n", __func__, format);
++
++	/* yuv420 should set phy color depth 8bit */
++	if (format == 3)
++		is_clrdpt_8bit = true;
++
++	rk628_i2c_read(rk628, HDMI_RX_PDEC_GCP_AVMUTE, &format);
++	format = (format & PKTDEC_GCP_CD_MASK) >> 4;
++	dev_info(rk628->dev, "%s: format = %d from GCP\n", __func__, format);
++
++	/* 10bit color depth should set phy color depth 8bit */
++	if (format == 5)
++		is_clrdpt_8bit = true;
++
++	rk628_hdmirxphy_set_clrdpt(rk628, is_clrdpt_8bit);
++}
++EXPORT_SYMBOL(rk628_hdmirx_phy_prepclk_cfg);
++
++static const char * const bus_format_str[] = {
++	"RGB",
++	"YUV422",
++	"YUV444",
++	"YUV420",
++	"UNKNOWN",
++};
++
++u8 rk628_hdmirx_get_format(struct rk628 *rk628)
++{
++	u32 val;
++	u8 video_fmt;
++
++	rk628_i2c_read(rk628, HDMI_RX_PDEC_AVI_PB, &val);
++	video_fmt = (val & VIDEO_FORMAT_MASK) >> 5;
++	if (video_fmt > BUS_FMT_UNKNOWN)
++		video_fmt = BUS_FMT_UNKNOWN;
++	dev_info(rk628->dev, "%s: format = %s\n", __func__, bus_format_str[video_fmt]);
++
++	return video_fmt;
++}
++EXPORT_SYMBOL(rk628_hdmirx_get_format);
++
++u32 rk628_hdmirx_get_tmdsclk_cnt(struct rk628 *rk628)
++{
++	int i, j;
++	u32 val, tmdsclk_cnt = 0;
++	struct hdmirx_tmdsclk_cnt tmdsclk[HDMIRX_GET_TMDSCLK_TIME] = {0};
++
++	for (i = 0; i < HDMIRX_GET_TMDSCLK_TIME; i++) {
++		rk628_i2c_read(rk628, HDMI_RX_HDMI_CKM_RESULT, &val);
++		tmdsclk_cnt = val & 0xffff;
++		for (j = 0; j < HDMIRX_GET_TMDSCLK_TIME; j++) {
++			if (tmdsclk_cnt == tmdsclk[j].tmds_cnt || !tmdsclk[j].tmds_cnt) {
++				tmdsclk[j].tmds_cnt = tmdsclk_cnt;
++				tmdsclk[j].cnt++;
++				break;
++			}
++		}
++	}
++
++	for (i = 0; i < HDMIRX_GET_TMDSCLK_TIME; i++) {
++		if (!tmdsclk[i].tmds_cnt)
++			return tmdsclk_cnt;
++
++		dev_info(rk628->dev, "tmdsclk_cnt: %d, cnt: %d\n",
++			 tmdsclk[i].tmds_cnt, tmdsclk[i].cnt);
++		if (!i)
++			tmdsclk_cnt = tmdsclk[i].tmds_cnt;
++		else if (tmdsclk[i].cnt > tmdsclk[i - 1].cnt)
++			tmdsclk_cnt = tmdsclk[i].tmds_cnt;
++	}
++
++	return tmdsclk_cnt;
++}
++EXPORT_SYMBOL(rk628_hdmirx_get_tmdsclk_cnt);
+diff --git a/drivers/media/i2c/rk628/rk628_hdmirx.h b/drivers/media/i2c/rk628/rk628_hdmirx.h
+index cbc3736e9475a..ba1580f85d516 100644
+--- a/drivers/media/i2c/rk628/rk628_hdmirx.h
++++ b/drivers/media/i2c/rk628/rk628_hdmirx.h
+@@ -32,6 +32,8 @@
+ #define HOT_PLUG_DETECT_MASK		BIT(0)
+ #define HOT_PLUG_DETECT(x)		UPDATE(x, 0, 0)
+ #define HDMI_RX_HDMI_TIMER_CTRL		(HDMI_RX_BASE + 0x0008)
++#define VIDEO_PERIOD_MASK		BIT(11)
++#define VIDEO_PERIOD(x)			UPDATE(x, 11, 11)
+ #define HDMI_RX_HDMI_RES_OVR		(HDMI_RX_BASE + 0x0010)
+ #define HDMI_RX_HDMI_PLL_FRQSET2	(HDMI_RX_BASE + 0x0020)
+ #define HDMI_RX_HDMI_PCB_CTRL		(HDMI_RX_BASE + 0x0038)
+@@ -189,6 +191,15 @@
+ #define HDMI_RX_AUDPLL_GEN_N		(HDMI_RX_BASE + 0x0284)
+ #define HDMI_RX_SNPS_PHYG3_CTRL		(HDMI_RX_BASE + 0x02c0)
+ #define PORTSELECT(x)			UPDATE(x, 3, 2)
++#define HDMI_RX_I2CM_PHYG3_SLAVE	(HDMI_RX_BASE + 0x02c4)
++#define HDMI_RX_I2CM_PHYG3_ADDRESS	(HDMI_RX_BASE + 0x02c8)
++#define HDMI_RX_I2CM_PHYG3_DATAO	(HDMI_RX_BASE + 0x02cc)
++#define HDMI_RX_I2CM_PHYG3_DATAI	(HDMI_RX_BASE + 0x02d0)
++#define HDMI_RX_I2CM_PHYG3_OPERATION	(HDMI_RX_BASE + 0x02d4)
++#define HDMI_RX_I2CM_PHYG3_MODE		(HDMI_RX_BASE + 0x02d8)
++#define HDMI_RX_I2CM_PHYG3_SS_CNTS	(HDMI_RX_BASE + 0x02e0)
++#define HDMI_RX_I2CM_PHYG3_FS_HCNT	(HDMI_RX_BASE + 0x02e4)
++
+ #define HDMI_RX_PDEC_CTRL		(HDMI_RX_BASE + 0x0300)
+ #define PFIFO_STORE_FILTER_EN_MASK	BIT(31)
+ #define PFIFO_STORE_FILTER_EN(x)	UPDATE(x, 31, 31)
+@@ -234,6 +245,7 @@
+ #define HDMI_RX_PDEC_STS		(HDMI_RX_BASE + 0x0360)
+ #define DVI_DET				BIT(28)
+ #define HDMI_RX_PDEC_GCP_AVMUTE		(HDMI_RX_BASE + 0x0380)
++#define PKTDEC_GCP_CD_MASK		GENMASK(7, 4)
+ #define HDMI_RX_PDEC_AVI_PB		(HDMI_RX_BASE + 0x03a4)
+ #define VIDEO_FORMAT_MASK		GENMASK(6, 5)
+ #define VIDEO_FORMAT(x)			UPDATE(x, 6, 5)
+@@ -248,6 +260,7 @@
+ #define PVO1UNMUTE(x)			UPDATE(x, 29, 29)
+ #define PIXELMODE(x)			UPDATE(x, 28, 28)
+ #define CTRLCHECKEN(x)			UPDATE(x, 8, 8)
++#define SCDC_ENABLE_MASK		BIT(4)
+ #define SCDC_ENABLE(x)			UPDATE(x, 4, 4)
+ #define SCRAMBEN_SEL(x)			UPDATE(x, 1, 0)
+ #define HDMI_RX_SCDC_I2CCONFIG		(HDMI_RX_BASE + 0x0804)
+@@ -259,6 +272,7 @@
+ #define MILISECTIMERLIMIT(x)		UPDATE(x, 15, 0)
+ #define HDMI_RX_HDCP22_CONTROL		(HDMI_RX_BASE + 0x081c)
+ #define HDMI_RX_SCDC_REGS0		(HDMI_RX_BASE + 0x0820)
++#define SCDC_TMDSBITCLKRATIO		BIT(17)
+ #define HDMI_RX_SCDC_REGS1		(HDMI_RX_BASE + 0x0824)
+ #define HDMI_RX_SCDC_REGS2		(HDMI_RX_BASE + 0x0828)
+ #define HDMI_RX_SCDC_REGS3		(HDMI_RX_BASE + 0x082c)
+@@ -359,6 +373,14 @@
+ 
+ #define HDMIRX_HDCP1X_ID		13
+ 
++enum bus_format {
++	BUS_FMT_RGB = 0,
++	BUS_FMT_YUV422 = 1,
++	BUS_FMT_YUV444 = 2,
++	BUS_FMT_YUV420 = 3,
++	BUS_FMT_UNKNOWN,
++};
++
+ struct hdcp_keys {
+ 	u8 KSV[HDCP_KEY_KSV_SIZE];
+ 	u8 devicekey[HDCP_PRIVATE_KEY_SIZE];
+@@ -392,5 +414,10 @@ bool rk628_audio_ctsnints_enabled(HAUDINFO info);
+ void rk628_csi_isr_ctsn(HAUDINFO info, u32 pdec_ints);
+ void rk628_csi_isr_fifoints(HAUDINFO info, u32 fifo_ints);
+ int rk628_is_avi_ready(struct rk628 *rk628, bool avi_rcv_rdy);
++void rk628_hdmirx_verisyno_phy_power_on(struct rk628 *rk628);
++void rk628_hdmirx_phy_prepclk_cfg(struct rk628 *rk628);
++int rk628_hdmirx_verisyno_phy_init(struct rk628 *rk628);
++u8 rk628_hdmirx_get_format(struct rk628 *rk628);
++u32 rk628_hdmirx_get_tmdsclk_cnt(struct rk628 *rk628);
+ 
+ #endif
+-- 
+2.25.1
+

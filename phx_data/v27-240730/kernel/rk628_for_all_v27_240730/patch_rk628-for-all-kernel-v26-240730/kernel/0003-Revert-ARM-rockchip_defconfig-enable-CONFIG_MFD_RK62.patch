@@ -1,0 +1,30 @@
+From 8b1a4974564434b9404b5212efc699e7bfb28b97 Mon Sep 17 00:00:00 2001
+From: Wyon Bi <bivvy.bi@rock-chips.com>
+Date: Wed, 2 Jun 2021 08:50:26 +0800
+Subject: [PATCH 003/232] Revert "ARM: rockchip_defconfig: enable
+ CONFIG_MFD_RK628"
+
+This reverts commit 1019c61d47ecb18b28e7951c1fc0c6f8a1c7be70.
+
+Signed-off-by: Wyon Bi <bivvy.bi@rock-chips.com>
+Change-Id: I5563cb7287b76dc7fc479d4afd786be6072bbfee
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ arch/arm/configs/rockchip_defconfig | 1 -
+ 1 file changed, 1 deletion(-)
+
+diff --git a/arch/arm/configs/rockchip_defconfig b/arch/arm/configs/rockchip_defconfig
+index 73c8fa167fd6a3..fe364fd7713d31 100644
+--- a/arch/arm/configs/rockchip_defconfig
++++ b/arch/arm/configs/rockchip_defconfig
+@@ -396,7 +396,6 @@ CONFIG_DEVFREQ_THERMAL=y
+ CONFIG_ROCKCHIP_THERMAL=y
+ CONFIG_RK_VIRTUAL_THERMAL=y
+ CONFIG_RK3368_THERMAL=y
+-CONFIG_MFD_RK628=y
+ CONFIG_MFD_RK808=y
+ CONFIG_REGULATOR_FIXED_VOLTAGE=y
+ CONFIG_REGULATOR_ACT8865=y
+-- 
+2.17.1
+

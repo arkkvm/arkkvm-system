@@ -1,0 +1,43 @@
+From d1a951b8f44fbf4855c5ee1effc59d87b09c3322 Mon Sep 17 00:00:00 2001
+From: Shunqing Chen <csq@rock-chips.com>
+Date: Mon, 2 Aug 2021 10:50:09 +0800
+Subject: [PATCH 036/232] media: i2c: rk628: fix phy lock fail
+
+The internal termination resistance is disconnected
+during phy initialization, wait until the 200 ms
+signal is stable before initializing the phy.
+
+Signed-off-by: Shunqing Chen <csq@rock-chips.com>
+Change-Id: I0f66fa7835d48ecfc71a0ba19e37e1de0e4f93ec
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_combrxphy.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/drivers/media/i2c/rk628/rk628_combrxphy.c b/drivers/media/i2c/rk628/rk628_combrxphy.c
+index ad4722187f8b2f..7479ef796a07a4 100644
+--- a/drivers/media/i2c/rk628/rk628_combrxphy.c
++++ b/drivers/media/i2c/rk628/rk628_combrxphy.c
+@@ -347,6 +347,7 @@ static int rk628_combrxphy_set_hdmi_mode_for_cable(int f)
+ 	uint32_t cdr_mode, cdr_data, pll_man;
+ 	uint32_t tmds_bitrate_per_lane;
+ 	uint32_t cdr_data_min, cdr_data_max;
++	uint32_t temp = 0;
+ 
+ 	/*
+ 	 * use the mode of automatic clock detection, only supports fixed TMDS
+@@ -381,6 +382,11 @@ static int rk628_combrxphy_set_hdmi_mode_for_cable(int f)
+ 	};
+ 
+ 	for (i = 0; i < CLK_DET_TRY_TIMES; i++) {
++		rk628_i2c_read(REG(0x6620), &val);
++		if (!temp && val) {
++			temp = val;
++			msleep(200);
++		}
+ 		if (rk628_combrxphy_try_clk_detect() >= 0)
+ 			break;
+ 		mdelay(1);
+-- 
+2.17.1
+

@@ -1,0 +1,46 @@
+From d0f44130a2816b211903437e71ae171bd85687fa Mon Sep 17 00:00:00 2001
+From: Shunqing Chen <csq@rock-chips.com>
+Date: Tue, 10 Aug 2021 10:38:07 +0800
+Subject: [PATCH 055/232] media: rk628-for-all: bt1120: fix diaplay error
+
+scaler_en set to 0 when disable stream, because
+bt1120 can't be disable.
+
+Signed-off-by: Shunqing Chen <csq@rock-chips.com>
+Change-Id: I8278d6a00a76c58736224a982e9235d18159ad27
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_bt1120_v4l2.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+index 11bd6d36df28a2..e0bbfdc7d43690 100644
+--- a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+@@ -41,7 +41,7 @@ static int debug;
+ module_param(debug, int, 0644);
+ MODULE_PARM_DESC(debug, "debug level (0-3)");
+ 
+-#define DRIVER_VERSION			KERNEL_VERSION(0, 0x0, 0x6)
++#define DRIVER_VERSION			KERNEL_VERSION(0, 0x0, 0x7)
+ #define RK628_BT1120_NAME		"rk628-bt1120"
+ 
+ #define EDID_NUM_BLOCKS_MAX 		2
+@@ -611,12 +611,14 @@ static void enable_bt1120tx(struct v4l2_subdev *sd)
+ 
+ static void enable_stream(struct v4l2_subdev *sd, bool en)
+ {
++	struct rk628_bt1120 *bt1120 = to_bt1120(sd);
+ 
+ 	v4l2_dbg(1, debug, sd, "%s: %sable\n", __func__, en ? "en" : "dis");
+ 	if (en) {
+ 		rk628_hdmirx_vid_enable(sd, true);
+ 		enable_bt1120tx(sd);
+ 	} else {
++		rk628_i2c_write(bt1120->rk628, GRF_SCALER_CON0, SCL_EN(0));
+ 		rk628_hdmirx_vid_enable(sd, false);
+ 	}
+ }
+-- 
+2.17.1
+

@@ -1,0 +1,41 @@
+From 969f8708aa9ebe5e56c547e127210fb5f6e9820d Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Thu, 17 Nov 2022 02:25:38 +0000
+Subject: [PATCH 150/232] media: i2c: rk628_csi_v4l2: fix get format
+
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+Change-Id: I71454cb98e919d8f1c8e9c07512a9a13f9d93a6c
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c | 14 ++++++--------
+ 1 file changed, 6 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index 03ded0fa0a5f11..790b66d501cce0 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -1580,15 +1580,13 @@ static int rk628_csi_get_fmt(struct v4l2_subdev *sd,
+ 	struct rk628_csi *csi = to_csi(sd);
+ 
+ 	mutex_lock(&csi->confctl_mutex);
+-	if (format->which == V4L2_SUBDEV_FORMAT_TRY) {
+-		format->format = *v4l2_subdev_get_try_format(sd, cfg, format->pad);
+-	} else {
+-		format->format.code = csi->mbus_fmt_code;
+-		format->format.width = csi->timings.bt.width;
+-		format->format.height = csi->timings.bt.height;
+-		format->format.field = csi->timings.bt.interlaced ?
++
++	format->format.code = csi->mbus_fmt_code;
++	format->format.width = csi->timings.bt.width;
++	format->format.height = csi->timings.bt.height;
++	format->format.field = csi->timings.bt.interlaced ?
+ 			V4L2_FIELD_INTERLACED : V4L2_FIELD_NONE;
+-	}
++
+ 	mutex_unlock(&csi->confctl_mutex);
+ 
+ 	v4l2_dbg(1, debug, sd, "%s: fmt code:%d, w:%d, h:%d, field code:%d\n",
+-- 
+2.17.1
+

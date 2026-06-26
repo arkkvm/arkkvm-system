@@ -1,0 +1,110 @@
+From 0d1893758f914abf767ce8481dab6065fe1e4ec1 Mon Sep 17 00:00:00 2001
+From: Shunhua Lan <lsh@rock-chips.com>
+Date: Thu, 12 Aug 2021 14:07:54 +0800
+Subject: [PATCH 066/232]  media: rk628-for-all: fix no sound when no valid
+ fs_audio in ctsn interrupt
+
+Signed-off-by: Shunhua Lan <lsh@rock-chips.com>
+Change-Id: I1db17ca16dcc0b99be51ed28e77291debc93877d
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_hdmirx.c | 43 +++++++++++++++++---------
+ 1 file changed, 29 insertions(+), 14 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_hdmirx.c b/drivers/media/i2c/rk628/rk628_hdmirx.c
+index 7b02f8ad412623..00179c73f24ff5 100644
+--- a/drivers/media/i2c/rk628/rk628_hdmirx.c
++++ b/drivers/media/i2c/rk628/rk628_hdmirx.c
+@@ -35,6 +35,7 @@ struct rk628_audiostate {
+ 	int init_state;
+ 	int pre_state;
+ 	bool fifo_int;
++	bool audio_enable;
+ };
+ 
+ struct rk628_audioinfo {
+@@ -285,6 +286,24 @@ static void rk628_hdmirx_audio_set_fs(struct rk628_audioinfo *aif, u32 fs_audio)
+ 	aif->audio_state.fs_audio = fs_audio;
+ }
+ 
++static void rk628_hdmirx_audio_enable(struct rk628_audioinfo *aif)
++{
++	u32 fifo_ints;
++
++	rk628_i2c_read(aif->rk628, HDMI_RX_AUD_FIFO_ISTS, &fifo_ints);
++	dev_dbg(aif->dev, "%s fifo ints %#x\n", __func__, fifo_ints);
++	if ((fifo_ints & 0x18) == 0x18)
++		rk628_hdmirx_audio_fifo_initd(aif);
++	else if (fifo_ints & 0x18)
++		rk628_hdmirx_audio_fifo_init(aif);
++	rk628_i2c_update_bits(aif->rk628, HDMI_RX_DMI_DISABLE_IF,
++			      AUD_ENABLE_MASK, AUD_ENABLE(1));
++	aif->audio_state.audio_enable = true;
++	aif->fifo_ints_en = true;
++	rk628_i2c_write(aif->rk628, HDMI_RX_AUD_FIFO_IEN_SET,
++			AFIF_OVERFL_ISTS | AFIF_UNDERFL_ISTS);
++}
++
+ void rk628_csi_delayed_work_audio(struct work_struct *work)
+ {
+ 	struct delayed_work *dwork = to_delayed_work(work);
+@@ -301,6 +320,11 @@ void rk628_csi_delayed_work_audio(struct work_struct *work)
+ 		dev_dbg(aif->dev, "%s: no supported fs(%u)\n", __func__, fs_audio);
+ 		goto exit;
+ 	}
++	if(!audio_state->audio_enable) {
++		rk628_hdmirx_audio_set_fs(aif, fs_audio);
++		rk628_hdmirx_audio_enable(aif);
++		goto exit;
++	}
+ 	if (abs(fs_audio - audio_state->fs_audio) > 1000)
+ 		rk628_hdmirx_audio_set_fs(aif, fs_audio);
+ 	rk628_i2c_read(aif->rk628, HDMI_RX_AUD_FIFO_FILLSTS1, &cur_state);
+@@ -323,7 +347,7 @@ exit:
+ 
+ static void rk628_csi_delayed_work_audio_rate_change(struct work_struct *work)
+ {
+-	u32 fifo_ints, fifo_fillsts;
++	u32 fifo_fillsts;
+ 	u32 fs_audio;
+ 	struct delayed_work *dwork = to_delayed_work(work);
+ 	struct rk628_audioinfo *aif = container_of(dwork, struct rk628_audioinfo,
+@@ -334,24 +358,14 @@ static void rk628_csi_delayed_work_audio_rate_change(struct work_struct *work)
+ 	dev_dbg(aif->dev, "%s get audio fs %u\n", __func__, fs_audio);
+ 	if (aif->audio_state.ctsn_flag == (ACR_N_CHG_ICLR | ACR_CTS_CHG_ICLR)) {
+ 		aif->audio_state.ctsn_flag = 0;
+-		if (is_validfs(fs_audio)) {
++		if (/* is_validfs(fs_audio)*/0) {
+ 			rk628_hdmirx_audio_set_fs(aif, fs_audio);
+-			rk628_i2c_read(aif->rk628, HDMI_RX_AUD_FIFO_ISTS, &fifo_ints);
+-			dev_dbg(aif->dev, "%s fifo ints %#x\n", __func__, fifo_ints);
+-			if ((fifo_ints & 0x18) == 0x18)
+-				rk628_hdmirx_audio_fifo_initd(aif);
+-			else if (fifo_ints & 0x18)
+-				rk628_hdmirx_audio_fifo_init(aif);
+-			rk628_i2c_update_bits(aif->rk628, HDMI_RX_DMI_DISABLE_IF,
+-					      AUD_ENABLE_MASK, AUD_ENABLE(1));
+ 			/* We start audio work after recieveing cts n interrupt */
+-			aif->fifo_ints_en = true;
+-			rk628_i2c_write(aif->rk628, HDMI_RX_AUD_FIFO_IEN_SET,
+-					AFIF_OVERFL_ISTS | AFIF_UNDERFL_ISTS);
+-			schedule_delayed_work(&aif->delayed_work_audio, msecs_to_jiffies(1000));
++			rk628_hdmirx_audio_enable(aif);
+ 		} else {
+ 			dev_dbg(aif->dev, "%s invalid fs when ctsn updating\n", __func__);
+ 		}
++		schedule_delayed_work(&aif->delayed_work_audio, msecs_to_jiffies(1000));
+ 	}
+ 	if (aif->audio_state.fifo_int) {
+ 		aif->audio_state.fifo_int = false;
+@@ -482,6 +496,7 @@ void rk628_hdmirx_audio_setup(HAUDINFO info)
+ 	aif->audio_state.pre_state = 0;
+ 	aif->audio_state.init_state = INIT_FIFO_STATE*4;
+ 	aif->audio_state.fifo_int = false;
++	aif->audio_state.audio_enable = false;
+ 	aif->fifo_ints_en = false;
+ 	aif->ctsn_ints_en = false;
+ 	aif->i2s_enabled = false;
+-- 
+2.17.1
+

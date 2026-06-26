@@ -1,0 +1,165 @@
+From b0d4b48bfd5e8f9fc53af6230dae93460178b376 Mon Sep 17 00:00:00 2001
+From: Guochun Huang <hero.huang@rock-chips.com>
+Date: Mon, 30 Aug 2021 08:29:17 +0800
+Subject: [PATCH 082/232] ARM: dts: rockchip: Add support for
+ rk3288-evb-rk628-misc-hdmi2lvds/gvi
+
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+Change-Id: Ib40a93e6625c5fe8284afaf628b9f04bbecdfe34
+---
+ .../rk3288-evb-rk628-misc-hdmi2gvi-avb.dts    | 74 +++++++++++++++++++
+ .../rk3288-evb-rk628-misc-hdmi2lvds-avb.dts   | 61 +++++++++++++++
+ 2 files changed, 135 insertions(+)
+ create mode 100644 arch/arm/boot/dts/rk3288-evb-rk628-misc-hdmi2gvi-avb.dts
+ create mode 100644 arch/arm/boot/dts/rk3288-evb-rk628-misc-hdmi2lvds-avb.dts
+
+diff --git a/arch/arm/boot/dts/rk3288-evb-rk628-misc-hdmi2gvi-avb.dts b/arch/arm/boot/dts/rk3288-evb-rk628-misc-hdmi2gvi-avb.dts
+new file mode 100644
+index 00000000000000..e906ab83a9c6d0
+--- /dev/null
++++ b/arch/arm/boot/dts/rk3288-evb-rk628-misc-hdmi2gvi-avb.dts
+@@ -0,0 +1,74 @@
++// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
++// Copyright (c) 2020 Fuzhou Rockchip Electronics Co., Ltd
++
++/dts-v1/;
++#include "rk3288-evb-rk628.dtsi"
++
++/ {
++	model = "Rockchip RK3288 EVB RK628 Board";
++	compatible = "rockchip,rk3288-evb-rk628", "rockchip,rk3288";
++
++	chosen {
++		bootargs = "rootwait earlycon=uart8250,mmio32,0xff690000 vmalloc=496M swiotlb=1 console=ttyFIQ0 androidboot.baseband=N/A androidboot.veritymode=enforcing androidboot.hardware=rk30board androidboot.console=ttyFIQ0 init=/init kpti=0";
++	};
++};
++
++&firmware_android {
++	compatible = "android,firmware";
++	boot_devices = "ff0f0000.dwmmc";
++
++	vbmeta {
++		compatible = "android,vbmeta";
++		parts = "vbmeta,boot,system,vendor,dtbo";
++	};
++
++	fstab {
++		compatible = "android,fstab";
++
++		vendor {
++			compatible = "android,vendor";
++			dev = "/dev/block/by-name/vendor";
++			type = "ext4";
++			mnt_flags = "ro,barrier=1,inode_readahead_blks=8";
++			fsmgr_flags = "wait,avb";
++		};
++	};
++};
++
++&hdmi {
++	status = "okay";
++};
++
++&hdmi_in_vopb {
++	status = "disabled";
++};
++
++&i2c1 {
++	clock-frequency = <400000>;
++	status = "okay";
++
++	rk628: rk628@50 {
++		compatible = "rockchip,rk628";
++		reg = <0x50>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&test_clkout>;
++		assigned-clocks = <&cru SCLK_TESTOUT_SRC>;
++		assigned-clock-parents = <&xin24m>;
++		clocks = <&cru SCLK_TESTOUT>;
++		clock-names = "soc_24M";
++		interrupt-parent = <&gpio7>;
++		interrupts = <15 IRQ_TYPE_LEVEL_HIGH>;
++		enable-gpios = <&gpio5 RK_PC2 GPIO_ACTIVE_HIGH>;
++		reset-gpios = <&gpio7 RK_PB6 GPIO_ACTIVE_LOW>;
++		panel-enable-gpios = <&gpio7 RK_PA2 GPIO_ACTIVE_HIGH>;
++		status = "okay";
++	};
++};
++
++&pinctrl {
++	test {
++		test_clkout: test-clkout {
++			rockchip,pins = <0 17 RK_FUNC_1 &pcfg_pull_none>;
++		};
++	};
++};
+diff --git a/arch/arm/boot/dts/rk3288-evb-rk628-misc-hdmi2lvds-avb.dts b/arch/arm/boot/dts/rk3288-evb-rk628-misc-hdmi2lvds-avb.dts
+new file mode 100644
+index 00000000000000..cd9541741590f8
+--- /dev/null
++++ b/arch/arm/boot/dts/rk3288-evb-rk628-misc-hdmi2lvds-avb.dts
+@@ -0,0 +1,61 @@
++// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
++// Copyright (c) 2020 Fuzhou Rockchip Electronics Co., Ltd
++
++/dts-v1/;
++#include "rk3288-evb-rk628.dtsi"
++
++/ {
++	model = "Rockchip RK3288 EVB RK628 Board";
++	compatible = "rockchip,rk3288-evb-rk628", "rockchip,rk3288";
++
++	chosen {
++		bootargs = "rootwait earlycon=uart8250,mmio32,0xff690000 vmalloc=496M swiotlb=1 console=ttyFIQ0 androidboot.baseband=N/A androidboot.veritymode=enforcing androidboot.hardware=rk30board androidboot.console=ttyFIQ0 init=/init kpti=0";
++	};
++};
++
++&firmware_android {
++	compatible = "android,firmware";
++	boot_devices = "ff0f0000.dwmmc";
++
++	vbmeta {
++		compatible = "android,vbmeta";
++		parts = "vbmeta,boot,system,vendor,dtbo";
++	};
++
++	fstab {
++		compatible = "android,fstab";
++
++		vendor {
++			compatible = "android,vendor";
++			dev = "/dev/block/by-name/vendor";
++			type = "ext4";
++			mnt_flags = "ro,barrier=1,inode_readahead_blks=8";
++			fsmgr_flags = "wait,avb";
++		};
++	};
++};
++
++&hdmi {
++	status = "okay";
++};
++
++&hdmi_in_vopb {
++	status = "disabled";
++};
++
++&i2c1 {
++	clock-frequency = <400000>;
++	status = "okay";
++
++	rk628: rk628@50 {
++		compatible = "rockchip,rk628";
++		reg = <0x50>;
++		interrupt-parent = <&gpio7>;
++		interrupts = <15 IRQ_TYPE_LEVEL_HIGH>;
++		enable-gpios = <&gpio5 RK_PC2 GPIO_ACTIVE_HIGH>;
++		reset-gpios = <&gpio7 RK_PB6 GPIO_ACTIVE_LOW>;
++		panel-enable-gpios = <&gpio7 RK_PA2 GPIO_ACTIVE_HIGH>;
++		status = "okay";
++	};
++};
++
+-- 
+2.17.1
+

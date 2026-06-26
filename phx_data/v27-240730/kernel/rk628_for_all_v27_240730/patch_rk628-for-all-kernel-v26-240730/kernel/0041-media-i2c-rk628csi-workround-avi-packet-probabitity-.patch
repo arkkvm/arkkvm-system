@@ -1,0 +1,71 @@
+From 33cf161ef9aab15b268f3960c09950c779d497b9 Mon Sep 17 00:00:00 2001
+From: Shunqing Chen <csq@rock-chips.com>
+Date: Tue, 3 Aug 2021 20:09:21 +0800
+Subject: [PATCH 041/232] media: i2c: rk628csi: workround avi packet
+ probabitity error
+
+If read the same value three times,
+we think this avi patket is correct.
+
+Signed-off-by: Shunqing Chen <csq@rock-chips.com>
+Change-Id: I5b3346efe63cab2dd58430d802538248ce394083
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_csi.c | 26 +++++++++++++++-----------
+ 1 file changed, 15 insertions(+), 11 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_csi.c b/drivers/media/i2c/rk628/rk628_csi.c
+index 69cace02a86150..94d5c609f2db0d 100644
+--- a/drivers/media/i2c/rk628/rk628_csi.c
++++ b/drivers/media/i2c/rk628/rk628_csi.c
+@@ -42,7 +42,7 @@ static int debug;
+ module_param(debug, int, 0644);
+ MODULE_PARM_DESC(debug, "debug level (0-1)");
+ 
+-#define DRIVER_VERSION			KERNEL_VERSION(0, 0x0, 0x1)
++#define DRIVER_VERSION			KERNEL_VERSION(0, 0x0, 0x2)
+ 
+ #define EDID_NUM_BLOCKS_MAX 		2
+ #define EDID_BLOCK_SIZE 		128
+@@ -799,7 +799,8 @@ static void rk628_csi_set_csi(struct rk628_csi *csi)
+ 	u8 lanes = csi->csi_lanes_in_use;
+ 	u8 lane_num;
+ 	u8 dphy_lane_en;
+-	u32 wc_usrdef, val;
++	u32 wc_usrdef, val, avi_pb = 0;
++	u8 cnt = 0;
+ 
+ 	lane_num = lanes - 1;
+ 	dphy_lane_en = (1 << (lanes + 1)) - 1;
+@@ -859,16 +860,19 @@ static void rk628_csi_set_csi(struct rk628_csi *csi)
+ 	rk628_i2c_write(csi->rk628, CSITX_CONFIG_DONE, CONFIG_DONE_IMD);
+ 	dev_dbg(csi->dev, "%s csi cofig done\n", __func__);
+ 
+-	for (i = 0; i < 10; i++) {
+-		if (csi->avi_rcv_rdy)
+-			break;
+-		usleep_range(20*1000, 21*1000);
++	for (i = 0; i < 100; i++) {
++		rk628_i2c_read(csi->rk628, HDMI_RX_PDEC_AVI_PB, &val);
++		dev_dbg(csi->dev, "%s PDEC_AVI_PB:%#x, avi_rcv_rdy:%d\n",
++			 __func__, val, csi->avi_rcv_rdy);
++		if (val == avi_pb && csi->avi_rcv_rdy) {
++			if (++cnt >= 2)
++				break;
++		} else {
++			cnt = 0;
++			avi_pb = val;
++		}
++		msleep(30);
+ 	}
+-
+-	if (i == 10)
+-		dev_err(csi->dev, "%s Have not rcv avi packet!\n", __func__);
+-
+-	rk628_i2c_read(csi->rk628, HDMI_RX_PDEC_AVI_PB, &val);
+ 	video_fmt = (val & VIDEO_FORMAT_MASK) >> 5;
+ 	dev_dbg(csi->dev, "%s PDEC_AVI_PB:%#x, video format:%d\n",
+ 			__func__, val, video_fmt);
+-- 
+2.17.1
+

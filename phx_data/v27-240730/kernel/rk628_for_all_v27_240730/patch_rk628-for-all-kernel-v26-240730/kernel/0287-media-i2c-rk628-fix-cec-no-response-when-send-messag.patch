@@ -1,0 +1,52 @@
+From ebbb3d574aba95ed1c342726b772e83929bf11e8 Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Mon, 13 May 2024 17:01:19 +0800
+Subject: [PATCH 287/305] media: i2c: rk628: fix cec no response when send
+ messages
+
+Type: Fix
+Redmine ID: N/A
+Associated modifications: N/A
+Test: N/A
+
+Change-Id: If9c4dbe6a4aafe9117eb12140da632b8b59e5988
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_bt1120_v4l2.c | 4 ----
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c    | 4 ----
+ 2 files changed, 8 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+index ff64ab6a0e6a88..2ba973cc5cc981 100644
+--- a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+@@ -980,10 +980,6 @@ static void rk628_bt1120_enable_interrupts(struct v4l2_subdev *sd, bool en)
+ 		rk628_i2c_write(bt1120->rk628, HDMI_RX_MD_IEN_CLR, md_mask);
+ 		rk628_i2c_write(bt1120->rk628, HDMI_RX_PDEC_IEN_CLR, pdec_mask);
+ 		rk628_i2c_write(bt1120->rk628, HDMI_RX_AUD_FIFO_IEN_CLR, 0x1f);
+-		if (bt1120->cec && bt1120->cec->adap) {
+-			rk628_i2c_write(bt1120->rk628, HDMI_RX_AUD_CEC_IEN_SET, 0);
+-			rk628_i2c_write(bt1120->rk628, HDMI_RX_AUD_CEC_IEN_CLR, ~0);
+-		}
+ 		bt1120->vid_ints_en = false;
+ 	}
+ 	usleep_range(5000, 5000);
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index 2e2e27a28466e1..e47233de04a7a9 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -1465,10 +1465,6 @@ static void rk628_csi_enable_interrupts(struct v4l2_subdev *sd, bool en)
+ 		rk628_i2c_write(csi->rk628, HDMI_RX_MD_IEN_CLR, md_mask);
+ 		rk628_i2c_write(csi->rk628, HDMI_RX_PDEC_IEN_CLR, pdec_mask);
+ 		rk628_i2c_write(csi->rk628, HDMI_RX_AUD_FIFO_IEN_CLR, 0x1f);
+-		if (csi->cec && csi->cec->adap) {
+-			rk628_i2c_write(csi->rk628, HDMI_RX_AUD_CEC_IEN_SET, 0);
+-			rk628_i2c_write(csi->rk628, HDMI_RX_AUD_CEC_IEN_CLR, ~0);
+-		}
+ 		csi->vid_ints_en = false;
+ 	}
+ 	usleep_range(5000, 5000);
+-- 
+2.17.1
+

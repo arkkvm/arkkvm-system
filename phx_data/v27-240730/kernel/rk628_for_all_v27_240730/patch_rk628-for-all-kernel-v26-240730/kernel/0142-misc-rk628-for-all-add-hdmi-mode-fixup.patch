@@ -1,0 +1,134 @@
+From 22c9d9e1cff8aa37942d0e7032e39c2a7f1f751a Mon Sep 17 00:00:00 2001
+From: Chen Shunqing <csq@rock-chips.com>
+Date: Tue, 29 Mar 2022 03:09:07 +0000
+Subject: [PATCH 142/232] misc: rk628-for-all: add hdmi mode fixup
+
+Signed-off-by: Chen Shunqing <csq@rock-chips.com>
+Change-Id: Ie5d839170295de5530feeef219ead46d792e8734
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/misc/rk628/rk628.c              |  6 ++++++
+ drivers/misc/rk628/rk628.h              |  6 ++++++
+ drivers/misc/rk628/rk628_hdmitx.c       | 20 ++++++++++++++++++++
+ drivers/misc/rk628/rk628_post_process.c | 18 +++++++++++++-----
+ 4 files changed, 45 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/misc/rk628/rk628.c b/drivers/misc/rk628/rk628.c
+index 683dfc71e2fcec..a5c37f90a98755 100644
+--- a/drivers/misc/rk628/rk628.c
++++ b/drivers/misc/rk628/rk628.c
+@@ -544,6 +544,7 @@ static int rk628_display_route_info_parse(struct rk628 *rk628)
+ {
+ 	struct device_node *np;
+ 	int ret = 0;
++	u32 val;
+ 
+ 	if (of_property_read_bool(rk628->dev->of_node, "rk628,hdmi-in"))
+ 		rk628->input_mode = INPUT_MODE_HDMI;
+@@ -570,6 +571,11 @@ static int rk628_display_route_info_parse(struct rk628 *rk628)
+ 			rk628->output_mode = OUTPUT_MODE_CSI;
+ 	}
+ 
++	if (of_property_read_u32(rk628->dev->of_node, "mode-sync-pol", &val) < 0)
++		rk628->sync_pol = MODE_FLAG_PSYNC;
++	else
++		rk628->sync_pol = (!val ? MODE_FLAG_NSYNC : MODE_FLAG_PSYNC);
++
+ 	if (rk628_input_is_rgb(rk628) && rk628->output_mode == OUTPUT_MODE_RGB)
+ 		return -EINVAL;
+ 
+diff --git a/drivers/misc/rk628/rk628.h b/drivers/misc/rk628/rk628.h
+index a02508059e93e7..bd0f9442f0f97c 100644
+--- a/drivers/misc/rk628/rk628.h
++++ b/drivers/misc/rk628/rk628.h
+@@ -312,6 +312,11 @@ enum bus_format {
+ 	BUS_FMT_UNKNOWN,
+ };
+ 
++enum rk628_mode_sync_pol {
++	MODE_FLAG_NSYNC,
++	MODE_FLAG_PSYNC,
++};
++
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0))
+ #define KERNEL_VERSION_4_19
+ #endif
+@@ -440,6 +445,7 @@ struct rk628 {
+ 	struct rk628_lvds lvds;
+ 	struct rk628_gvi gvi;
+ 	struct rk628_combtxphy combtxphy;
++	int sync_pol;
+ };
+ 
+ static inline int rk628_i2c_write(struct rk628 *rk628, u32 reg, u32 val)
+diff --git a/drivers/misc/rk628/rk628_hdmitx.c b/drivers/misc/rk628/rk628_hdmitx.c
+index 109efa99db4180..486da4bc7c644b 100644
+--- a/drivers/misc/rk628/rk628_hdmitx.c
++++ b/drivers/misc/rk628/rk628_hdmitx.c
+@@ -719,6 +719,25 @@ static void rk628_hdmi_bridge_mode_set(struct drm_bridge *bridge,
+ 	rk628_mode_copy(src, dst);
+ }
+ 
++static bool
++rk628_hdmi_bridge_mode_fixup(struct drm_bridge *bridge,
++			     const struct drm_display_mode *mode,
++			     struct drm_display_mode *adj)
++{
++        struct rk628_hdmi *hdmi = bridge_to_hdmi(bridge);
++	struct rk628 *rk628 = hdmi->rk628;
++
++        if (rk628->sync_pol == MODE_FLAG_NSYNC) {
++		adj->flags &= ~(DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC);
++		adj->flags |= (DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC);
++	} else {
++		adj->flags &= ~(DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC);
++		adj->flags |= (DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC);
++	}
++
++	return true;
++}
++
+ static void rk628_hdmi_bridge_enable(struct drm_bridge *bridge)
+ {
+ 	struct rk628_hdmi *hdmi = bridge_to_hdmi(bridge);
+@@ -788,6 +807,7 @@ static const struct drm_bridge_funcs rk628_hdmi_bridge_funcs = {
+ 	.detach = rk628_hdmi_bridge_detach,
+ #endif
+ 	.mode_set = rk628_hdmi_bridge_mode_set,
++	.mode_fixup = rk628_hdmi_bridge_mode_fixup,
+ 	.enable = rk628_hdmi_bridge_enable,
+ 	.disable = rk628_hdmi_bridge_disable,
+ };
+diff --git a/drivers/misc/rk628/rk628_post_process.c b/drivers/misc/rk628/rk628_post_process.c
+index 892ae9f89d492e..66f60ba983171f 100644
+--- a/drivers/misc/rk628/rk628_post_process.c
++++ b/drivers/misc/rk628/rk628_post_process.c
+@@ -214,12 +214,20 @@ void rk628_post_process_init(struct rk628 *rk628)
+ 	rk628_cru_clk_set_rate(rk628, CGU_CLK_RX_READ, src->clock * 1000);
+ 	rk628_cru_clk_set_rate(rk628, CGU_SCLK_VOP, dst_rate * 1000);
+ 
+-	if (src->flags & DRM_MODE_FLAG_PVSYNC)
+-		rk628_i2c_update_bits(rk628, GRF_SYSTEM_CON0,
+-				      SW_VSYNC_POL_MASK, SW_VSYNC_POL(1));
+-	if (src->flags & DRM_MODE_FLAG_PHSYNC)
++	if (rk628->output_mode == OUTPUT_MODE_HDMI) {
++		rk628_i2c_update_bits(rk628, GRF_SYSTEM_CON0, SW_VSYNC_POL_MASK,
++				      SW_VSYNC_POL(rk628->sync_pol));
+ 		rk628_i2c_update_bits(rk628, GRF_SYSTEM_CON0, SW_HSYNC_POL_MASK,
+-				      SW_HSYNC_POL(1));
++				      SW_HSYNC_POL(rk628->sync_pol));
++	} else {
++		if (src->flags & DRM_MODE_FLAG_PVSYNC)
++			rk628_i2c_update_bits(rk628, GRF_SYSTEM_CON0,
++					      SW_VSYNC_POL_MASK, SW_VSYNC_POL(1));
++		if (src->flags & DRM_MODE_FLAG_PHSYNC)
++			rk628_i2c_update_bits(rk628, GRF_SYSTEM_CON0,
++					      SW_HSYNC_POL_MASK,
++					      SW_HSYNC_POL(1));
++	}
+ 
+ 	rk628_post_process_scaler_init(rk628, src, dst);
+ }
+-- 
+2.17.1
+

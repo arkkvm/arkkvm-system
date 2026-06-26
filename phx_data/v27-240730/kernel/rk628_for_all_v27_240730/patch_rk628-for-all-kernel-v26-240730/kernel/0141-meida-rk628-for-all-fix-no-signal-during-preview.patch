@@ -1,0 +1,56 @@
+From b4730dad5dd70efad15fe2758a393898728a3fd1 Mon Sep 17 00:00:00 2001
+From: Chen Shunqing <csq@rock-chips.com>
+Date: Fri, 25 Mar 2022 09:59:13 +0000
+Subject: [PATCH 141/232] meida: rk628-for-all: fix no signal during preview
+
+Signed-off-by: Chen Shunqing <csq@rock-chips.com>
+Change-Id: Id80b90a8948feb28e9176f5072dc285be06275ba
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_bt1120_v4l2.c | 2 +-
+ drivers/media/i2c/rk628/rk628_csi.c         | 2 +-
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c    | 2 +-
+ 3 files changed, 3 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+index 9ef110eddc7372..e7f58d11f871d1 100644
+--- a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+@@ -1061,7 +1061,7 @@ static int rk628_bt1120_isr(struct v4l2_subdev *sd, u32 status, bool *handled)
+ 			*handled = true;
+ 		}
+ 
+-		if ((pdec_ints & AVI_RCV_ISTS) && plugin) {
++		if ((pdec_ints & AVI_RCV_ISTS) && plugin && !bt1120->avi_rcv_rdy) {
+ 			v4l2_dbg(1, debug, sd, "%s: AVI RCV INT!\n", __func__);
+ 			bt1120->avi_rcv_rdy = true;
+ 			/* After get the AVI_RCV interrupt state, disable interrupt. */
+diff --git a/drivers/media/i2c/rk628/rk628_csi.c b/drivers/media/i2c/rk628/rk628_csi.c
+index 7166c4dd2b62df..1ac9857ac250b4 100644
+--- a/drivers/media/i2c/rk628/rk628_csi.c
++++ b/drivers/media/i2c/rk628/rk628_csi.c
+@@ -1097,7 +1097,7 @@ static int rk628_csi_isr(struct rk628_csi *csi, u32 status, bool *handled)
+ 			*handled = true;
+ 		}
+ 
+-		if ((pdec_ints & AVI_RCV_ISTS) && plugin) {
++		if ((pdec_ints & AVI_RCV_ISTS) && plugin && !csi->avi_rcv_rdy) {
+ 			dev_dbg(csi->dev, "%s: AVI RCV INT!\n", __func__);
+ 			csi->avi_rcv_rdy = true;
+ 			/* After get the AVI_RCV interrupt state, disable interrupt. */
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index 9aca43bdcd8411..0af1cab8986bb8 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -1254,7 +1254,7 @@ static int rk628_csi_isr(struct v4l2_subdev *sd, u32 status, bool *handled)
+ 			*handled = true;
+ 		}
+ 
+-		if ((pdec_ints & AVI_RCV_ISTS) && plugin) {
++		if ((pdec_ints & AVI_RCV_ISTS) && plugin && !csi->avi_rcv_rdy) {
+ 			v4l2_dbg(1, debug, sd, "%s: AVI RCV INT!\n", __func__);
+ 			if (csi->plat_data->tx_mode == DSI_MODE)
+ 				enable_stream(sd, false);
+-- 
+2.17.1
+

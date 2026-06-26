@@ -1,0 +1,70 @@
+From c6790e2fac4bbdc846130606bf226bbe125c930d Mon Sep 17 00:00:00 2001
+From: Shunqing Chen <csq@rock-chips.com>
+Date: Fri, 6 Aug 2021 11:27:53 +0800
+Subject: [PATCH 047/232] media: rk628-for-all: fix division by zero
+
+Signed-off-by: Shunqing Chen <csq@rock-chips.com>
+Change-Id: If9a2b1642f5e1285d02b994aeb016a39f0830a85
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_bt1120_v4l2.c | 9 ++++++++-
+ drivers/media/i2c/rk628/rk628_csi.c         | 9 ++++++++-
+ 2 files changed, 16 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+index 319379ee87dea4..6f26c3f9d49200 100644
+--- a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+@@ -41,7 +41,7 @@ static int debug;
+ module_param(debug, int, 0644);
+ MODULE_PARM_DESC(debug, "debug level (0-3)");
+ 
+-#define DRIVER_VERSION			KERNEL_VERSION(0, 0x0, 0x3)
++#define DRIVER_VERSION			KERNEL_VERSION(0, 0x0, 0x4)
+ #define RK628_BT1120_NAME		"rk628-bt1120"
+ 
+ #define EDID_NUM_BLOCKS_MAX 		2
+@@ -745,6 +745,13 @@ static void rk628_post_process_setup(struct v4l2_subdev *sd)
+ 	src.vsync_len = bt->vsync;
+ 	src.vback_porch = bt->vbackporch;
+ 	src.pixelclock = bt->pixelclock;
++	if (!src.pixelclock) {
++		enable_stream(sd, false);
++		bt1120->nosignal = true;
++		schedule_delayed_work(&bt1120->delayed_work_enable_hotplug, HZ / 20);
++		return;
++	}
++
+ 	src.flags = 0;
+ 	if (bt->interlaced == V4L2_DV_INTERLACED)
+ 		src.flags |= DISPLAY_FLAGS_INTERLACED;
+diff --git a/drivers/media/i2c/rk628/rk628_csi.c b/drivers/media/i2c/rk628/rk628_csi.c
+index bf6659b4f875ea..ed89220a701612 100644
+--- a/drivers/media/i2c/rk628/rk628_csi.c
++++ b/drivers/media/i2c/rk628/rk628_csi.c
+@@ -42,7 +42,7 @@ static int debug;
+ module_param(debug, int, 0644);
+ MODULE_PARM_DESC(debug, "debug level (0-1)");
+ 
+-#define DRIVER_VERSION			KERNEL_VERSION(0, 0x0, 0x3)
++#define DRIVER_VERSION			KERNEL_VERSION(0, 0x0, 0x4)
+ 
+ #define EDID_NUM_BLOCKS_MAX 		2
+ #define EDID_BLOCK_SIZE 		128
+@@ -741,6 +741,13 @@ static void rk628_post_process_setup(struct rk628_csi *csi)
+ 	src.vsync_len = bt->vsync;
+ 	src.vback_porch = bt->vbackporch;
+ 	src.pixelclock = bt->pixelclock;
++	if (!src.pixelclock) {
++		enable_stream(csi, false);
++		csi->nosignal = true;
++		schedule_delayed_work(&csi->delayed_work_enable_hotplug, HZ / 20);
++		return;
++	}
++
+ 	src.flags = 0;
+ 	if (bt->interlaced == V4L2_DV_INTERLACED)
+ 		src.flags |= DISPLAY_FLAGS_INTERLACED;
+-- 
+2.17.1
+

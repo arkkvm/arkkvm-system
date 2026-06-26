@@ -1,0 +1,70 @@
+
+APP_PATH=/oem/usr/bin/arkkvm_usb
+
+APP_NAME=ArkKVMApp
+PID_FILE=/run/$APP_NAME.pid
+FT_IMG_PATH="/userdata/arkkvm/imgs/ft_disk.img"
+
+[ -f /etc/profile.d/RkEnv.sh ] && source /etc/profile.d/RkEnv.sh
+
+case "$1" in
+    start)
+        echo "Starting $APP_NAME..."
+        if [ -f $PID_FILE ]; then
+            if ps -p $(cat $PID_FILE) > /dev/null 2>&1; then
+                echo "$APP_NAME is already running (PID: $(cat $PID_FILE))"
+                exit 0
+            else
+                echo "Removing stale PID file..."
+                rm -f $PID_FILE
+            fi
+        fi
+
+
+        mkdir -p /userdata/arkkvm/log
+
+        nohup sh -c "$APP_PATH" >> /userdata/arkkvm/log/arkkvm_usb.log 2>&1 &
+        echo $! > $PID_FILE
+        echo "$APP_NAME started with PID $!. /userdata/arkkvm/log/arkkvm_usb.log"
+
+
+        ;;
+    stop)
+        echo "Stopping $APP_NAME..."
+        if [ -f $PID_FILE ]; then
+            PID=$(cat $PID_FILE)
+            if ps -p $PID > /dev/null 2>&1; then
+                kill $PID
+                echo "$APP_NAME stopped (PID: $PID)"
+            else
+                echo "No running process found for PID $PID"
+            fi
+            rm -f $PID_FILE
+        else
+            echo "PID file not found: $PID_FILE"
+        fi
+        ;;
+    restart)
+        $0 stop
+        sleep 2
+        $0 start
+        ;;
+    status)
+        if [ -f $PID_FILE ]; then
+            PID=$(cat $PID_FILE)
+            if ps -p $PID > /dev/null 2>&1; then
+                echo "$APP_NAME is running (PID: $PID)"
+            else
+                echo "$APP_NAME PID file exists but process not running"
+            fi
+        else
+            echo "$APP_NAME is not running"
+        fi
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|status}"
+        exit 1
+        ;;
+esac
+
+exit 0

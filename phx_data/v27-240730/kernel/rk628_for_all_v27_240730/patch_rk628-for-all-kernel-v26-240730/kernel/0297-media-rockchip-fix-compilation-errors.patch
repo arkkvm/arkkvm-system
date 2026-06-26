@@ -1,0 +1,33 @@
+From f6876b6955e88ca543a6f2ae616de47c90a3bede Mon Sep 17 00:00:00 2001
+From: Guochun Huang <hero.huang@rock-chips.com>
+Date: Thu, 23 May 2024 10:53:36 +0800
+Subject: [PATCH 297/305] media: rockchip: fix compilation errors
+
+Type: Fix/Function
+Redmine ID: #
+Associated modifications: gerrit links
+Test: test method
+
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+Change-Id: I05b635531ca6aecd1f5e5118c2e395e919b41589
+---
+ include/uapi/linux/rk-camera-module.h | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/include/uapi/linux/rk-camera-module.h b/include/uapi/linux/rk-camera-module.h
+index 9883565799e764..923c60db39f982 100644
+--- a/include/uapi/linux/rk-camera-module.h
++++ b/include/uapi/linux/rk-camera-module.h
+@@ -29,6 +29,9 @@
+ #define RKMODULE_LSC_CFG	\
+ 	_IOW('V', BASE_VIDIOC_PRIVATE + 3, struct rkmodule_lsc_cfg)
+ 
++#define RKMODULE_SET_QUICK_STREAM      \
++	_IOW('V', BASE_VIDIOC_PRIVATE + 10, __u32)
++
+ /**
+  * struct rkmodule_base_inf - module base information
+  *
+-- 
+2.17.1
+

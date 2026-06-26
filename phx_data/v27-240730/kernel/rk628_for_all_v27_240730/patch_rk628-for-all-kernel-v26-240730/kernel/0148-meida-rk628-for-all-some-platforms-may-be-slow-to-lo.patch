@@ -1,0 +1,29 @@
+From d43883a3d7ea587c937379ee258b0e61cb9f2ff4 Mon Sep 17 00:00:00 2001
+From: Chen Shunqing <csq@rock-chips.com>
+Date: Fri, 20 May 2022 00:55:38 +0000
+Subject: [PATCH 148/232] meida: rk628-for-all: some platforms may be slow to
+ load vendor Storage
+
+Signed-off-by: Chen Shunqing <csq@rock-chips.com>
+Change-Id: Ie0b6546c833cc0654860f1d5ceab33416a535a0c
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index 1678172fd97465..03ded0fa0a5f11 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -1164,7 +1164,7 @@ static void rk628_csi_initial_setup(struct v4l2_subdev *sd)
+ 	}
+ 	csi->txphy_pwron = true;
+ 	if (tx_5v_power_present(sd))
+-		schedule_delayed_work(&csi->delayed_work_enable_hotplug, msecs_to_jiffies(1000));
++		schedule_delayed_work(&csi->delayed_work_enable_hotplug, msecs_to_jiffies(2000));
+ }
+ 
+ static void rk628_csi_format_change(struct v4l2_subdev *sd)
+-- 
+2.17.1
+

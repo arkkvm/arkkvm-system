@@ -1,0 +1,54 @@
+From accee98bde0226099faa2f84fe181a43542e66c5 Mon Sep 17 00:00:00 2001
+From: Guochun Huang <hero.huang@rock-chips.com>
+Date: Tue, 31 Oct 2023 11:53:24 +0000
+Subject: [PATCH 174/232] misc: rk628: check display route after get version
+ info
+
+Change-Id: I397c835c249223ca1f9e071bafa9377a2b0cfa71
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/misc/rk628/rk628.c | 14 ++++++++------
+ 1 file changed, 8 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/misc/rk628/rk628.c b/drivers/misc/rk628/rk628.c
+index 80e44b94081c8d..2648d9999c6506 100644
+--- a/drivers/misc/rk628/rk628.c
++++ b/drivers/misc/rk628/rk628.c
+@@ -688,11 +688,6 @@ static int rk628_display_route_info_parse(struct rk628 *rk628)
+ 		rk628->output_mode |= BIT(OUTPUT_MODE_BT1120);
+ 	}
+ 
+-	if (!rk628_display_route_check(rk628))
+-		return -EINVAL;
+-
+-	rk628_final_display_route(rk628);
+-
+ 	if (of_property_read_u32(rk628->dev->of_node, "mode-sync-pol", &val) < 0)
+ 		rk628->sync_pol = MODE_FLAG_PSYNC;
+ 	else
+@@ -1203,7 +1198,7 @@ rk628_i2c_probe(struct i2c_client *client, const struct i2c_device_id *id)
+ 
+ 	ret = rk628_display_route_info_parse(rk628);
+ 	if (ret) {
+-		dev_err(dev, "display route err\n");
++		dev_err(dev, "display route parse err\n");
+ 		return ret;
+ 	}
+ 
+@@ -1278,6 +1273,13 @@ rk628_i2c_probe(struct i2c_client *client, const struct i2c_device_id *id)
+ 	if (ret)
+ 		return ret;
+ 
++	if (!rk628_display_route_check(rk628)) {
++		dev_err(dev, "display route check err\n");
++		return -EINVAL;
++	}
++
++	rk628_final_display_route(rk628);
++
+ 	/* select int io function */
+ 	rk628_i2c_write(rk628, GRF_GPIO3AB_SEL_CON, 0x30002000);
+ 
+-- 
+2.17.1
+

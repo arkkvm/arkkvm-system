@@ -1,0 +1,84 @@
+From e0f53ef22b1a83298d8a354f00e9b3a9adb976b2 Mon Sep 17 00:00:00 2001
+From: Luo Wei <lw@rock-chips.com>
+Date: Thu, 20 Jan 2022 08:58:52 +0800
+Subject: [PATCH 136/232] misc: fix rgb2dsi building error
+
+Signed-off-by: Luo Wei <lw@rock-chips.com>
+Change-Id: I6a6204d9ebe809122609d4ff9a8742528eafcdf6
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/misc/rk628/rk628.c        | 18 ++++++++++++------
+ drivers/misc/rk628/rk628_config.c |  5 ++---
+ 2 files changed, 14 insertions(+), 9 deletions(-)
+
+diff --git a/drivers/misc/rk628/rk628.c b/drivers/misc/rk628/rk628.c
+index 173a7e409c61ed..d558d3aee15081 100644
+--- a/drivers/misc/rk628/rk628.c
++++ b/drivers/misc/rk628/rk628.c
+@@ -491,13 +491,14 @@ static void rk628_display_work(struct work_struct *work)
+ 	u8 ret = 0;
+ 	struct rk628 *rk628 =
+ 		container_of(work, struct rk628, delay_work.work);
+-
+ #ifdef RK628_HDMI_IN
++	int delay = msecs_to_jiffies(2000);
++
+ 	ret = rk628_hdmirx_detect(rk628);
+-	if (!(ret & HDMIRX_CHANGED)) {
++	if (!(ret & (HDMIRX_CHANGED | HDMIRX_NOLOCK))) {
+ 		if (!rk628->plugin_det_gpio)
+ 			queue_delayed_work(rk628->monitor_wq, &rk628->delay_work,
+-					   msecs_to_jiffies(2000));
++					   delay);
+ 		else
+ 			rk628_hdmirx_enable_interrupts(rk628, true);
+ 		return;
+@@ -513,14 +514,18 @@ static void rk628_display_work(struct work_struct *work)
+ 	}
+ 
+ #ifdef RK628_HDMI_IN
+-	if (!rk628->plugin_det_gpio)
++	if (!rk628->plugin_det_gpio) {
++		if (ret & HDMIRX_NOLOCK)
++			delay = msecs_to_jiffies(200);
+ 		queue_delayed_work(rk628->monitor_wq, &rk628->delay_work,
+-				   msecs_to_jiffies(2000));
+-	else
++				   delay);
++	} else {
+ 		rk628_hdmirx_enable_interrupts(rk628, true);
++	}
+ #endif
+ }
+ 
++#ifdef RK628_DSI_OUT
+ static void rk628_dsi_work(struct work_struct *work)
+ {
+ 	struct rk628 *rk628 = container_of(work, struct rk628, dsi_delay_work.work);
+@@ -528,6 +533,7 @@ static void rk628_dsi_work(struct work_struct *work)
+ 	rk628_mipi_dsi_pre_enable(rk628);
+ 	rk628_mipi_dsi_enable(rk628);
+ }
++#endif
+ 
+ #ifdef RK628_HDMI_IN
+ static irqreturn_t rk628_hdmirx_plugin_irq(int irq, void *dev_id)
+diff --git a/drivers/misc/rk628/rk628_config.c b/drivers/misc/rk628/rk628_config.c
+index 6b56cd0f9bc357..2f33ce5e449884 100644
+--- a/drivers/misc/rk628/rk628_config.c
++++ b/drivers/misc/rk628/rk628_config.c
+@@ -21,9 +21,8 @@ static struct rk628_display_mode src_mode = {
+ 	/* .vtotal = */ 1080 + 4 + 5 + 36,
+ 	/* .flags = */ DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC,
+ };
+-#endif
+-#ifdef RK628_RGB_IN
+-tatic struct rk628_display_mode dst_mode = {
++#else
++static struct rk628_display_mode src_mode = {
+ 	/* .clock = */ 132000,
+ 	/* .hdisplay = */ 1080,
+ 	/* .hsync_start = */ 1080 + 15,
+-- 
+2.17.1
+

@@ -1,0 +1,105 @@
+From dbff27eb08073d8136345eb9e3a98394cfc7a40b Mon Sep 17 00:00:00 2001
+From: Guochun Huang <hero.huang@rock-chips.com>
+Date: Tue, 17 Aug 2021 09:28:26 +0800
+Subject: [PATCH 072/232] misc: rk628: add more detailed for lvds
+
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+Change-Id: I1f2d92dba999f8137d83b9c5c37330387d8d63fe
+---
+ drivers/misc/rk628/rk628_config.c | 47 +++++++++++++++++++++++++++++--
+ 1 file changed, 45 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/misc/rk628/rk628_config.c b/drivers/misc/rk628/rk628_config.c
+index 6b21c4be64e033..c08fd61edcfac7 100755
+--- a/drivers/misc/rk628/rk628_config.c
++++ b/drivers/misc/rk628/rk628_config.c
+@@ -21,7 +21,7 @@ static struct drm_display_mode src_mode = {
+ 	/* .flags = */ DRM_MODE_FLAG_NVSYNC | DRM_MODE_FLAG_NVSYNC,
+ };
+ 
+-const static struct drm_display_mode dst_mode = {
++static struct drm_display_mode dst_mode = {
+ 	/* .clock = */ 132000,
+ 	/* .hdisplay = */ 1080,
+ 	/* .hsync_start = */ 1080 + 15,
+@@ -36,6 +36,7 @@ const static struct drm_display_mode dst_mode = {
+ #endif
+ 
+ #ifdef RK628_LVDS_OUT
++/* for single lvds */
+ static struct drm_display_mode src_mode = {
+ 	/* .clock = */ 68000,
+ 	/* .hdisplay = */ 800,
+@@ -49,7 +50,7 @@ static struct drm_display_mode src_mode = {
+ 	/* .flags = */ DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC,
+ };
+ 
+-const static struct drm_display_mode dst_mode = {
++static struct drm_display_mode dst_mode = {
+ 	/* .clock = */ 68000,
+ 	/* .hdisplay = */ 800,
+ 	/* .hsync_start = */ 800 + 30,
+@@ -61,6 +62,35 @@ const static struct drm_display_mode dst_mode = {
+ 	/* .vtotal = */ 1280 + 3 + 2 + 3,
+ 	/* .flags = */ DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC,
+ };
++
++/* for dual lvds */
++#if 0
++static struct drm_display_mode src_mode = {
++	/* .clock = */ 148500,
++	/* .hdisplay = */ 1920,
++	/* .hsync_start = */ 1920 + 120,
++	/* .hsync_end = */ 1920 + 120 + 64,
++	/* .htotal = */ 1920 + 120 + 64 + 96,
++	/* .vdisplay = */ 1080,
++	/* .vsync_start = */ 1080 + 33,
++	/* .vsync_end = */ 1080 + 33 + 4,
++	/* .vtotal = */ 1080 + 33 + 4 + 8,
++	/* .flags = */ DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC,
++};
++
++static struct drm_display_mode dst_mode = {
++	/* .clock = */ 148500,
++	/* .hdisplay = */ 1920,
++	/* .hsync_start = */ 1920 + 120,
++	/* .hsync_end = */ 1920 + 120 + 64,
++	/* .htotal = */ 1920 + 120 + 64 + 96,
++	/* .vdisplay = */ 1080,
++	/* .vsync_start = */ 1080 + 33,
++	/* .vsync_end = */ 1080 + 33 + 4,
++	/* .vtotal = */ 1080 + 33 + 4 + 8,
++	/* .flags = */ DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC,
++};
++#endif
+ #endif
+ 
+ #ifdef RK628_GVI_OUT
+@@ -198,11 +228,24 @@ struct rk628_gvi *rk628_display_get_gvi_host(void)
+ 
+ u32 rk628_lvds_get_link_type(void)
+ {
++	/*
++	 * LVDS_SINGLE_LINK
++	 * LVDS_DUAL_LINK_ODD_EVEN_PIXELS
++	 * LVDS_DUAL_LINK_EVEN_ODD_PIXELS
++	 * LVDS_DUAL_LINK_LEFT_RIGHT_PIXELS
++	 * LVDS_DUAL_LINK_RIGHT_LEFT_PIXELS
++	 */
+ 	return LVDS_SINGLE_LINK;
+ }
+ 
+ u32 rk628_lvds_get_format(void)
+ {
++	/*
++	 * LVDS_FORMAT_VESA_24BIT
++	 * LVDS_FORMAT_JEIDA_24BIT
++	 * LVDS_FORMAT_JEIDA_18BIT
++	 * LVDS_FORMAT_VESA_18BIT
++	 */
+ 	return LVDS_FORMAT_JEIDA_24BIT;
+ }
+ 
+-- 
+2.17.1
+

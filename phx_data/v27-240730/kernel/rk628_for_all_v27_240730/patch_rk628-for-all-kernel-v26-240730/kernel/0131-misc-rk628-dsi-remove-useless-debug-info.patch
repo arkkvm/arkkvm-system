@@ -1,0 +1,45 @@
+From 6db8e7d25ed013ba0f81ecf520b614a0b8b92a60 Mon Sep 17 00:00:00 2001
+From: Guochun Huang <hero.huang@rock-chips.com>
+Date: Sat, 1 Jan 2022 17:17:00 +0800
+Subject: [PATCH 131/232] misc: rk628: dsi: remove useless debug info
+
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+Change-Id: I3da833347c2b218149a90f7e6b36791d552586a0
+---
+ drivers/misc/rk628/rk628_dsi.c | 6 ------
+ 1 file changed, 6 deletions(-)
+
+diff --git a/drivers/misc/rk628/rk628_dsi.c b/drivers/misc/rk628/rk628_dsi.c
+index 84418cce13da90..ca0ff3bcdc1615 100644
+--- a/drivers/misc/rk628/rk628_dsi.c
++++ b/drivers/misc/rk628/rk628_dsi.c
+@@ -858,8 +858,6 @@ static int rk628_dsi_transfer(struct rk628 *rk628, const struct rk628_dsi *dsi,
+ 
+ 		val = get_unaligned_le32(packet.payload);
+ 
+-		dev_info(rk628->dev, "dsi payload: 0x%x\n", val);
+-
+ 		dsi_write(rk628, dsi, DSI_GEN_PLD_DATA, val);
+ 
+ 
+@@ -878,8 +876,6 @@ static int rk628_dsi_transfer(struct rk628 *rk628, const struct rk628_dsi *dsi,
+ 	case 1:
+ 		val |= packet.payload[0];
+ 
+-        dev_info(rk628->dev, "dsi payload: 0x%x\n", val);
+-
+ 		dsi_write(rk628, dsi, DSI_GEN_PLD_DATA, val);
+ 		break;
+ 	}
+@@ -891,8 +887,6 @@ static int rk628_dsi_transfer(struct rk628 *rk628, const struct rk628_dsi *dsi,
+ 	/* Send packet header */
+ 	val = get_unaligned_le32(packet.header);
+ 
+-	dev_info(rk628->dev, "dsi hdr: 0x%x\n", val);
+-
+ 	dsi_write(rk628, dsi, DSI_GEN_HDR, val);
+ 
+ 	ret = genif_wait_write_fifo_empty(rk628, dsi);
+-- 
+2.17.1
+

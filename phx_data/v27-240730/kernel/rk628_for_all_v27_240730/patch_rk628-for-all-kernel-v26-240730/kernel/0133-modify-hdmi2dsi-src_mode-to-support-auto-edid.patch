@@ -1,0 +1,54 @@
+From b2c7e1ee408889e2d10f983e579baed663c66852 Mon Sep 17 00:00:00 2001
+From: Luo Wei <lw@rock-chips.com>
+Date: Mon, 17 Jan 2022 14:40:55 +0800
+Subject: [PATCH 133/232] modify hdmi2dsi src_mode to support auto edid
+
+Signed-off-by: Luo Wei <lw@rock-chips.com>
+Change-Id: Ic1cf635cd3d376a408fc2acf743a492cc02bb52c
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/misc/rk628/rk628_config.c | 19 +++++++++++++++++--
+ 1 file changed, 17 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/misc/rk628/rk628_config.c b/drivers/misc/rk628/rk628_config.c
+index 3fc2f68207aa7d..6b56cd0f9bc357 100644
+--- a/drivers/misc/rk628/rk628_config.c
++++ b/drivers/misc/rk628/rk628_config.c
+@@ -8,7 +8,22 @@
+ #include "rk628_config.h"
+ 
+ #ifdef RK628_DSI_OUT
++#ifdef RK628_HDMI_IN
+ static struct rk628_display_mode src_mode = {
++	/* .clock = */ 148500,
++	/* .hdisplay = */ 1920,
++	/* .hsync_start = */ 1920 + 88,
++	/* .hsync_end = */ 1920 + 88 + 44,
++	/* .htotal = */ 1920 + 88 + 44 + 148,
++	/* .vdisplay = */ 1080,
++	/* .vsync_start = */ 1080 + 4,
++	/* .vsync_end = */ 1080 + 4 + 5,
++	/* .vtotal = */ 1080 + 4 + 5 + 36,
++	/* .flags = */ DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC,
++};
++#endif
++#ifdef RK628_RGB_IN
++tatic struct rk628_display_mode dst_mode = {
+ 	/* .clock = */ 132000,
+ 	/* .hdisplay = */ 1080,
+ 	/* .hsync_start = */ 1080 + 15,
+@@ -18,9 +33,9 @@ static struct rk628_display_mode src_mode = {
+ 	/* .vsync_start = */ 1920 + 15,
+ 	/* .vsync_end = */ 1920 + 15 + 2,
+ 	/* .vtotal = */ 1920 + 15 + 2 + 15,
+-	/* .flags = */ DRM_MODE_FLAG_NVSYNC | DRM_MODE_FLAG_NVSYNC,
++	/* .flags = */ DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC,
+ };
+-
++#endif
+ static struct rk628_display_mode dst_mode = {
+ 	/* .clock = */ 132000,
+ 	/* .hdisplay = */ 1080,
+-- 
+2.17.1
+

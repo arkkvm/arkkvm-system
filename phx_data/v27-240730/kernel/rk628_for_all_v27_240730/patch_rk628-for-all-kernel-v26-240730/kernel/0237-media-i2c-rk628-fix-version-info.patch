@@ -1,0 +1,32 @@
+From b3b7376b3147903d73aaf303546eb9ab0edfb5ff Mon Sep 17 00:00:00 2001
+From: Guochun Huang <hero.huang@rock-chips.com>
+Date: Wed, 3 Jan 2024 09:56:30 +0000
+Subject: [PATCH 237/237] media: i2c: rk628: fix version info
+
+Type: Fix
+Redmine ID: # no
+Associated modifications: no
+Test: pass
+
+Change-Id: Iabd329fd84bd0620dd5e0306ed085a22fc48211f
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628.c b/drivers/media/i2c/rk628/rk628.c
+index 6f363e6def1302..79d712523992cf 100644
+--- a/drivers/media/i2c/rk628/rk628.c
++++ b/drivers/media/i2c/rk628/rk628.c
+@@ -675,7 +675,7 @@ void rk628_post_process_en(struct rk628 *rk628,
+ static const char * const rk628_version[] = {
+ 	"UNKNOWN",
+ 	"RK628D",
+-	"RK628F",
++	"RK628F/H",
+ };
+ 
+ void rk628_version_parse(struct rk628 *rk628)
+-- 
+2.17.1
+

@@ -1,0 +1,75 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+// Copyright (c) 2020 Fuzhou Rockchip Electronics Co., Ltd
+
+/dts-v1/;
+#include "rk3288-evb-rk628.dtsi"
+
+/ {
+	model = "Rockchip RK3288 EVB RK628 Board";
+	compatible = "rockchip,rk3288-evb-rk628", "rockchip,rk3288";
+
+	chosen {
+		bootargs = "rootwait earlycon=uart8250,mmio32,0xff690000 vmalloc=496M swiotlb=1 console=ttyFIQ0 androidboot.baseband=N/A androidboot.veritymode=enforcing androidboot.hardware=rk30board androidboot.console=ttyFIQ0 init=/init kpti=0";
+	};
+
+
+};
+
+&firmware_android {
+	compatible = "android,firmware";
+	boot_devices = "ff0f0000.dwmmc";
+
+	vbmeta {
+		compatible = "android,vbmeta";
+		parts = "vbmeta,boot,system,vendor,dtbo";
+	};
+
+	fstab {
+		compatible = "android,fstab";
+
+		vendor {
+			compatible = "android,vendor";
+			dev = "/dev/block/by-name/vendor";
+			type = "ext4";
+			mnt_flags = "ro,barrier=1,inode_readahead_blks=8";
+			fsmgr_flags = "wait,avb";
+		};
+	};
+};
+
+
+
+&hdmi {
+	status = "okay";
+};
+
+&hdmi_in_vopb {
+	status = "okay";
+};
+
+&route_hdmi {
+	status = "disabled";
+};
+
+&hdmi_in_vopl {
+	status = "disabled";
+};
+
+&i2c1 {
+	clock-frequency = <400000>;
+	status = "okay";
+
+	rk628: rk628@50 {
+		compatible = "rockchip,rk628";
+		reg = <0x50>;
+		interrupt-parent = <&gpio7>;
+		interrupts = <15 IRQ_TYPE_LEVEL_HIGH>;
+		enable-gpios = <&gpio5 RK_PC2 GPIO_ACTIVE_HIGH>;
+		reset-gpios = <&gpio7 RK_PB6 GPIO_ACTIVE_LOW>;
+		panel-enable-gpios = <&gpio5 RK_PC1 GPIO_ACTIVE_HIGH>;
+		//panel-backlight = <&backlight>;
+		status = "okay";
+	};
+};
+
+

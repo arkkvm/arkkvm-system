@@ -1,0 +1,1041 @@
+From c6dc5b2197034faf31351ae02d6f90686ff401aa Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Thu, 21 Dec 2023 06:28:00 +0000
+Subject: [PATCH 222/232] media: i2c: rk628: add csi1 support for rk628f
+
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+Change-Id: I6af3ec337adebd4c1283d4c717cb74f5701b80df
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628.c            |  26 ++
+ drivers/media/i2c/rk628/rk628.h            |  16 ++
+ drivers/media/i2c/rk628/rk628_bt1120_csi.c |   4 +-
+ drivers/media/i2c/rk628/rk628_cru.c        |   1 +
+ drivers/media/i2c/rk628/rk628_cru.h        |   1 +
+ drivers/media/i2c/rk628/rk628_csi.c        |   4 +-
+ drivers/media/i2c/rk628/rk628_csi.h        |  29 +++
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c   | 288 ++++++++++++++++++---
+ drivers/media/i2c/rk628/rk628_dsi.c        |   6 +-
+ drivers/media/i2c/rk628/rk628_mipi_dphy.h  | 201 +++++++-------
+ 10 files changed, 450 insertions(+), 126 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628.c b/drivers/media/i2c/rk628/rk628.c
+index 99c6623e765dce..6f363e6def1302 100644
+--- a/drivers/media/i2c/rk628/rk628.c
++++ b/drivers/media/i2c/rk628/rk628.c
+@@ -208,6 +208,7 @@ static const struct regmap_range rk628_csi_readable_ranges[] = {
+ 	regmap_reg_range(CSITX_CONFIG_DONE, CSITX_CSITX_VERSION),
+ 	regmap_reg_range(CSITX_SYS_CTRL0_IMD, CSITX_TIMING_HPW_PADDING_NUM),
+ 	regmap_reg_range(CSITX_VOP_PATH_CTRL, CSITX_VOP_PATH_CTRL),
++	regmap_reg_range(CSITX_VOP_FILTER_CTRL, CSITX_VOP_FILTER_CTRL),
+ 	regmap_reg_range(CSITX_VOP_PATH_PKT_CTRL, CSITX_VOP_PATH_PKT_CTRL),
+ 	regmap_reg_range(CSITX_CSITX_STATUS0, CSITX_LPDT_DATA_IMD),
+ 	regmap_reg_range(CSITX_DPHY_CTRL, CSITX_DPHY_CTRL),
+@@ -222,6 +223,21 @@ static const struct regmap_range rk628_dsi0_readable_ranges[] = {
+ 	regmap_reg_range(DSI0_BASE, DSI0_BASE + DSI_MAX_REGISTER),
+ };
+ 
++static const struct regmap_range rk628_csi1_readable_ranges[] = {
++	regmap_reg_range(CSITX1_CONFIG_DONE, CSITX1_CSITX_VERSION),
++	regmap_reg_range(CSITX1_SYS_CTRL0_IMD, CSITX1_TIMING_HPW_PADDING_NUM),
++	regmap_reg_range(CSITX1_VOP_PATH_CTRL, CSITX1_VOP_PATH_CTRL),
++	regmap_reg_range(CSITX1_VOP_FILTER_CTRL, CSITX1_VOP_FILTER_CTRL),
++	regmap_reg_range(CSITX1_VOP_PATH_PKT_CTRL, CSITX1_VOP_PATH_PKT_CTRL),
++	regmap_reg_range(CSITX1_CSITX_STATUS0, CSITX1_LPDT_DATA_IMD),
++	regmap_reg_range(CSITX1_DPHY_CTRL, CSITX1_DPHY_CTRL),
++};
++
++static const struct regmap_access_table rk628_csi1_readable_table = {
++	.yes_ranges     = rk628_csi1_readable_ranges,
++	.n_yes_ranges   = ARRAY_SIZE(rk628_csi1_readable_ranges),
++};
++
+ static const struct regmap_access_table rk628_dsi0_readable_table = {
+ 	.yes_ranges     = rk628_dsi0_readable_ranges,
+ 	.n_yes_ranges   = ARRAY_SIZE(rk628_dsi0_readable_ranges),
+@@ -402,6 +418,16 @@ static const struct regmap_config rk628_regmap_config[RK628_DEV_MAX] = {
+ 		.val_format_endian = REGMAP_ENDIAN_NATIVE,
+ 		.rd_table = &rk628_gpio3_readable_table,
+ 	},
++	[RK628_DEV_CSI1] = {
++		.name = "csi1",
++		.reg_bits = 32,
++		.val_bits = 32,
++		.reg_stride = 4,
++		.max_register = CSI1_MAX_REGISTER,
++		.reg_format_endian = REGMAP_ENDIAN_LITTLE,
++		.val_format_endian = REGMAP_ENDIAN_LITTLE,
++		.rd_table = &rk628_csi1_readable_table,
++	},
+ };
+ 
+ struct rk628 *rk628_i2c_register(struct i2c_client *client)
+diff --git a/drivers/media/i2c/rk628/rk628.h b/drivers/media/i2c/rk628/rk628.h
+index 92cd149f4bf84e..cd661e5e04c600 100644
+--- a/drivers/media/i2c/rk628/rk628.h
++++ b/drivers/media/i2c/rk628/rk628.h
+@@ -49,6 +49,8 @@
+ #define GRF_GPIO_RXDDC_SDA_SEL(x)	UPDATE(x, 6, 6)
+ #define GRF_GPIO_RXDDC_SCL_SEL_MASK	BIT(5)
+ #define GRF_GPIO_RXDDC_SCL_SEL(x)	UPDATE(x, 5, 5)
++#define GRF_DPHY_CH1_EN_MASK		BIT(1)
++#define GRF_DPHY_CH1_EN(x)		UPDATE(x, 1, 1)
+ #define GRF_SCALER_CON0			0x0010
+ #define SCL_VER_DOWN_MODE(x)		HIWORD_UPDATE(x, 8, 8)
+ #define SCL_HOR_DOWN_MODE(x)		HIWORD_UPDATE(x, 7, 7)
+@@ -257,6 +259,7 @@ enum {
+ 	RK628_DEV_GPIO1,
+ 	RK628_DEV_GPIO2,
+ 	RK628_DEV_GPIO3,
++	RK628_DEV_CSI1 = 0x14,
+ 	RK628_DEV_MAX,
+ };
+ 
+@@ -266,6 +269,16 @@ enum {
+ 	RK628F_VERSION,
+ };
+ 
++struct mipi_timing {
++	u8 data_prepare;
++	u8 data_zero;
++	u8 data_trail;
++	u8 clk_prepare;
++	u8 clk_zero;
++	u8 clk_trail;
++	u8 clk_post;
++};
++
+ struct rk628 {
+ 	struct device *dev;
+ 	struct i2c_client *client;
+@@ -273,6 +286,9 @@ struct rk628 {
+ 	u8 version;
+ 	void *txphy;
+ 	struct mutex rst_lock;
++	u8 dphy_lane_en;
++	bool dual_mipi;
++	struct mipi_timing mipi_timing[2];
+ };
+ 
+ #ifndef RK628_REGMAP
+diff --git a/drivers/media/i2c/rk628/rk628_bt1120_csi.c b/drivers/media/i2c/rk628/rk628_bt1120_csi.c
+index 0501a520ca5a30..5968e53cf08953 100644
+--- a/drivers/media/i2c/rk628/rk628_bt1120_csi.c
++++ b/drivers/media/i2c/rk628/rk628_bt1120_csi.c
+@@ -521,7 +521,7 @@ static void rk628_bt1120_csi_initial_setup(struct v4l2_subdev *sd)
+ 			SW_VSYNC_POL(1));
+ 
+ 	if (csi->plat_data->tx_mode == CSI_MODE) {
+-		mipi_dphy_reset(csi->rk628);
++		rk628_mipi_dphy_reset(csi->rk628);
+ 		mipi_dphy_power_on(csi);
+ 	}
+ 	csi->txphy_pwron = true;
+@@ -914,7 +914,7 @@ static int mipi_dphy_power_on(struct rk628_bt1120_csi *csi)
+ 	rk628_txphy_set_bus_width(csi->rk628, bus_width);
+ 	rk628_txphy_set_mode(csi->rk628, PHY_MODE_VIDEO_MIPI);
+ 
+-	mipi_dphy_init_hsfreqrange(csi->rk628, csi->lane_mbps);
++	rk628_mipi_dphy_init_hsfreqrange(csi->rk628, csi->lane_mbps, 0);
+ 	usleep_range(1500, 2000);
+ 	rk628_txphy_power_on(csi->rk628);
+ 
+diff --git a/drivers/media/i2c/rk628/rk628_cru.c b/drivers/media/i2c/rk628/rk628_cru.c
+index 9e4483cd3d0fdb..03b58a5dc0379e 100644
+--- a/drivers/media/i2c/rk628/rk628_cru.c
++++ b/drivers/media/i2c/rk628/rk628_cru.c
+@@ -568,6 +568,7 @@ static const struct rk628_rgu_data rk628_rgu_data[] = {
+ 	RSTGEN(RGU_HDMIRX_PON,	CRU_SOFTRST_CON02, 12),
+ 	RSTGEN(RGU_TXBYTEHS,	CRU_SOFTRST_CON02, 13),
+ 	RSTGEN(RGU_TXESC,	CRU_SOFTRST_CON02, 14),
++	RSTGEN(RGU_CSI1,	CRU_SOFTRST_CON02, 15),
+ };
+ 
+ static int rk628_rgu_update(struct rk628 *rk628, unsigned long id, int assert)
+diff --git a/drivers/media/i2c/rk628/rk628_cru.h b/drivers/media/i2c/rk628/rk628_cru.h
+index 210e8ea2eeaf35..5cafa2be555e72 100644
+--- a/drivers/media/i2c/rk628/rk628_cru.h
++++ b/drivers/media/i2c/rk628/rk628_cru.h
+@@ -198,6 +198,7 @@
+ #define RGU_HDMIRX_PON		28
+ #define RGU_TXBYTEHS		29
+ #define RGU_TXESC		30
++#define RGU_CSI1		31
+ 
+ unsigned long rk628_clk_get_rate(struct rk628 *rk628, unsigned int id);
+ int rk628_clk_set_rate(struct rk628 *rk628, unsigned int id,
+diff --git a/drivers/media/i2c/rk628/rk628_csi.c b/drivers/media/i2c/rk628/rk628_csi.c
+index 3219962b7c118b..cca0a612be4bba 100644
+--- a/drivers/media/i2c/rk628/rk628_csi.c
++++ b/drivers/media/i2c/rk628/rk628_csi.c
+@@ -988,7 +988,7 @@ static void rk628_csi_initial_setup(struct rk628_csi *csi)
+ 	rk628_csi_s_edid(csi, &def_edid);
+ 	rk628_hdmirx_set_hdcp(csi->rk628, &csi->hdcp, false);
+ 
+-	mipi_dphy_reset(csi->rk628);
++	rk628_mipi_dphy_reset(csi->rk628);
+ 	mipi_dphy_power_on(csi);
+ 	csi->txphy_pwron = true;
+ 	if (tx_5v_power_present(csi))
+@@ -1249,7 +1249,7 @@ static int mipi_dphy_power_on(struct rk628_csi *csi)
+ 	rk628_txphy_set_bus_width(csi->rk628, bus_width);
+ 	rk628_txphy_set_mode(csi->rk628, PHY_MODE_VIDEO_MIPI);
+ 
+-	mipi_dphy_init_hsfreqrange(csi->rk628, csi->lane_mbps);
++	rk628_mipi_dphy_init_hsfreqrange(csi->rk628, csi->lane_mbps, 0);
+ 	usleep_range(1500, 2000);
+ 	rk628_txphy_power_on(csi->rk628);
+ 
+diff --git a/drivers/media/i2c/rk628/rk628_csi.h b/drivers/media/i2c/rk628/rk628_csi.h
+index 74b64118170d69..4cc0f36c1c8672 100644
+--- a/drivers/media/i2c/rk628/rk628_csi.h
++++ b/drivers/media/i2c/rk628/rk628_csi.h
+@@ -19,6 +19,8 @@
+ #define VOP_YU_SWAP(x)			UPDATE(x, 14, 14)
+ #define VOP_UV_SWAP_MASK		BIT(13)
+ #define VOP_UV_SWAP(x)			UPDATE(x, 13, 13)
++#define VOP_YUV422_MODE_MASK		GENMASK(11, 10)
++#define VOP_YUV422_MODE(x)		UPDATE(x, 11, 10)
+ #define VOP_YUV422_EN_MASK		BIT(12)
+ #define VOP_YUV422_EN(x)		UPDATE(x, 12, 12)
+ #define VOP_P2_EN_MASK			BIT(8)
+@@ -58,6 +60,11 @@
+ #define VOP_DT_USERDEFINE_EN(x)		UPDATE(x, 1, 1)
+ #define VOP_PATH_EN_MASK		BIT(0)
+ #define VOP_PATH_EN(x)			UPDATE(x, 0, 0)
++#define CSITX_VOP_FILTER_CTRL		(CSITX_BASE + 0x0044)
++#define VOP_FILTER_EN_MASK		BIT(0)
++#define VOP_FILTER_EN(x)		UPDATE(x, 0, 0)
++#define VOP_FILTER_MASK			GENMASK(15, 8)
++#define VOP_FILTER(x)			UPDATE(x, 15, 8)
+ #define CSITX_VOP_PATH_PKT_CTRL		(CSITX_BASE + 0x0050)
+ #define CSITX_CSITX_STATUS0		(CSITX_BASE + 0x0070)
+ #define CSITX_CSITX_STATUS1		(CSITX_BASE + 0x0074)
+@@ -77,5 +84,27 @@
+ #define CSI_DPHY_EN(x)			UPDATE(x, 7, 3)
+ #define DPHY_ENABLECLK			BIT(3)
+ #define CSI_MAX_REGISTER		CSITX_DPHY_CTRL
++//for rk628f csi1
++#define CSITX1_BASE			0x00140000
++#define CSITX1_CONFIG_DONE		(CSITX1_BASE + 0x0000)
++#define CSITX1_CSITX_EN			(CSITX1_BASE + 0x0004)
++#define CSITX1_CSITX_VERSION		(CSITX1_BASE + 0x0008)
++#define CSITX1_SYS_CTRL0_IMD		(CSITX1_BASE + 0x0010)
++#define CSITX1_SYS_CTRL1		(CSITX1_BASE + 0x0014)
++#define CSITX1_SYS_CTRL2		(CSITX1_BASE + 0x0018)
++#define CSITX1_SYS_CTRL3_IMD		(CSITX1_BASE + 0x001c)
++#define CSITX1_TIMING_HPW_PADDING_NUM	(CSITX1_BASE + 0x0030)
++#define CSITX1_VOP_PATH_CTRL		(CSITX1_BASE + 0x0040)
++#define CSITX1_VOP_FILTER_CTRL		(CSITX1_BASE + 0x0044)
++#define CSITX1_VOP_PATH_PKT_CTRL	(CSITX1_BASE + 0x0050)
++#define CSITX1_CSITX_STATUS0		(CSITX1_BASE + 0x0070)
++#define CSITX1_CSITX_STATUS1		(CSITX1_BASE + 0x0074)
++#define CSITX1_ERR_INTR_EN_IMD		(CSITX1_BASE + 0x0090)
++#define CSITX1_ERR_INTR_CLR_IMD		(CSITX1_BASE + 0x0094)
++#define CSITX1_ERR_INTR_STATUS_IMD	(CSITX1_BASE + 0x0098)
++#define CSITX1_ERR_INTR_RAW_STATUS_IMD	(CSITX1_BASE + 0x009c)
++#define CSITX1_LPDT_DATA_IMD		(CSITX1_BASE + 0x00a8)
++#define CSITX1_DPHY_CTRL		(CSITX1_BASE + 0x00b0)
++#define CSI1_MAX_REGISTER		CSITX1_DPHY_CTRL
+ 
+ #endif
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index 2a904e50b3b2c4..b85c905f4813e0 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -220,6 +220,19 @@ static u8 rk628f_edid_init_data[] = {
+ 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x93,
+ };
+ 
++static const struct mipi_timing rk628d_csi_mipi = {
++	0x4a, 0xf, 0x5d, 0x3a, 0x3a, 0x5a, 0x1f
++};
++
++static const struct mipi_timing rk628f_csi0_mipi = {
++	0x4a, 0xf, 0x5d, 0x3a, 0x3a, 0x5a, 0x1f
++};
++
++static const struct mipi_timing rk628f_csi1_mipi = {
++//data-pre, data-zero, data-trail, clk-pre, clk-zero, clk-trail, clk-post
++	0x4a, 0xf, 0x66, 0x3a, 0x3a, 0x5a, 0x1f
++};
++
+ static const struct rk628_csi_mode supported_modes[] = {
+ 	{
+ 		.width = 3840,
+@@ -306,6 +319,7 @@ static bool rk628_rcv_supported_res(struct v4l2_subdev *sd, u32 width,
+ 				    u32 height);
+ static void rk628_dsi_set_scs(struct rk628_csi *csi);
+ static void rk628_dsi_enable(struct v4l2_subdev *sd);
++static void rk628_csi_disable_stream(struct v4l2_subdev *sd);
+ 
+ static inline struct rk628_csi *to_csi(struct v4l2_subdev *sd)
+ {
+@@ -391,6 +405,14 @@ static int rk628_csi_get_detected_timings(struct v4l2_subdev *sd,
+ 	if (ret)
+ 		return ret;
+ 
++	if (bt->pixelclock > 300000000 && csi->rk628->version >= RK628F_VERSION) {
++		v4l2_info(sd, "rk628f detect pixclk more than 300M, use dual mipi mode\n");
++		csi->rk628->dual_mipi = true;
++	} else {
++		v4l2_info(sd, "pixclk less than 300M, use single mipi mode\n");
++		csi->rk628->dual_mipi = false;
++	}
++
+ 	v4l2_dbg(1, debug, sd, "hfp:%d, hs:%d, hbp:%d, vfp:%d, vs:%d, vbp:%d,"
+ 			" interlace:%d\n", bt->hfrontporch, bt->hsync,
+ 			bt->hbackporch, bt->vfrontporch, bt->vsync,
+@@ -618,44 +640,102 @@ static int rk628_csi_update_controls(struct v4l2_subdev *sd)
+ 	return ret;
+ }
+ 
+-static void rk62_csi_reset(struct v4l2_subdev *sd)
++static void rk628_csi0_cru_reset(struct v4l2_subdev *sd)
+ {
+ 	struct rk628_csi *csi = to_csi(sd);
+ 
+ 	rk628_control_assert(csi->rk628, RGU_CSI);
+ 	udelay(10);
+ 	rk628_control_deassert(csi->rk628, RGU_CSI);
++}
++
++static void rk628_csi1_cru_reset(struct v4l2_subdev *sd)
++{
++	struct rk628_csi *csi = to_csi(sd);
++
++	rk628_control_assert(csi->rk628, RGU_CSI1);
++	udelay(10);
++	rk628_control_deassert(csi->rk628, RGU_CSI1);
++}
++
++static void rk628_csi_soft_reset(struct v4l2_subdev *sd)
++{
++	struct rk628_csi *csi = to_csi(sd);
+ 
+ 	rk628_i2c_write(csi->rk628, CSITX_SYS_CTRL0_IMD, 0x1);
+-	usleep_range(1000, 1000);
++	usleep_range(1000, 1100);
+ 	rk628_i2c_write(csi->rk628, CSITX_SYS_CTRL0_IMD, 0x0);
++
++	if (csi->rk628->version >= RK628F_VERSION) {
++		rk628_i2c_write(csi->rk628, CSITX1_SYS_CTRL0_IMD, 0x1);
++		usleep_range(1000, 1100);
++		rk628_i2c_write(csi->rk628, CSITX1_SYS_CTRL0_IMD, 0x0);
++	}
+ }
+ 
+ static void enable_csitx(struct v4l2_subdev *sd)
+ {
+ 	u32 i, ret, val;
++	u32 val_csi1 = 0;
+ 	struct rk628_csi *csi = to_csi(sd);
+ 
++	//enable dphy1 and split mode
++	rk628_i2c_update_bits(csi->rk628, GRF_SYSTEM_CON3, GRF_DPHY_CH1_EN_MASK,
++			     csi->rk628->dual_mipi ? GRF_DPHY_CH1_EN(1) : 0);
++	rk628_i2c_update_bits(csi->rk628, GRF_POST_PROC_CON, SW_SPLIT_EN,
++			     csi->rk628->dual_mipi ? SW_SPLIT_EN : 0);
++	rk628_csi_set_csi(sd);
+ 	for (i = 0; i < CSITX_ERR_RETRY_TIMES; i++) {
+-		rk628_csi_set_csi(sd);
++		if (i) {
++			rk628_i2c_update_bits(csi->rk628, CSITX_CSITX_EN,
++						CSITX_EN_MASK, CSITX_EN(0));
++			if (csi->rk628->version >= RK628F_VERSION)
++				rk628_i2c_update_bits(csi->rk628, CSITX1_CSITX_EN,
++						CSITX_EN_MASK, CSITX_EN(0));
++			rk628_i2c_write(csi->rk628, CSITX_CONFIG_DONE, CONFIG_DONE);
++			if (csi->rk628->version >= RK628F_VERSION)
++				rk628_i2c_write(csi->rk628, CSITX1_CONFIG_DONE, CONFIG_DONE);
++
++			usleep_range(5000, 5500);
++			rk628_csi_soft_reset(sd);
++			usleep_range(5000, 5500);
++		}
++
+ 		rk628_i2c_update_bits(csi->rk628, CSITX_CSITX_EN,
+ 					DPHY_EN_MASK |
+ 					CSITX_EN_MASK,
+ 					DPHY_EN(1) |
+ 					CSITX_EN(1));
+ 		rk628_i2c_write(csi->rk628, CSITX_CONFIG_DONE, CONFIG_DONE_IMD);
+-		msleep(40);
++		if (csi->rk628->version >= RK628F_VERSION) {
++			rk628_i2c_update_bits(csi->rk628, CSITX1_CSITX_EN,
++					DPHY_EN_MASK |
++					CSITX_EN_MASK,
++					DPHY_EN(1) |
++					CSITX_EN(1));
++			rk628_i2c_write(csi->rk628, CSITX1_CONFIG_DONE, CONFIG_DONE_IMD);
++		}
++
+ 		rk628_i2c_write(csi->rk628, CSITX_ERR_INTR_CLR_IMD, 0xffffffff);
+-		rk628_i2c_update_bits(csi->rk628, CSITX_SYS_CTRL1,
++		if (csi->rk628->version <= RK628D_VERSION)
++			rk628_i2c_update_bits(csi->rk628, CSITX_SYS_CTRL1,
+ 				BYPASS_SELECT_MASK, BYPASS_SELECT(0));
+ 		rk628_i2c_write(csi->rk628, CSITX_CONFIG_DONE, CONFIG_DONE_IMD);
+-		msleep(40);
++
++		if (csi->rk628->version >= RK628F_VERSION) {
++			rk628_i2c_write(csi->rk628, CSITX1_ERR_INTR_CLR_IMD, 0xffffffff);
++			rk628_i2c_write(csi->rk628, CSITX1_CONFIG_DONE, CONFIG_DONE_IMD);
++		}
++		msleep(50);
+ 		ret = rk628_i2c_read(csi->rk628, CSITX_ERR_INTR_RAW_STATUS_IMD, &val);
+-		if (!ret && !val)
++		if (csi->rk628->version >= RK628F_VERSION)
++			ret |= rk628_i2c_read(csi->rk628,
++					CSITX1_ERR_INTR_RAW_STATUS_IMD, &val_csi1);
++		if (!ret && !val && !val_csi1)
+ 			break;
+ 
+-		v4l2_err(sd, "%s csitx err, retry:%d, err status:%#x, ret:%d\n",
+-				__func__, i, val, ret);
++		v4l2_err(sd, "%s csitx err, retry:%d, err status csi0:%#x, csi1:%#x, ret:%d\n",
++				__func__, i, val, val_csi1, ret);
+ 	}
+ }
+ 
+@@ -747,6 +827,27 @@ static void rk628_dsi_enable_stream(struct v4l2_subdev *sd, bool en)
+ 	rk628_i2c_write(csi->rk628, GRF_SCALER_CON0, SCL_EN(0));
+ }
+ 
++static void rk628_csi_disable_stream(struct v4l2_subdev *sd)
++{
++	struct rk628_csi *csi = to_csi(sd);
++
++	rk628_i2c_update_bits(csi->rk628, CSITX_CSITX_EN,
++				DPHY_EN_MASK | CSITX_EN_MASK,
++				DPHY_EN(0) | CSITX_EN(0));
++	rk628_i2c_update_bits(csi->rk628, CSITX_SYS_CTRL3_IMD, CONT_MODE_CLK_CLR_MASK,
++			csi->continues_clk ? CONT_MODE_CLK_CLR(1) : CONT_MODE_CLK_CLR(0));
++	rk628_i2c_write(csi->rk628, CSITX_CONFIG_DONE, CONFIG_DONE);
++
++	if (csi->rk628->version >= RK628F_VERSION) {
++		rk628_i2c_update_bits(csi->rk628, CSITX1_CSITX_EN,
++					DPHY_EN_MASK | CSITX_EN_MASK,
++					DPHY_EN(0) | CSITX_EN(0));
++		rk628_i2c_update_bits(csi->rk628, CSITX1_SYS_CTRL3_IMD, CONT_MODE_CLK_CLR_MASK,
++				csi->continues_clk ? CONT_MODE_CLK_CLR(1) : CONT_MODE_CLK_CLR(0));
++		rk628_i2c_write(csi->rk628, CSITX1_CONFIG_DONE, CONFIG_DONE);
++	}
++}
++
+ static void enable_stream(struct v4l2_subdev *sd, bool en)
+ {
+ 	struct rk628_csi *csi = to_csi(sd);
+@@ -768,13 +869,7 @@ static void enable_stream(struct v4l2_subdev *sd, bool en)
+ 	} else {
+ 		if (csi->plat_data->tx_mode == CSI_MODE) {
+ 			rk628_hdmirx_vid_enable(sd, false);
+-			rk628_i2c_update_bits(csi->rk628, CSITX_CSITX_EN,
+-					      DPHY_EN_MASK |
+-					      CSITX_EN_MASK,
+-					      DPHY_EN(0) |
+-					      CSITX_EN(0));
+-			rk628_i2c_write(csi->rk628, CSITX_CONFIG_DONE,
+-					CONFIG_DONE_IMD);
++			rk628_csi_disable_stream(sd);
+ 		} else {
+ 			rk628_dsi_enable_stream(sd, en);
+ 		}
+@@ -828,15 +923,22 @@ static void rk628_csi_set_csi(struct v4l2_subdev *sd)
+ 	u8 video_fmt;
+ 	u8 lanes = csi->csi_lanes_in_use;
+ 	u8 lane_num;
+-	u8 dphy_lane_en;
+ 	u32 wc_usrdef, val;
+ 	int avi_rdy;
+ 
+ 	lane_num = lanes - 1;
+-	dphy_lane_en = (1 << (lanes + 1)) - 1;
++	csi->rk628->dphy_lane_en = (1 << (lanes + 1)) - 1;
+ 	wc_usrdef = csi->timings.bt.width * 2;
+-
+-	rk62_csi_reset(sd);
++	if (csi->rk628->dual_mipi)
++		wc_usrdef = csi->timings.bt.width;
++	v4l2_info(sd, "%s mipi mode, word count user define: %d\n",
++			csi->rk628->dual_mipi ? "dual" : "single", wc_usrdef);
++	rk628_csi_disable_stream(sd);
++	usleep_range(5000, 5500);
++	rk628_csi0_cru_reset(sd);
++	if (csi->rk628->version >= RK628F_VERSION)
++		rk628_csi1_cru_reset(sd);
++	mipi_dphy_reset(csi->rk628);
+ 	rk628_post_process_setup(sd);
+ 
+ 	if (csi->txphy_pwron) {
+@@ -851,7 +953,8 @@ static void rk628_csi_set_csi(struct v4l2_subdev *sd)
+ 	v4l2_dbg(2, debug, sd, "%s: txphy power on!\n", __func__);
+ 	usleep_range(1000, 1500);
+ 
+-	rk628_i2c_update_bits(csi->rk628, CSITX_CSITX_EN,
++	if (csi->rk628->version <= RK628D_VERSION) {
++		rk628_i2c_update_bits(csi->rk628, CSITX_CSITX_EN,
+ 			VOP_UV_SWAP_MASK |
+ 			VOP_YUV422_EN_MASK |
+ 			VOP_P2_EN_MASK |
+@@ -864,9 +967,30 @@ static void rk628_csi_set_csi(struct v4l2_subdev *sd)
+ 			LANE_NUM(lane_num) |
+ 			DPHY_EN(0) |
+ 			CSITX_EN(0));
+-	rk628_i2c_update_bits(csi->rk628, CSITX_SYS_CTRL1,
++		rk628_i2c_update_bits(csi->rk628, CSITX_SYS_CTRL1,
+ 			BYPASS_SELECT_MASK,
+ 			BYPASS_SELECT(1));
++	} else {
++		rk628_i2c_update_bits(csi->rk628, CSITX_CSITX_EN,
++			VOP_UV_SWAP_MASK |
++			VOP_YUV422_EN_MASK |
++			VOP_YUV422_MODE_MASK |
++			VOP_P2_EN_MASK |
++			LANE_NUM_MASK |
++			DPHY_EN_MASK |
++			CSITX_EN_MASK,
++			VOP_UV_SWAP(0) |
++			VOP_YUV422_EN(1) |
++			VOP_YUV422_MODE(2) |
++			VOP_P2_EN(1) |
++			LANE_NUM(lane_num) |
++			DPHY_EN(0) |
++			CSITX_EN(0));
++		rk628_i2c_update_bits(csi->rk628, CSITX_SYS_CTRL1,
++			BYPASS_SELECT_MASK,
++			BYPASS_SELECT(0));
++	}
++
+ 	rk628_i2c_write(csi->rk628, CSITX_CONFIG_DONE, CONFIG_DONE_IMD);
+ 	rk628_i2c_write(csi->rk628, CSITX_SYS_CTRL2, VOP_WHOLE_FRM_EN | VSYNC_ENABLE);
+ 	if (csi->continues_clk)
+@@ -895,9 +1019,68 @@ static void rk628_csi_set_csi(struct v4l2_subdev *sd)
+ 			VOP_PATH_EN(1));
+ 	rk628_i2c_update_bits(csi->rk628, CSITX_DPHY_CTRL,
+ 				CSI_DPHY_EN_MASK,
+-				CSI_DPHY_EN(dphy_lane_en));
++				CSI_DPHY_EN(csi->rk628->dphy_lane_en));
++	if (csi->rk628->version >= RK628F_VERSION)
++		rk628_i2c_update_bits(csi->rk628, CSITX_VOP_FILTER_CTRL,
++				VOP_FILTER_EN_MASK | VOP_FILTER_MASK,
++				VOP_FILTER_EN(1) | VOP_FILTER(1));
+ 	rk628_i2c_write(csi->rk628, CSITX_CONFIG_DONE, CONFIG_DONE_IMD);
+-	v4l2_dbg(1, debug, sd, "%s csi cofig done\n", __func__);
++	v4l2_dbg(1, debug, sd, "%s csi config done\n", __func__);
++
++	if (csi->rk628->version >= RK628F_VERSION) {
++		rk628_i2c_update_bits(csi->rk628, CSITX1_CSITX_EN,
++				VOP_UV_SWAP_MASK |
++				VOP_YUV422_EN_MASK |
++				VOP_YUV422_MODE_MASK |
++				VOP_P2_EN_MASK |
++				LANE_NUM_MASK |
++				DPHY_EN_MASK |
++				CSITX_EN_MASK,
++				VOP_UV_SWAP(0) |
++				VOP_YUV422_EN(1) |
++				VOP_YUV422_MODE(2) |
++				VOP_P2_EN(1) |
++				LANE_NUM(lane_num) |
++				DPHY_EN(0) |
++				CSITX_EN(0));
++		rk628_i2c_update_bits(csi->rk628, CSITX1_SYS_CTRL1,
++				BYPASS_SELECT_MASK,
++				BYPASS_SELECT(0));
++		rk628_i2c_write(csi->rk628, CSITX1_CONFIG_DONE, CONFIG_DONE_IMD);
++		rk628_i2c_write(csi->rk628, CSITX1_SYS_CTRL2, VOP_WHOLE_FRM_EN | VSYNC_ENABLE);
++		if (csi->continues_clk)
++			rk628_i2c_update_bits(csi->rk628, CSITX1_SYS_CTRL3_IMD,
++				CONT_MODE_CLK_CLR_MASK |
++				CONT_MODE_CLK_SET_MASK |
++				NON_CONTINUOUS_MODE_MASK,
++				CONT_MODE_CLK_CLR(0) |
++				CONT_MODE_CLK_SET(1) |
++				NON_CONTINUOUS_MODE(0));
++		else
++			rk628_i2c_update_bits(csi->rk628, CSITX1_SYS_CTRL3_IMD,
++				CONT_MODE_CLK_CLR_MASK |
++				CONT_MODE_CLK_SET_MASK |
++				NON_CONTINUOUS_MODE_MASK,
++				CONT_MODE_CLK_CLR(0) |
++				CONT_MODE_CLK_SET(0) |
++				NON_CONTINUOUS_MODE(1));
++
++		rk628_i2c_write(csi->rk628, CSITX1_VOP_PATH_CTRL,
++				VOP_WC_USERDEFINE(wc_usrdef) |
++				VOP_DT_USERDEFINE(YUV422_8BIT) |
++				VOP_PIXEL_FORMAT(0) |
++				VOP_WC_USERDEFINE_EN(1) |
++				VOP_DT_USERDEFINE_EN(1) |
++				VOP_PATH_EN(1));
++		rk628_i2c_update_bits(csi->rk628, CSITX1_DPHY_CTRL,
++					CSI_DPHY_EN_MASK,
++					CSI_DPHY_EN(csi->rk628->dphy_lane_en));
++		rk628_i2c_update_bits(csi->rk628, CSITX1_VOP_FILTER_CTRL,
++				VOP_FILTER_EN_MASK | VOP_FILTER_MASK,
++				VOP_FILTER_EN(1) | VOP_FILTER(1));
++		rk628_i2c_write(csi->rk628, CSITX1_CONFIG_DONE, CONFIG_DONE_IMD);
++		v4l2_dbg(1, debug, sd, "%s csi1 config done\n", __func__);
++	}
+ 
+ 	mutex_lock(&csi->confctl_mutex);
+ 	avi_rdy = rk628_is_avi_ready(csi->rk628, csi->avi_rcv_rdy);
+@@ -1121,10 +1304,14 @@ static void rk628_csi_initial_setup(struct v4l2_subdev *sd)
+ 	rk628_control_assert(csi->rk628, RGU_HDMIRX);
+ 	rk628_control_assert(csi->rk628, RGU_HDMIRX_PON);
+ 	rk628_control_assert(csi->rk628, RGU_CSI);
++	if (csi->rk628->version >= RK628F_VERSION)
++		rk628_control_assert(csi->rk628, RGU_CSI1);
+ 	udelay(10);
+ 	rk628_control_deassert(csi->rk628, RGU_HDMIRX);
+ 	rk628_control_deassert(csi->rk628, RGU_HDMIRX_PON);
+ 	rk628_control_deassert(csi->rk628, RGU_CSI);
++	if (csi->rk628->version >= RK628F_VERSION)
++		rk628_control_deassert(csi->rk628, RGU_CSI1);
+ 	udelay(10);
+ 
+ 	if (csi->rk628->version >= RK628F_VERSION) {
+@@ -1154,6 +1341,14 @@ static void rk628_csi_initial_setup(struct v4l2_subdev *sd)
+ 	rk628_csi_s_edid(sd, &def_edid);
+ 	rk628_hdmirx_set_hdcp(csi->rk628, &csi->hdcp, false);
+ 
++	if (csi->rk628->version >= RK628F_VERSION) {
++		csi->rk628->mipi_timing[0] = rk628f_csi0_mipi;
++		csi->rk628->mipi_timing[1] = rk628f_csi1_mipi;
++	} else {
++		csi->rk628->mipi_timing[0] = rk628d_csi_mipi;
++	}
++
++	csi->rk628->dphy_lane_en = 0x1f;
+ 	if (csi->plat_data->tx_mode == CSI_MODE) {
+ 		mipi_dphy_reset(csi->rk628);
+ 		mipi_dphy_power_on(csi);
+@@ -1897,19 +2092,31 @@ static int mipi_dphy_power_on(struct rk628_csi *csi)
+ 	} else {
+ 		csi->lane_mbps = MIPI_DATARATE_MBPS_LOW;
+ 	}
+-
++	if (csi->rk628->dual_mipi)
++		csi->lane_mbps = MIPI_DATARATE_MBPS_HIGH;
+ 	bus_width =  csi->lane_mbps << 8;
+ 	bus_width |= COMBTXPHY_MODULEA_EN;
++	if (csi->rk628->version >= RK628F_VERSION)
++		bus_width |= COMBTXPHY_MODULEB_EN;
+ 	v4l2_dbg(1, debug, sd, "%s mipi bitrate:%llu mbps\n", __func__,
+ 			csi->lane_mbps);
+ 	rk628_txphy_set_bus_width(csi->rk628, bus_width);
+ 	rk628_txphy_set_mode(csi->rk628, PHY_MODE_VIDEO_MIPI);
+ 
+-	if (csi->lane_mbps == MIPI_DATARATE_MBPS_HIGH)
+-		mipi_dphy_init_hsmanual(csi->rk628, true);
+-	else
+-		mipi_dphy_init_hsmanual(csi->rk628, false);
+-	mipi_dphy_init_hsfreqrange(csi->rk628, csi->lane_mbps);
++	mipi_dphy_init_hsfreqrange(csi->rk628, csi->lane_mbps, 0);
++	if (csi->rk628->version >= RK628F_VERSION)
++		mipi_dphy_init_hsfreqrange(csi->rk628, csi->lane_mbps, 1);
++
++	if (csi->rk628->dual_mipi) {
++		mipi_dphy_init_hsmanual(csi->rk628, true, 0);
++		mipi_dphy_init_hsmanual(csi->rk628, true, 1);
++	} else if (csi->lane_mbps == MIPI_DATARATE_MBPS_HIGH && !csi->rk628->dual_mipi) {
++		mipi_dphy_init_hsmanual(csi->rk628, true, 0);
++		mipi_dphy_init_hsmanual(csi->rk628, false, 1);
++	} else {
++		mipi_dphy_init_hsmanual(csi->rk628, false, 0);
++		mipi_dphy_init_hsmanual(csi->rk628, false, 1);
++	}
+ 	usleep_range(1500, 2000);
+ 	rk628_txphy_power_on(csi->rk628);
+ 
+@@ -1920,7 +2127,13 @@ static int mipi_dphy_power_on(struct rk628_csi *csi)
+ 		dev_err(csi->dev, "PHY is not locked\n");
+ 		return -1;
+ 	}
+-
++	if (csi->rk628->version >= RK628F_VERSION) {
++		rk628_i2c_read(csi->rk628, CSITX1_CSITX_STATUS1, &val);
++		if ((val & mask) != mask) {
++			dev_err(csi->dev, "PHY1 is not locked\n");
++			return -1;
++		}
++	}
+ 	udelay(10);
+ 
+ 	return 0;
+@@ -2315,6 +2528,15 @@ static int rk628_csi_probe(struct i2c_client *client,
+ 	}
+ 	v4l2_dbg(1, debug, sd, "CSITX VERSION: %#x\n", val);
+ 
++	if (rk628->version >= RK628F_VERSION) {
++		err = rk628_i2c_read(csi->rk628, CSITX1_CSITX_VERSION, &val);
++		if (err) {
++			v4l2_err(sd, "i2c access failed! err:%d\n", err);
++			return -ENODEV;
++		}
++		v4l2_dbg(1, debug, sd, "CSITX1 VERSION: %#x\n", val);
++	}
++
+ 	mutex_init(&csi->confctl_mutex);
+ 
+ 	csi->txphy = rk628_txphy_register(rk628);
+@@ -2454,7 +2676,7 @@ static int rk628_csi_probe(struct i2c_client *client,
+ 		v4l2_err(sd, "v4l2 ctrl handler setup failed! err:%d\n", err);
+ 		goto err_work_queues;
+ 	}
+-
++	csi->rk628->dual_mipi = false;
+ 	v4l2_info(sd, "%s found @ 0x%x (%s)\n", client->name,
+ 		  client->addr << 1, client->adapter->name);
+ 
+@@ -2504,6 +2726,8 @@ static int rk628_csi_remove(struct i2c_client *client)
+ 	rk628_control_assert(csi->rk628, RGU_CLK_RX);
+ 	rk628_control_assert(csi->rk628, RGU_VOP);
+ 	rk628_control_assert(csi->rk628, RGU_CSI);
++	if (csi->rk628->version >= RK628F_VERSION)
++		rk628_control_assert(csi->rk628, RGU_CSI1);
+ 
+ 	return 0;
+ }
+diff --git a/drivers/media/i2c/rk628/rk628_dsi.c b/drivers/media/i2c/rk628/rk628_dsi.c
+index 261fa5e96883e6..56fb40c6ea3c54 100644
+--- a/drivers/media/i2c/rk628/rk628_dsi.c
++++ b/drivers/media/i2c/rk628/rk628_dsi.c
+@@ -72,7 +72,7 @@ static void mipi_dphy_power_on_dsi(struct rk628_dsi *dsi)
+ 	dsi_update_bits(rk628, 0, DSI_PHY_RSTZ, PHY_ENABLECLK, 0);
+ 	dsi_update_bits(rk628, 0, DSI_PHY_RSTZ, PHY_SHUTDOWNZ, 0);
+ 	dsi_update_bits(rk628, 0, DSI_PHY_RSTZ, PHY_RSTZ, 0);
+-	testif_testclr_assert(dsi->rk628);
++	testif_testclr_assert(dsi->rk628, 0);
+ 
+ 	/* Set all REQUEST inputs to zero */
+ 	rk628_i2c_update_bits(rk628, GRF_MIPI_TX0_CON,
+@@ -80,9 +80,9 @@ static void mipi_dphy_power_on_dsi(struct rk628_dsi *dsi)
+ 			      FORCETXSTOPMODE(0) | FORCERXMODE(0));
+ 	udelay(1);
+ 
+-	testif_testclr_deassert(dsi->rk628);
++	testif_testclr_deassert(dsi->rk628, 0);
+ 
+-	mipi_dphy_init_hsfreqrange(dsi->rk628, dsi->lane_mbps);
++	mipi_dphy_init_hsfreqrange(dsi->rk628, dsi->lane_mbps, 0);
+ 
+ 	dsi_update_bits(rk628, 0, DSI_PHY_RSTZ,
+ 			PHY_ENABLECLK, PHY_ENABLECLK);
+diff --git a/drivers/media/i2c/rk628/rk628_mipi_dphy.h b/drivers/media/i2c/rk628/rk628_mipi_dphy.h
+index 31331f41c773a7..5bb7379c67cf9a 100644
+--- a/drivers/media/i2c/rk628/rk628_mipi_dphy.h
++++ b/drivers/media/i2c/rk628/rk628_mipi_dphy.h
+@@ -21,117 +21,119 @@
+ #define HSTX(x)				UPDATE(x, 6, 0)
+ #define HSZERO(x)			UPDATE(x, 5, 0)
+ #define HSPOST(x)			UPDATE(x, 4, 0)
++#define HSEXIT(x)			UPDATE(x, 4, 0)
+ 
+-static inline void testif_testclk_assert(struct rk628 *rk628)
++static inline void testif_testclk_assert(struct rk628 *rk628, uint8_t mipi_id)
+ {
+-	rk628_i2c_update_bits(rk628, GRF_MIPI_TX0_CON,
++	rk628_i2c_update_bits(rk628, mipi_id ? GRF_MIPI_TX1_CON : GRF_MIPI_TX0_CON,
+ 			   PHY_TESTCLK, PHY_TESTCLK);
+ 	udelay(1);
+ }
+ 
+-static inline void testif_testclk_deassert(struct rk628 *rk628)
++static inline void testif_testclk_deassert(struct rk628 *rk628, uint8_t mipi_id)
+ {
+-	rk628_i2c_update_bits(rk628, GRF_MIPI_TX0_CON,
++	rk628_i2c_update_bits(rk628, mipi_id ? GRF_MIPI_TX1_CON : GRF_MIPI_TX0_CON,
+ 			   PHY_TESTCLK, 0);
+ 	udelay(1);
+ }
+ 
+-static inline void testif_testclr_assert(struct rk628 *rk628)
++static inline void testif_testclr_assert(struct rk628 *rk628, uint8_t mipi_id)
+ {
+-	rk628_i2c_update_bits(rk628, GRF_MIPI_TX0_CON,
++	rk628_i2c_update_bits(rk628, mipi_id ? GRF_MIPI_TX1_CON : GRF_MIPI_TX0_CON,
+ 			   PHY_TESTCLR, PHY_TESTCLR);
+ 	udelay(1);
+ }
+ 
+-static inline void testif_testclr_deassert(struct rk628 *rk628)
++static inline void testif_testclr_deassert(struct rk628 *rk628, uint8_t mipi_id)
+ {
+-	rk628_i2c_update_bits(rk628, GRF_MIPI_TX0_CON,
++	rk628_i2c_update_bits(rk628, mipi_id ? GRF_MIPI_TX1_CON : GRF_MIPI_TX0_CON,
+ 			   PHY_TESTCLR, 0);
+ 	udelay(1);
+ }
+ 
+-static inline void testif_testen_assert(struct rk628 *rk628)
++static inline void testif_testen_assert(struct rk628 *rk628, uint8_t mipi_id)
+ {
+-	rk628_i2c_update_bits(rk628, GRF_MIPI_TX0_CON,
++	rk628_i2c_update_bits(rk628, mipi_id ? GRF_MIPI_TX1_CON : GRF_MIPI_TX0_CON,
+ 			   PHY_TESTEN, PHY_TESTEN);
+ 	udelay(1);
+ }
+ 
+-static inline void testif_testen_deassert(struct rk628 *rk628)
++static inline void testif_testen_deassert(struct rk628 *rk628, uint8_t mipi_id)
+ {
+-	rk628_i2c_update_bits(rk628, GRF_MIPI_TX0_CON,
++	rk628_i2c_update_bits(rk628, mipi_id ? GRF_MIPI_TX1_CON : GRF_MIPI_TX0_CON,
+ 			   PHY_TESTEN, 0);
+ 	udelay(1);
+ }
+ 
+-static inline void testif_set_data(struct rk628 *rk628, u8 data)
++static inline void testif_set_data(struct rk628 *rk628, u8 data, uint8_t mipi_id)
+ {
+-	rk628_i2c_update_bits(rk628, GRF_MIPI_TX0_CON,
++	rk628_i2c_update_bits(rk628, mipi_id ? GRF_MIPI_TX1_CON : GRF_MIPI_TX0_CON,
+ 			   PHY_TESTDIN_MASK, PHY_TESTDIN(data));
+ 	udelay(1);
+ }
+ 
+-static inline u8 testif_get_data(struct rk628 *rk628)
++static inline u8 testif_get_data(struct rk628 *rk628, uint8_t mipi_id)
+ {
+ 	u32 data = 0;
+ 
+-	rk628_i2c_read(rk628, GRF_DPHY0_STATUS, &data);
++	rk628_i2c_read(rk628, mipi_id ? GRF_DPHY1_STATUS : GRF_DPHY0_STATUS, &data);
+ 
+ 	return data >> PHY_TESTDOUT_SHIFT;
+ }
+ 
+-static void testif_test_code_write(struct rk628 *rk628, u8 test_code)
++static void testif_test_code_write(struct rk628 *rk628, u8 test_code, uint8_t mipi_id)
+ {
+-	testif_testclk_assert(rk628);
+-	testif_set_data(rk628, test_code);
+-	testif_testen_assert(rk628);
+-	testif_testclk_deassert(rk628);
+-	testif_testen_deassert(rk628);
++	testif_testclk_assert(rk628, mipi_id);
++	testif_set_data(rk628, test_code, mipi_id);
++	testif_testen_assert(rk628, mipi_id);
++	testif_testclk_deassert(rk628, mipi_id);
++	testif_testen_deassert(rk628, mipi_id);
+ }
+ 
+-static void testif_test_data_write(struct rk628 *rk628, u8 test_data)
++static void testif_test_data_write(struct rk628 *rk628, u8 test_data, uint8_t mipi_id)
+ {
+-	testif_testclk_deassert(rk628);
+-	testif_set_data(rk628, test_data);
+-	testif_testclk_assert(rk628);
++	testif_testclk_deassert(rk628, mipi_id);
++	testif_set_data(rk628, test_data, mipi_id);
++	testif_testclk_assert(rk628, mipi_id);
+ }
+ 
+-static u8 testif_write(struct rk628 *rk628, u8 test_code, u8 test_data)
++static u8 testif_write(struct rk628 *rk628, u8 test_code, u8 test_data, uint8_t mipi_id)
+ {
+ 	u8 monitor_data;
+ 
+-	testif_test_code_write(rk628, test_code);
+-	testif_test_data_write(rk628, test_data);
+-	monitor_data = testif_get_data(rk628);
++	testif_test_code_write(rk628, test_code, mipi_id);
++	testif_test_data_write(rk628, test_data, mipi_id);
++	monitor_data = testif_get_data(rk628, mipi_id);
+ 
+-	dev_dbg(rk628->dev, "test_code=0x%02x, ", test_code);
+-	dev_dbg(rk628->dev, "test_data=0x%02x, ", test_data);
+-	dev_dbg(rk628->dev, "monitor_data=0x%02x\n", monitor_data);
++	dev_dbg(rk628->dev, "test_code=0x%02x, mipi dphy%x", test_code, mipi_id);
++	dev_dbg(rk628->dev, "test_data=0x%02x, mipi dphy%x", test_data, mipi_id);
++	dev_dbg(rk628->dev, "monitor_data=0x%02x, mipi dphy%x\n", monitor_data, mipi_id);
+ 
+ 	return monitor_data;
+ }
+ 
+-static inline u8 testif_read(struct rk628 *rk628, u8 test_code)
++static inline u8 testif_read(struct rk628 *rk628, u8 test_code, uint8_t mipi_id)
+ {
+ 	u8 test_data;
+ 
+-	testif_test_code_write(rk628, test_code);
+-	test_data = testif_get_data(rk628);
+-	testif_test_data_write(rk628, test_data);
++	testif_test_code_write(rk628, test_code, mipi_id);
++	test_data = testif_get_data(rk628, mipi_id);
++	testif_test_data_write(rk628, test_data, mipi_id);
+ 
+ 	return test_data;
+ }
+ 
+-static inline void mipi_dphy_enableclk_assert(struct rk628 *rk628)
++static inline void mipi_dphy_enablelane_assert(struct rk628 *rk628, uint8_t mipi_id)
+ {
+-	rk628_i2c_update_bits(rk628, CSITX_DPHY_CTRL, DPHY_ENABLECLK,
+-			DPHY_ENABLECLK);
++	rk628_i2c_update_bits(rk628, mipi_id ? CSITX1_DPHY_CTRL : CSITX_DPHY_CTRL,
++				CSI_DPHY_EN_MASK, CSI_DPHY_EN(rk628->dphy_lane_en));
+ 	udelay(1);
+ }
+ 
+-static inline void mipi_dphy_enableclk_deassert(struct rk628 *rk628)
++static inline void mipi_dphy_enablelane_deassert(struct rk628 *rk628, uint8_t mipi_id)
+ {
+-	rk628_i2c_update_bits(rk628, CSITX_DPHY_CTRL, DPHY_ENABLECLK, 0);
++	rk628_i2c_update_bits(rk628, mipi_id ? CSITX1_DPHY_CTRL : CSITX_DPHY_CTRL,
++				CSI_DPHY_EN_MASK, 0);
+ 	udelay(1);
+ }
+ 
+@@ -161,7 +163,7 @@ static inline void mipi_dphy_rstz_deassert(struct rk628 *rk628)
+ 	udelay(1);
+ }
+ 
+-static inline void mipi_dphy_init_hsfreqrange(struct rk628 *rk628, int lane_mbps)
++static inline void mipi_dphy_init_hsfreqrange(struct rk628 *rk628, int lane_mbps, uint8_t mipi_id)
+ {
+ 	const struct {
+ 		unsigned long max_lane_mbps;
+@@ -189,68 +191,93 @@ static inline void mipi_dphy_init_hsfreqrange(struct rk628 *rk628, int lane_mbps
+ 		--index;
+ 
+ 	hsfreqrange = hsfreqrange_table[index].hsfreqrange;
+-	testif_write(rk628, 0x44, HSFREQRANGE(hsfreqrange));
++	testif_write(rk628, 0x44, HSFREQRANGE(hsfreqrange), mipi_id);
+ }
+ 
+-static void __maybe_unused mipi_dphy_init_hsmanual(struct rk628 *rk628, bool manual)
++static void __maybe_unused mipi_dphy_init_hsmanual(struct rk628 *rk628,
++						bool manual, uint8_t mipi_id)
+ {
+-	if (manual) {
+-		//config mipi timing when mipi freq is 1250Mbps
+-		testif_write(rk628, 0x71, HSTX(0x4a) | BIT(7));
+-		usleep_range(1500, 2000);
+-		testif_write(rk628, 0x72, HSZERO(0xf) | BIT(6));
+-		usleep_range(1500, 2000);
+-		testif_write(rk628, 0x73, HSTX(0x5d) | BIT(7));
+-		usleep_range(1500, 2000);
+-		testif_write(rk628, 0x61, HSTX(0x3a) | BIT(7));
+-		usleep_range(1500, 2000);
+-		testif_write(rk628, 0x62, HSZERO(0x3a) | BIT(6));
+-		usleep_range(1500, 2000);
+-		testif_write(rk628, 0x63, HSTX(0x5a) | BIT(7));
+-		usleep_range(1500, 2000);
+-		testif_write(rk628, 0x65, HSPOST(0x1f) | BIT(5));
+-	} else {
+-		testif_write(rk628, 0x71, 0);
+-		usleep_range(1500, 2000);
+-		testif_write(rk628, 0x72, 0);
+-		usleep_range(1500, 2000);
+-		testif_write(rk628, 0x73, 0);
+-		usleep_range(1500, 2000);
+-		testif_write(rk628, 0x61, 0);
+-		usleep_range(1500, 2000);
+-		testif_write(rk628, 0x62, 0);
+-		usleep_range(1500, 2000);
+-		testif_write(rk628, 0x63, 0);
+-		usleep_range(1500, 2000);
+-		testif_write(rk628, 0x65, 0);
+-	}
++	dev_info(rk628->dev,
++		"mipi dphy%d hs config, manual: %s\n", mipi_id, manual ? "true" : "false");
++	//config mipi timing when mipi freq is 1250Mbps
++	testif_write(rk628, 0x71,
++		manual ? (HSTX(rk628->mipi_timing[mipi_id].data_prepare) | BIT(7)) : 0, mipi_id);
++	usleep_range(1500, 2000);
++	testif_write(rk628, 0x72,
++		manual ? (HSZERO(rk628->mipi_timing[mipi_id].data_zero) | BIT(6)) : 0, mipi_id);
++	usleep_range(1500, 2000);
++	testif_write(rk628, 0x73,
++		manual ? (HSTX(rk628->mipi_timing[mipi_id].data_trail) | BIT(7)) : 0, mipi_id);
++	usleep_range(1500, 2000);
++	testif_write(rk628, 0x61,
++		manual ? (HSTX(rk628->mipi_timing[mipi_id].clk_prepare) | BIT(7)) : 0, mipi_id);
++	usleep_range(1500, 2000);
++	testif_write(rk628, 0x62,
++		manual ? (HSZERO(rk628->mipi_timing[mipi_id].clk_zero) | BIT(6)) : 0, mipi_id);
++	usleep_range(1500, 2000);
++	testif_write(rk628, 0x63,
++		manual ? (HSTX(rk628->mipi_timing[mipi_id].clk_trail) | BIT(7)) : 0, mipi_id);
++	usleep_range(1500, 2000);
++	testif_write(rk628, 0x65,
++		manual ? (HSPOST(rk628->mipi_timing[mipi_id].clk_post) | BIT(5)) : 0, mipi_id);
+ }
+ 
+ static inline int mipi_dphy_reset(struct rk628 *rk628)
+ {
+ 	u32 val, mask;
+-
+-	mipi_dphy_enableclk_deassert(rk628);
++	int ret;
++
++	rk628_i2c_write(rk628, CSITX_SYS_CTRL0_IMD, 0x1);
++	if (rk628->version >= RK628F_VERSION)
++		rk628_i2c_write(rk628, CSITX1_SYS_CTRL0_IMD, 0x1);
++	mipi_dphy_enablelane_deassert(rk628, 0);
++	if (rk628->version >= RK628F_VERSION)
++		mipi_dphy_enablelane_deassert(rk628, 1);
+ 	mipi_dphy_shutdownz_assert(rk628);
+ 	mipi_dphy_rstz_assert(rk628);
+-	testif_testclr_assert(rk628);
++	testif_testclr_assert(rk628, 0);
++	if (rk628->version >= RK628F_VERSION)
++		testif_testclr_assert(rk628, 1);
+ 
+ 	/* Set all REQUEST inputs to zero */
+ 	rk628_i2c_update_bits(rk628, GRF_MIPI_TX0_CON,
+-		     FORCETXSTOPMODE_MASK | FORCERXMODE_MASK,
+-		     FORCETXSTOPMODE(0) | FORCERXMODE(0));
++			FORCETXSTOPMODE_MASK | FORCERXMODE_MASK,
++			FORCETXSTOPMODE(0) | FORCERXMODE(0));
++	if (rk628->version >= RK628F_VERSION)
++		rk628_i2c_update_bits(rk628, GRF_MIPI_TX1_CON,
++			FORCETXSTOPMODE_MASK | FORCERXMODE_MASK,
++			FORCETXSTOPMODE(0) | FORCERXMODE(0));
+ 	udelay(1);
+-	testif_testclr_deassert(rk628);
+-	mipi_dphy_enableclk_assert(rk628);
++	testif_testclr_deassert(rk628, 0);
++	if (rk628->version >= RK628F_VERSION)
++		testif_testclr_deassert(rk628, 1);
++	mipi_dphy_enablelane_assert(rk628, 0);
++	if (rk628->version >= RK628F_VERSION)
++		mipi_dphy_enablelane_assert(rk628, 1);
+ 	mipi_dphy_shutdownz_deassert(rk628);
+ 	mipi_dphy_rstz_deassert(rk628);
+-	usleep_range(1500, 2000);
++	rk628_i2c_write(rk628, CSITX_SYS_CTRL0_IMD, 0x0);
++	if (rk628->version >= RK628F_VERSION)
++		rk628_i2c_write(rk628, CSITX1_SYS_CTRL0_IMD, 0x0);
++	usleep_range(10000, 11000);
+ 
+ 	mask = STOPSTATE_CLK | STOPSTATE_LANE0;
+-	rk628_i2c_read(rk628, CSITX_CSITX_STATUS1, &val);
+-	if ((val & mask) != mask) {
+-		dev_err(rk628->dev, "lane module is not in stop state\n");
+-		return -1;
++
++	ret = regmap_read_poll_timeout(rk628->regmap[RK628_DEV_CSI],
++				       CSITX_CSITX_STATUS1,
++				       val, (val & mask) == mask,
++				       0, 1000);
++	if (ret < 0)
++		dev_err(rk628->dev, "csi0 lane module is not in stop state, val: 0x%x\n", val);
++
++	if (rk628->version >= RK628F_VERSION) {
++		ret = regmap_read_poll_timeout(rk628->regmap[RK628_DEV_CSI1],
++				       CSITX1_CSITX_STATUS1,
++				       val, (val & mask) == mask,
++				       0, 1000);
++		if (ret < 0)
++			dev_err(rk628->dev,
++				"csi1 lane module is not in stop state, val: 0x%x\n", val);
+ 	}
+ 
+ 	return 0;
+-- 
+2.17.1
+

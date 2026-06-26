@@ -1,0 +1,130 @@
+From 4eb5c299db0a0f6cd8df54de48342b29a64d9d8d Mon Sep 17 00:00:00 2001
+From: Shunqing Chen <csq@rock-chips.com>
+Date: Sun, 19 Sep 2021 18:10:44 +0800
+Subject: [PATCH 102/232] misc: rk628-for-all: hdmirx add yuv420 support
+
+Signed-off-by: Shunqing Chen <csq@rock-chips.com>
+Change-Id: Ib1d7662c302dc50c30439f7e3d86943c0e1c67aa
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/misc/rk628/rk628_combrxphy.c | 11 +++++++-
+ drivers/misc/rk628/rk628_hdmirx.c    | 42 +++++++++++++++++++---------
+ 2 files changed, 39 insertions(+), 14 deletions(-)
+
+diff --git a/drivers/misc/rk628/rk628_combrxphy.c b/drivers/misc/rk628/rk628_combrxphy.c
+index 93e925d7ec6289..5e081393f77ea1 100644
+--- a/drivers/misc/rk628/rk628_combrxphy.c
++++ b/drivers/misc/rk628/rk628_combrxphy.c
+@@ -344,6 +344,7 @@ static int rk628_combrxphy_set_hdmi_mode_for_cable(struct rk628 *rk628, int f)
+ 	u32 cdr_data_min, cdr_data_max;
+ 	u32 temp = 0;
+ 	u32 state, channel_st;
++	bool is_yuv420;
+ 
+ 	/*
+ 	 * use the mode of automatic clock detection, only supports fixed TMDS
+@@ -467,13 +468,21 @@ static int rk628_combrxphy_set_hdmi_mode_for_cable(struct rk628 *rk628, int f)
+ 	cdr_data =  val & 0xffff;
+ 	dev_info(rk628->dev, "cdr_mode:%d, cdr_data:%d\n", cdr_mode, cdr_data);
+ 
++	f = f & 0x7fffffff;
++	is_yuv420 = (f & BIT(30)) ? true : false;
++	f = f & 0xffffff;
++	dev_info(rk628->dev, "f:%d\n", f);
++
+ 	/* step5: manually configure PLL
+ 	* cfg reg 66a8 tmds clock div2 for rgb/yuv444 as default
+ 	* reg 662c[16:8] pll_pre_div
+ 	*/
+ 	if (f <= 340000) {
+ 		rk628_i2c_write(rk628, COMBRX_REG(0x662c), 0x01000500);
+-		rk628_i2c_write(rk628, COMBRX_REG(0x66a8), 0x0000c600);
++		if (is_yuv420)
++			rk628_i2c_write(rk628, COMBRX_REG(0x66a8), 0x0000c000);
++		else
++			rk628_i2c_write(rk628, COMBRX_REG(0x66a8), 0x0000c600);
+ 	} else {
+ 		rk628_i2c_write(rk628, COMBRX_REG(0x662c), 0x01001400);
+ 		rk628_i2c_write(rk628, COMBRX_REG(0x66a8), 0x0000c600);
+diff --git a/drivers/misc/rk628/rk628_hdmirx.c b/drivers/misc/rk628/rk628_hdmirx.c
+index 0f5e04185b9b63..29b7752894cc62 100644
+--- a/drivers/misc/rk628/rk628_hdmirx.c
++++ b/drivers/misc/rk628/rk628_hdmirx.c
+@@ -211,21 +211,11 @@ static bool rk628_rcv_supported_res(struct rk628 *rk628,
+ 	}
+ }
+ 
+-static int rk628_hdmirx_phy_power_on(struct rk628 *rk628)
++static int rk628_hdmirx_phy_power_on(struct rk628 *rk628, int f)
+ {
+-	int ret, f;
++	int ret;
+ 	static bool rxphy_pwron = false;
+ 
+-	/* Bit31 is used to distinguish HDMI cable mode and direct connection
+-	* mode in the rk628_combrxphy driver.
+-	* Bit31: 0 -direct connection mode;
+-	*    1 -cable mode;
+-	* The cable mode is to know the input clock frequency through cdr_mode
+-	* in the rk628_combrxphy driver, and the cable mode supports up to
+-	* 297M, so 297M is passed uniformly here.
+-	*/
+-	f = (297000 | BIT(31));
+-
+ 	if (rxphy_pwron) {
+ 		printk("rxphy already power on, power off!\n");
+ 		ret = rk628_combrxphy_power_off(rk628);
+@@ -374,9 +364,28 @@ static int rk628_hdmirx_phy_setup(struct rk628 *rk628)
+ 	u32 index;
+ 	struct drm_display_mode *src_mode;
+ 	struct rk628_hdmirx *hdmirx = rk628->hdmirx;
++	int f;
++	struct drm_display_mode *dst_mode;
++
++	/* Bit31 is used to distinguish HDMI cable mode and direct connection
++	* mode in the rk628_combrxphy driver.
++	* Bit31: 0 -direct connection mode;
++	*    1 -cable mode;
++	* The cable mode is to know the input clock frequency through cdr_mode
++	* in the rk628_combrxphy driver, and the cable mode supports up to
++	* 297M, so 297M is passed uniformly here.
++	*/
++	f = (297000 | BIT(31));
++	dst_mode = rk628_display_get_dst_mode();
++	/*
++	 * force 594m mode to yuv420 format.
++	 * bit30 is used to indicate whether it is yuv420 format.
++	 */
++	if (dst_mode->clock == 594000)
++		f |= BIT(30);
+ 
+ 	for ( i = 0; i < RXPHY_CFG_MAX_TIMES; i++) {
+-		rk628_hdmirx_phy_power_on(rk628);
++		rk628_hdmirx_phy_power_on(rk628, f);
+ 		cnt = 0;
+ 
+ 		do {
+@@ -399,6 +408,10 @@ static int rk628_hdmirx_phy_setup(struct rk628 *rk628)
+ 			       " SCDC_REGS1:%#x, cnt:%d\n", __func__,
+ 			       width, height, frame_width,
+ 			       frame_height, status, cnt);
++
++			if (dst_mode->clock == 594000)
++				width *= 2;
++
+ 			if (cnt >= 15)
+ 				break;
+ 		}while(((status & 0xfff) != 0xf00) ||
+@@ -454,6 +467,9 @@ static u32 rk628_hdmirx_get_input_format(struct rk628 *rk628)
+ 		case 2:
+ 			hdmirx->input_format = BUS_FMT_YUV444;
+ 			break;
++		case 3:
++			hdmirx->input_format = BUS_FMT_YUV420;
++			break;
+ 		default:
+ 			hdmirx->input_format = BUS_FMT_RGB;
+ 			break;
+-- 
+2.17.1
+

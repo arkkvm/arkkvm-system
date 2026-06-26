@@ -1,0 +1,47 @@
+From 4105e5c2f94b3b349c53ee87d67ef6a7645b2d35 Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Fri, 19 Apr 2024 10:51:46 +0800
+Subject: [PATCH 71/82] media: i2c: rk628: fix bug of clear hdmirx ints
+
+Fixes: dfb63650060f ("media: i2c: rk628: clear interrupt should before process it")
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+Change-Id: Id13a298c69b20f87f3b808524b387144510739a7
+---
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c | 12 ++++--------
+ 1 file changed, 4 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index 275ace7f3c0b..69caf08860e1 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -1541,11 +1541,9 @@ static void rk628_csi_clear_csi_interrupts(struct v4l2_subdev *sd)
+ 		rk628_i2c_write(csi->rk628, CSITX1_ERR_INTR_CLR_IMD, 0xffffffff);
+ 
+ 	if (csi->rk628->version >= RK628F_VERSION)
+-		rk628_i2c_update_bits(csi->rk628, GRF_INTR0_CLR_EN, CSI_INT_EN_MASK |
+-				CSI_INT_WRITE_EN_MASK, CSI_INT_EN(3) | CSI_INT_WRITE_EN(3));
++		rk628_i2c_write(csi->rk628, GRF_INTR0_CLR_EN, 0xc000c0);
+ 	else
+-		rk628_i2c_update_bits(csi->rk628, GRF_INTR0_CLR_EN, CSI_INT_EN_MASK |
+-				CSI_INT_WRITE_EN_MASK, CSI_INT_EN(1) | CSI_INT_WRITE_EN(1));
++		rk628_i2c_write(csi->rk628, GRF_INTR0_CLR_EN, 0x400040);
+ }
+ 
+ static void rk628_csi_clear_hdmirx_interrupts(struct v4l2_subdev *sd)
+@@ -1557,11 +1555,9 @@ static void rk628_csi_clear_hdmirx_interrupts(struct v4l2_subdev *sd)
+ 	rk628_i2c_write(csi->rk628, HDMI_RX_MD_ICLR, 0xffffffff);
+ 	rk628_i2c_write(csi->rk628, HDMI_RX_PDEC_ICLR, 0xffffffff);
+ 	if (csi->rk628->version >= RK628F_VERSION)
+-		rk628_i2c_update_bits(csi->rk628, GRF_INTR0_CLR_EN,
+-					GRF_INT0_HDMIRX_CLR_MASK_F(1), GRF_INT0_HDMIRX_CLR_F(1));
++		rk628_i2c_write(csi->rk628, GRF_INTR0_CLR_EN, 0x02000200);
+ 	else
+-		rk628_i2c_update_bits(csi->rk628, GRF_INTR0_CLR_EN,
+-					GRF_INT0_HDMIRX_CLR_MASK_D(1), GRF_INT0_HDMIRX_CLR_D(1));
++		rk628_i2c_write(csi->rk628, GRF_INTR0_CLR_EN, 0x01000100);
+ }
+ 
+ static void rk628_csi_error_process(struct v4l2_subdev *sd)
+-- 
+2.17.1
+

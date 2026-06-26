@@ -1,0 +1,168 @@
+From a6a844698148a2c1baa00964961e06082930c3e7 Mon Sep 17 00:00:00 2001
+From: Chen Shunqing <csq@rock-chips.com>
+Date: Fri, 10 Nov 2023 03:30:46 +0000
+Subject: [PATCH 10/30] media: i2c: rk628: set background when no signal
+
+Change-Id: Id7832b2287a4c6eb1747e5ff7dd103d41c762821
+Signed-off-by: Chen Shunqing <csq@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628.h             | 10 ++++++++++
+ drivers/media/i2c/rk628/rk628_bt1120_v4l2.c | 16 ++++++++++++++--
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c    | 15 +++++++++++++--
+ drivers/media/i2c/rk628/rk628_hdmirx.c      | 11 +++++++++++
+ drivers/media/i2c/rk628/rk628_hdmirx.h      |  1 +
+ 5 files changed, 49 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628.h b/drivers/media/i2c/rk628/rk628.h
+index 45dd07e980695..95678ddd03d48 100644
+--- a/drivers/media/i2c/rk628/rk628.h
++++ b/drivers/media/i2c/rk628/rk628.h
+@@ -175,6 +175,16 @@
+ #define GRF_GPIO3A_D1_CON		0x00e4
+ #define GRF_GPIO3B_D_CON		0x00e8
+ #define GRF_GPIO_SR_CON			0x00ec
++#define GRF_BG_CTRL			0x00f0
++#define BG_ENABLE_MASK			GENMASK(31, 31)
++#define BG_ENABLE(x)			UPDATE(x, 31, 31)
++#define BG_R_OR_V_MASK			GENMASK(29, 20)
++#define BG_R_OR_V(x)			UPDATE(x, 29, 20)
++#define BG_G_OR_Y_MASK			GENMASK(19, 10)
++#define BG_G_OR_Y(x)			UPDATE(x, 19, 10)
++#define BG_B_OR_U_MASK			GENMASK(9, 0)
++#define BG_B_OR_U(x)			UPDATE(x, 9, 0)
++
+ #define GRF_SW_HDMIRXPHY_CRTL		0x00f4
+ #define GRF_INTR0_EN			0x0100
+ #define GRF_INTR0_CLR_EN		0x0104
+diff --git a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+index 854129ded2c75..788cb3cebd87e 100644
+--- a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+@@ -512,6 +512,7 @@ static void rk628_bt1120_delayed_work_enable_hotplug(struct work_struct *work)
+ 	bool plugin;
+ 
+ 	mutex_lock(&bt1120->confctl_mutex);
++	rk628_set_bg_enable(bt1120->rk628, false);
+ 	bt1120->avi_rcv_rdy = false;
+ 	plugin = tx_5v_power_present(sd);
+ 	v4l2_ctrl_s_ctrl(bt1120->detect_tx_5v_ctrl, plugin);
+@@ -578,6 +579,7 @@ static void rk628_delayed_work_res_change(struct work_struct *work)
+ 	bool plugin;
+ 
+ 	mutex_lock(&bt1120->confctl_mutex);
++	rk628_set_bg_enable(bt1120->rk628, false);
+ 	bt1120->avi_rcv_rdy = false;
+ 	plugin = tx_5v_power_present(sd);
+ 	v4l2_dbg(1, debug, sd, "%s: 5v_det:%d\n", __func__, plugin);
+@@ -1049,6 +1051,14 @@ static int rk628_bt1120_isr(struct v4l2_subdev *sd, u32 status, bool *handled)
+ 		v4l2_err(sd, "handled NULL, err return!\n");
+ 		return -EINVAL;
+ 	}
++
++	rk628_i2c_read(bt1120->rk628, HDMI_RX_MD_ISTS, &md_ints);
++	if (bt1120->rk628->version >= RK628F_VERSION &&
++	    (md_ints & (VACT_LIN_ISTS | HACT_PIX_ISTS |
++			HS_CLK_ISTS | DE_ACTIVITY_ISTS |
++			VS_ACT_ISTS | HS_ACT_ISTS)))
++		rk628_set_bg_enable(bt1120->rk628, true);
++
+ 	plugin = tx_5v_power_present(sd);
+ 	if (!plugin) {
+ 		rk628_bt1120_enable_interrupts(sd, false);
+@@ -1087,8 +1097,10 @@ static int rk628_bt1120_isr(struct v4l2_subdev *sd, u32 status, bool *handled)
+ 				 __func__, hact, vact);
+ 
+ 			rk628_bt1120_enable_interrupts(sd, false);
+-			enable_stream(sd, false);
+-			bt1120->nosignal = true;
++			if (bt1120->rk628->version < RK628F_VERSION) {
++				enable_stream(sd, false);
++				bt1120->nosignal = true;
++			}
+ 			schedule_delayed_work(&bt1120->delayed_work_res_change, HZ / 2);
+ 
+ 			v4l2_dbg(1, debug, sd, "%s: hact/vact change, md_ints: %#x\n",
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index 6e6ca661e05c9..a0b48bbd94445 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -563,6 +563,7 @@ static void rk628_csi_delayed_work_enable_hotplug(struct work_struct *work)
+ 	bool plugin;
+ 
+ 	mutex_lock(&csi->confctl_mutex);
++	rk628_set_bg_enable(csi->rk628, false);
+ 	csi->avi_rcv_rdy = false;
+ 	plugin = tx_5v_power_present(sd);
+ 	v4l2_ctrl_s_ctrl(csi->detect_tx_5v_ctrl, plugin);
+@@ -629,6 +630,7 @@ static void rk628_delayed_work_res_change(struct work_struct *work)
+ 	bool plugin;
+ 
+ 	mutex_lock(&csi->confctl_mutex);
++	rk628_set_bg_enable(csi->rk628, false);
+ 	csi->avi_rcv_rdy = false;
+ 	plugin = tx_5v_power_present(sd);
+ 	v4l2_dbg(1, debug, sd, "%s: 5v_det:%d\n", __func__, plugin);
+@@ -1320,6 +1322,13 @@ static int rk628_csi_isr(struct v4l2_subdev *sd, u32 status, bool *handled)
+ 		return -EINVAL;
+ 	}
+ 
++	rk628_i2c_read(csi->rk628, HDMI_RX_MD_ISTS, &md_ints);
++	if (csi->rk628->version >= RK628F_VERSION &&
++	    (md_ints & (VACT_LIN_ISTS | HACT_PIX_ISTS |
++			HS_CLK_ISTS | DE_ACTIVITY_ISTS |
++			VS_ACT_ISTS | HS_ACT_ISTS)))
++		rk628_set_bg_enable(csi->rk628, true);
++
+ 	plugin = tx_5v_power_present(sd);
+ 	if (!plugin) {
+ 		rk628_csi_enable_interrupts(sd, false);
+@@ -1358,8 +1367,10 @@ static int rk628_csi_isr(struct v4l2_subdev *sd, u32 status, bool *handled)
+ 				 __func__, hact, vact);
+ 
+ 			rk628_csi_enable_interrupts(sd, false);
+-			enable_stream(sd, false);
+-			csi->nosignal = true;
++			if (csi->rk628->version < RK628F_VERSION) {
++				enable_stream(sd, false);
++				csi->nosignal = true;
++			}
+ 			schedule_delayed_work(&csi->delayed_work_res_change, HZ / 2);
+ 
+ 			v4l2_dbg(1, debug, sd, "%s: hact/vact change, md_ints: %#x\n",
+diff --git a/drivers/media/i2c/rk628/rk628_hdmirx.c b/drivers/media/i2c/rk628/rk628_hdmirx.c
+index c27d9bd797d43..01f303cf4b7bb 100644
+--- a/drivers/media/i2c/rk628/rk628_hdmirx.c
++++ b/drivers/media/i2c/rk628/rk628_hdmirx.c
+@@ -789,6 +789,17 @@ u8 rk628_hdmirx_get_format(struct rk628 *rk628)
+ }
+ EXPORT_SYMBOL(rk628_hdmirx_get_format);
+ 
++void rk628_set_bg_enable(struct rk628 *rk628, bool en)
++{
++	if (en) {
++		rk628_i2c_write(rk628, GRF_BG_CTRL,
++			BG_R_OR_V(512) | BG_B_OR_U(512) | BG_G_OR_Y(64) | BG_ENABLE(1));
++		return;
++	}
++	rk628_i2c_write(rk628, GRF_BG_CTRL, BG_ENABLE(0));
++}
++EXPORT_SYMBOL(rk628_set_bg_enable);
++
+ u32 rk628_hdmirx_get_tmdsclk_cnt(struct rk628 *rk628)
+ {
+ 	int i, j;
+diff --git a/drivers/media/i2c/rk628/rk628_hdmirx.h b/drivers/media/i2c/rk628/rk628_hdmirx.h
+index ba1580f85d516..68d36d5667563 100644
+--- a/drivers/media/i2c/rk628/rk628_hdmirx.h
++++ b/drivers/media/i2c/rk628/rk628_hdmirx.h
+@@ -418,6 +418,7 @@ void rk628_hdmirx_verisyno_phy_power_on(struct rk628 *rk628);
+ void rk628_hdmirx_phy_prepclk_cfg(struct rk628 *rk628);
+ int rk628_hdmirx_verisyno_phy_init(struct rk628 *rk628);
+ u8 rk628_hdmirx_get_format(struct rk628 *rk628);
++void rk628_set_bg_enable(struct rk628 *rk628, bool en);
+ u32 rk628_hdmirx_get_tmdsclk_cnt(struct rk628 *rk628);
+ 
+ #endif
+-- 
+2.25.1
+

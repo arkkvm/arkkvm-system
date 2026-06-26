@@ -1,0 +1,36 @@
+From 1bf5ecd5741b4c24e8b55e50938ccd94dc204937 Mon Sep 17 00:00:00 2001
+From: Shunqing Chen <csq@rock-chips.com>
+Date: Thu, 2 Sep 2021 14:50:59 +0800
+Subject: [PATCH 084/232] media: rk628-for-all: bypass level detection anomaly
+
+Signed-off-by: Shunqing Chen <csq@rock-chips.com>
+Change-Id: Idb86d08d1c367b2c290da41dd8ab65688fcf653c
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_combrxphy.c | 9 ++++++---
+ 1 file changed, 6 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_combrxphy.c b/drivers/media/i2c/rk628/rk628_combrxphy.c
+index f4a67d75991eb0..03593d6a59761b 100644
+--- a/drivers/media/i2c/rk628/rk628_combrxphy.c
++++ b/drivers/media/i2c/rk628/rk628_combrxphy.c
+@@ -457,10 +457,13 @@ static int rk628_combrxphy_set_hdmi_mode_for_cable(struct rk628 *rk628, int f)
+ 		rk628_i2c_read(rk628, COMBRX_REG(0x6630), &val_a);
+ 		rk628_i2c_read(rk628, COMBRX_REG(0x6608), &val_b);
+ 		dev_err(rk628->dev,
+-			"err, clk not stable, reg_0x6630:%#x, reg_0x6608:%#x",
++			"clk not stable, reg_0x6630:%#x, reg_0x6608:%#x",
+ 			val_a, val_b);
+-
+-		return -EINVAL;
++		/* bypass level detection anomaly */
++		if (state == 4)
++			rk628_i2c_update_bits(rk628, COMBRX_REG(0x6628), BIT(31), BIT(31));
++		else
++			return -EINVAL;
+ 	}
+ 
+ 	rk628_i2c_read(rk628, COMBRX_REG(0x6654), &val);
+-- 
+2.17.1
+

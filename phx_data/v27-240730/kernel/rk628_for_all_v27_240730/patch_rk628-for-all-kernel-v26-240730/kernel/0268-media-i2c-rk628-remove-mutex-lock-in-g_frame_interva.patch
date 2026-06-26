@@ -1,0 +1,50 @@
+From 043d19e45637d2cf9f7b1dd0b61abe82f19a3471 Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Sat, 11 May 2024 21:38:44 +0800
+Subject: [PATCH 268/305] media: i2c: rk628: remove mutex lock in
+ g_frame_interval
+
+Type: Fix
+Redmine ID: N/A
+Associated modifications: N/A
+Test: N/A
+
+Change-Id: I0efe96ae6fccfac7d49044f3253e07f94dd71956
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_bt1120_v4l2.c | 2 --
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c    | 2 --
+ 2 files changed, 4 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+index 456dd97b88aed3..6268055c945cbe 100644
+--- a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+@@ -1568,9 +1568,7 @@ static int rk628_bt1120_g_frame_interval(struct v4l2_subdev *sd,
+ 	struct rk628_bt1120 *bt1120 = to_bt1120(sd);
+ 	const struct rk628_bt1120_mode *mode = bt1120->cur_mode;
+ 
+-	mutex_lock(&bt1120->confctl_mutex);
+ 	fi->interval = mode->max_fps;
+-	mutex_unlock(&bt1120->confctl_mutex);
+ 
+ 	return 0;
+ }
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index 140508a73d78f6..ed9e45d3b63375 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -2218,9 +2218,7 @@ static int rk628_csi_g_frame_interval(struct v4l2_subdev *sd,
+ 	struct rk628_csi *csi = to_csi(sd);
+ 	const struct rk628_csi_mode *mode = csi->cur_mode;
+ 
+-	mutex_lock(&csi->confctl_mutex);
+ 	fi->interval = mode->max_fps;
+-	mutex_unlock(&csi->confctl_mutex);
+ 
+ 	return 0;
+ }
+-- 
+2.17.1
+

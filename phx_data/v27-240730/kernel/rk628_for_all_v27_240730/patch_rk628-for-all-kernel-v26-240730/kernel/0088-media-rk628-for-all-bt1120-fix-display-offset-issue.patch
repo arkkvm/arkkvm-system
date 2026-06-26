@@ -1,0 +1,126 @@
+From 474fe59d92c95ef50c85f42f268c59b737305c1d Mon Sep 17 00:00:00 2001
+From: Shunqing Chen <csq@rock-chips.com>
+Date: Tue, 7 Sep 2021 16:40:47 +0800
+Subject: [PATCH 088/232] media: rk628-for-all: bt1120: fix display offset
+ issue
+
+Signed-off-by: Shunqing Chen <csq@rock-chips.com>
+Change-Id: I2170f113031e7dc586a925f9b71cf1cf98f32d50
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_bt1120_v4l2.c | 45 ++++++++++++++++-----
+ 1 file changed, 35 insertions(+), 10 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+index ad1b435955a4ef..2b1c553d242625 100644
+--- a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+@@ -234,6 +234,8 @@ static void enable_stream(struct v4l2_subdev *sd, bool enable);
+ static void rk628_hdmirx_vid_enable(struct v4l2_subdev *sd, bool en);
+ static void rk628_hdmirx_hpd_ctrl(struct v4l2_subdev *sd, bool en);
+ static void rk628_hdmirx_controller_reset(struct v4l2_subdev *sd);
++static void rk628_bt1120_initial_setup(struct v4l2_subdev *sd);
++
+ static inline struct rk628_bt1120 *to_bt1120(struct v4l2_subdev *sd)
+ {
+ 	return container_of(sd, struct rk628_bt1120, sd);
+@@ -421,6 +423,21 @@ static void rk628_hdmirx_config_all(struct v4l2_subdev *sd)
+ 	}
+ }
+ 
++static void rk628_hdmirx_reset_regfile(struct v4l2_subdev *sd)
++{
++	struct rk628_bt1120 *bt1120 = to_bt1120(sd);
++
++	rk628_control_assert(bt1120->rk628, RGU_REGFILE);
++	udelay(10);
++	rk628_control_deassert(bt1120->rk628, RGU_REGFILE);
++	udelay(10);
++
++	rk628_cru_initialize(bt1120->rk628);
++	rk628_bt1120_initial_setup(sd);
++	if (tx_5v_power_present(sd))
++		rk628_hdmirx_hpd_ctrl(sd, true);
++}
++
+ static void rk628_bt1120_delayed_work_enable_hotplug(struct work_struct *work)
+ {
+ 	struct delayed_work *dwork = to_delayed_work(work);
+@@ -495,17 +512,16 @@ static void rk628_delayed_work_res_change(struct work_struct *work)
+ 	if (plugin) {
+ 		if (rk628_check_resulotion_change(sd)) {
+ 			v4l2_dbg(1, debug, sd, "res change, recfg ctrler and phy!\n");
++
++			rk628_bt1120_enable_interrupts(sd, false);
++			enable_stream(sd, false);
++			cancel_delayed_work(&bt1120->delayed_work_res_change);
+ 			rk628_hdmirx_audio_cancel_work_audio(bt1120->audio_info, true);
++			rk628_hdmirx_hpd_ctrl(sd, false);
+ 			rk628_hdmirx_phy_power_off(sd);
+ 			rk628_hdmirx_controller_reset(sd);
+-			rk628_hdmirx_audio_setup(sd);
+-			rk628_hdmirx_set_hdcp(bt1120->rk628, &bt1120->hdcp, bt1120->enable_hdcp);
+-			rk628_hdmirx_hpd_ctrl(sd, true);
+-			rk628_hdmirx_config_all(sd);
+-			rk628_bt1120_enable_interrupts(sd, true);
+-			rk628_i2c_update_bits(bt1120->rk628, GRF_SYSTEM_CON0,
+-					      SW_I2S_DATA_OEN_MASK,
+-					      SW_I2S_DATA_OEN(0));
++			bt1120->nosignal = true;
++			rk628_hdmirx_reset_regfile(sd);
+ 		} else {
+ 			rk628_bt1120_format_change(sd);
+ 			bt1120->nosignal = false;
+@@ -593,7 +609,6 @@ static void enable_bt1120tx(struct v4l2_subdev *sd)
+ 	rk628_i2c_write(bt1120->rk628, GRF_RGB_ENC_CON, val);
+ 	v4l2_dbg(1, debug, sd, "%s bt1120 cofig done\n", __func__);
+ 
+-	mutex_lock(&bt1120->confctl_mutex);
+ 	rk628_i2c_read(bt1120->rk628, HDMI_RX_HDCP_CTRL, &val);
+ 	if ((val & HDCP_ENABLE_MASK))
+ 		max_cnt = 5;
+@@ -616,7 +631,6 @@ static void enable_bt1120tx(struct v4l2_subdev *sd)
+ 		}
+ 		msleep(30);
+ 	}
+-	mutex_unlock(&bt1120->confctl_mutex);
+ 
+ 	video_fmt = (val & VIDEO_FORMAT_MASK) >> 5;
+ 	v4l2_dbg(1, debug, &bt1120->sd, "%s PDEC_AVI_PB:%#x, video format:%d\n",
+@@ -847,6 +861,11 @@ static void rk628_post_process_setup(struct v4l2_subdev *sd)
+ 	rk628_control_deassert(bt1120->rk628, RGU_DECODER);
+ 	udelay(10);
+ 
++	rk628_control_assert(bt1120->rk628, RGU_ENCODER);
++	udelay(10);
++	rk628_control_deassert(bt1120->rk628, RGU_ENCODER);
++	udelay(10);
++
+ 	rk628_clk_set_rate(bt1120->rk628, CGU_CLK_RX_READ, src.pixelclock);
+ 	rk628_control_assert(bt1120->rk628, RGU_CLK_RX);
+ 	udelay(10);
+@@ -1389,7 +1408,11 @@ static int rk628_bt1120_g_mbus_config(struct v4l2_subdev *sd,
+ 
+ static int rk628_bt1120_s_stream(struct v4l2_subdev *sd, int enable)
+ {
++	struct rk628_bt1120 *bt1120 = to_bt1120(sd);
++
++	mutex_lock(&bt1120->confctl_mutex);
+ 	enable_stream(sd, enable);
++	mutex_unlock(&bt1120->confctl_mutex);
+ 
+ 	return 0;
+ }
+@@ -1546,7 +1569,9 @@ static int rk628_bt1120_set_fmt(struct v4l2_subdev *sd,
+ 	__v4l2_ctrl_s_ctrl_int64(bt1120->pixel_rate,
+ 		RK628_CSI_PIXEL_RATE_LOW);
+ 
++	mutex_lock(&bt1120->confctl_mutex);
+ 	enable_stream(sd, false);
++	mutex_unlock(&bt1120->confctl_mutex);
+ 
+ 	return 0;
+ }
+-- 
+2.17.1
+

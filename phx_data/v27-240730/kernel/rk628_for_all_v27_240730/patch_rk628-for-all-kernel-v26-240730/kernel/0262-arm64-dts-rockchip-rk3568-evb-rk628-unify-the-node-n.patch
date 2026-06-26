@@ -1,0 +1,179 @@
+From 97fdafcc18860b94652db57780453ed925c7b89f Mon Sep 17 00:00:00 2001
+From: Zhibin Huang <zhibin.huang@rock-chips.com>
+Date: Tue, 6 Feb 2024 15:29:39 +0000
+Subject: [PATCH 3/3] arm64: dts: rockchip: rk3568-evb-rk628: unify the node
+ name of interface in dts
+
+Type: N/A
+Redmine ID: N/A
+Associated modifications: https://10.10.10.29/c/rk/kernel/+/210058
+Test: N/A
+
+Signed-off-by: Zhibin Huang <zhibin.huang@rock-chips.com>
+Change-Id: I6e11cb752ca57f3a34678cbf44379d3be3b47985
+---
+ .../boot/dts/rockchip/rk3568-evb-rk628-hdmi2dsi-ddr4-v10.dts  | 4 ++--
+ .../dts/rockchip/rk3568-evb-rk628-hdmi2dsi-dual-ddr4-v10.dts  | 4 ++--
+ .../boot/dts/rockchip/rk3568-evb-rk628-hdmi2gvi-ddr4-v10.dts  | 4 ++--
+ .../boot/dts/rockchip/rk3568-evb-rk628-hdmi2lvds-ddr4-v10.dts | 4 ++--
+ .../dts/rockchip/rk3568-evb-rk628-hdmi2lvds-dual-ddr4-v10.dts | 4 ++--
+ .../boot/dts/rockchip/rk3568-evb-rk628-rgb2dsi-ddr4-v10.dts   | 4 ++--
+ .../boot/dts/rockchip/rk3568-evb-rk628-rgb2gvi-ddr4-v10.dts   | 4 ++--
+ .../boot/dts/rockchip/rk3568-evb-rk628-rgb2hdmi-ddr4-v10.dts  | 4 ++--
+ .../boot/dts/rockchip/rk3568-evb-rk628-rgb2lvds-ddr4-v10.dts  | 4 ++--
+ .../dts/rockchip/rk3568-evb-rk628-rgb2lvds-dual-ddr4-v10.dts  | 4 ++--
+ 10 files changed, 20 insertions(+), 20 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2dsi-ddr4-v10.dts b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2dsi-ddr4-v10.dts
+index 4ecd56149a244e..1397d9b3522b9c 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2dsi-ddr4-v10.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2dsi-ddr4-v10.dts
+@@ -24,8 +24,8 @@
+ 	panel-unprepare-delay-ms = <10>;
+ 	panel-disable-delay-ms = <60>;
+ 
+-	rk628,hdmi-in;
+-	rk628-dsi {
++	rk628-hdmi-in;
++	rk628-dsi-out {
+ 		//rockchip,dual-channel;
+ 		dsi,eotp;
+ 		dsi,video-mode;
+diff --git a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2dsi-dual-ddr4-v10.dts b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2dsi-dual-ddr4-v10.dts
+index 0892e5e9ee477c..80a73eefe45384 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2dsi-dual-ddr4-v10.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2dsi-dual-ddr4-v10.dts
+@@ -22,8 +22,8 @@
+ 	panel-disable-delay-ms = <240>;
+ 	panel-init-delay-ms = <240>;
+ 
+-	rk628,hdmi-in;
+-	rk628-dsi {
++	rk628-hdmi-in;
++	rk628-dsi-out {
+ 		rockchip,lane-mbps = <1100>;
+ 		rockchip,dual-channel;
+ 		dsi,eotp;
+diff --git a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2gvi-ddr4-v10.dts b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2gvi-ddr4-v10.dts
+index 93631f254526f4..42e965bb0aa8ee 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2gvi-ddr4-v10.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2gvi-ddr4-v10.dts
+@@ -31,8 +31,8 @@
+ 		clocks = <&pmucru CLK_WIFI>;
+ 		clock-names = "soc_24M";
+ 
+-		rk628,hdmi-in;
+-		rk628-gvi {
++		rk628-hdmi-in;
++		rk628-gvi-out {
+ 			/* "rgb666"
+ 			 * "rgb888"
+ 			 * "rgb101010"
+diff --git a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2lvds-ddr4-v10.dts b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2lvds-ddr4-v10.dts
+index 66f0401fb32908..b26fd1b3d9108a 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2lvds-ddr4-v10.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2lvds-ddr4-v10.dts
+@@ -22,8 +22,8 @@
+ 	panel-unprepare-delay-ms = <10>;
+ 	panel-disable-delay-ms = <60>;
+ 
+-	rk628,hdmi-in;
+-	rk628-lvds {
++	rk628-hdmi-in;
++	rk628-lvds-out {
+ 		/* "jeida_18","vesa_24","vesa_18" */
+ 		bus-format = "jeida_24";
+ 
+diff --git a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2lvds-dual-ddr4-v10.dts b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2lvds-dual-ddr4-v10.dts
+index b48bb44cc2bf34..faaeddaf437cd4 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2lvds-dual-ddr4-v10.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2lvds-dual-ddr4-v10.dts
+@@ -25,8 +25,8 @@
+ 		panel-unprepare-delay-ms = <10>;
+ 		panel-disable-delay-ms = <60>;
+ 
+-		rk628,hdmi-in;
+-		rk628-lvds {
++		rk628-hdmi-in;
++		rk628-lvds-out {
+ 			/* "jeida_18","vesa_24","vesa_18" */
+ 			bus-format = "vesa_24";
+ 
+diff --git a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2dsi-ddr4-v10.dts b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2dsi-ddr4-v10.dts
+index 804640323de16b..8dd6d3e66cc811 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2dsi-ddr4-v10.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2dsi-ddr4-v10.dts
+@@ -55,8 +55,8 @@
+ 		panel-unprepare-delay-ms = <10>;
+ 		panel-disable-delay-ms = <60>;
+ 
+-		rk628,rgb-in;
+-		rk628-dsi {
++		rk628-rgb-in;
++		rk628-dsi-out {
+ 			//rockchip,dual-channel;
+ 			dsi,eotp;
+ 			dsi,video-mode;
+diff --git a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2gvi-ddr4-v10.dts b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2gvi-ddr4-v10.dts
+index 9b47d9eda21ae4..cf252d31c55964 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2gvi-ddr4-v10.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2gvi-ddr4-v10.dts
+@@ -62,8 +62,8 @@
+ 		clocks = <&pmucru CLK_WIFI>;
+ 		clock-names = "soc_24M";
+ 
+-		rk628,rgb-in;
+-		rk628-gvi {
++		rk628-rgb-in;
++		rk628-gvi-out {
+ 			/* "rgb666"
+ 			 * "rgb888"
+ 			 * "rgb101010"
+diff --git a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2hdmi-ddr4-v10.dts b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2hdmi-ddr4-v10.dts
+index 83b62f996affa7..16d185cb7ad6cb 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2hdmi-ddr4-v10.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2hdmi-ddr4-v10.dts
+@@ -23,8 +23,8 @@
+ 		pinctrl-names = "default";
+ 		pinctrl-0 = <&rk628_reset &refclk_pins>;
+ 
+-		rk628,rgb-in;
+-		rk628,hdmi-out;
++		rk628-rgb-in;
++		rk628-hdmi-out;
+ 		status = "okay";
+ 
+ 		port {
+diff --git a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2lvds-ddr4-v10.dts b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2lvds-ddr4-v10.dts
+index b82f14272bf0b3..3621fc27a29593 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2lvds-ddr4-v10.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2lvds-ddr4-v10.dts
+@@ -52,8 +52,8 @@
+ 		panel-unprepare-delay-ms = <10>;
+ 		panel-disable-delay-ms = <60>;
+ 
+-		rk628,rgb-in;
+-		rk628-lvds {
++		rk628-rgb-in;
++		rk628-lvds-out {
+ 			/* "jeida_18","vesa_24","vesa_18" */
+ 			bus-format = "jeida_24";
+ 
+diff --git a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2lvds-dual-ddr4-v10.dts b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2lvds-dual-ddr4-v10.dts
+index 3a547c051ff5a3..ab271dfbea2b9f 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2lvds-dual-ddr4-v10.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2lvds-dual-ddr4-v10.dts
+@@ -56,8 +56,8 @@
+ 		panel-unprepare-delay-ms = <10>;
+ 		panel-disable-delay-ms = <60>;
+ 
+-		rk628,rgb-in;
+-		rk628-lvds {
++		rk628-rgb-in;
++		rk628-lvds-out {
+ 			/* "jeida_18","vesa_24","vesa_18" */
+ 			bus-format = "vesa_24";
+ 
+-- 
+2.17.1
+

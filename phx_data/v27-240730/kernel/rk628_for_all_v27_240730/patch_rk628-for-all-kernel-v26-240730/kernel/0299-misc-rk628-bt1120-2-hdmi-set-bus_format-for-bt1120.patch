@@ -1,0 +1,42 @@
+From fdd2b1734c402be00c8fa0ce0298b8fa05e1eb7b Mon Sep 17 00:00:00 2001
+From: Zhibin Huang <zhibin.huang@rock-chips.com>
+Date: Wed, 21 Feb 2024 18:21:22 +0800
+Subject: [PATCH 299/305] misc: rk628: bt1120-2-hdmi: set bus_format for bt1120
+
+Type: Fix
+Redmine ID: N/A
+Associated modifications: N/A
+Test: N/A
+
+Signed-off-by: Zhibin Huang <zhibin.huang@rock-chips.com>
+Change-Id: I5e285e5c14e639a552936835b726da6e71a2e998
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/misc/rk628/rk628_hdmitx.c | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/drivers/misc/rk628/rk628_hdmitx.c b/drivers/misc/rk628/rk628_hdmitx.c
+index f6bf0997f2ae3d..4e8157718db20d 100644
+--- a/drivers/misc/rk628/rk628_hdmitx.c
++++ b/drivers/misc/rk628/rk628_hdmitx.c
+@@ -841,6 +841,17 @@ static int rk628_hdmi_bridge_attach(struct drm_bridge *bridge)
+ 		return ret;
+ 	}
+ 
++	if (rk628_input_is_bt1120(hdmi->rk628)) {
++		u32 bus_format = MEDIA_BUS_FMT_YUYV8_1X16;
++
++		ret = drm_display_info_set_bus_formats(&connector->display_info,
++						       &bus_format, 1);
++		if (ret) {
++			dev_err(hdmi->dev, "Failed to set bus formats\n");
++			return ret;
++		}
++	}
++
+ 	drm_connector_helper_add(connector,
+ 				 &rk628_hdmi_connector_helper_funcs);
+ #ifndef KERNEL_VERSION_4_19
+-- 
+2.17.1
+

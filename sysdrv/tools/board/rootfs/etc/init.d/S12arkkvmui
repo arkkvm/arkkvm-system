@@ -1,0 +1,66 @@
+# description: ARKKVMUI Startup Script
+APP_PATH=/oem/usr/bin/arkkvm_ui
+APP_NAME=ARKKVMUI
+PID_FILE=/run/$APP_NAME.pid
+
+[ -f /etc/profile.d/RkEnv.sh ] && source /etc/profile.d/RkEnv.sh
+
+case "$1" in
+    start)
+        echo "Starting $APP_NAME..."
+        if [ -f $PID_FILE ]; then
+            if ps -p $(cat $PID_FILE) > /dev/null 2>&1; then
+                echo "$APP_NAME is already running (PID: $(cat $PID_FILE))"
+                exit 0
+            else
+                echo "Removing stale PID file..."
+                rm -f $PID_FILE
+            fi
+        fi
+        mkdir -p /userdata/arkkvm/log
+        mount -t debugfs debugfs /sys/kernel/debug/ 2>/dev/null
+        # sleep 后 exec 替换同 PID，PID 文件与真实 arkkvm_ui 一致
+        nohup sh -c "sleep 1; exec $APP_PATH" >> /userdata/arkkvm/log/arkkvm_ui.log 2>&1 &
+        echo $! > $PID_FILE
+        echo "$APP_NAME started with PID $!. /userdata/arkkvm/log/arkkvm_ui.log"
+        ;;
+    stop)
+        echo "Stopping $APP_NAME..."
+        if [ -f $PID_FILE ]; then
+            PID=$(cat $PID_FILE)
+            if ps -p $PID > /dev/null 2>&1; then
+                kill $PID
+                echo "$APP_NAME stopped (PID: $PID)"
+            else
+                echo "No running process found for PID $PID"
+                killall -TERM arkkvm_ui 2>/dev/null || true
+            fi
+            rm -f $PID_FILE
+        else
+            echo "PID file not found: $PID_FILE"
+        fi
+        ;;
+    restart)
+        $0 stop
+        sleep 2
+        $0 start
+        ;;
+    status)
+        if [ -f $PID_FILE ]; then
+            PID=$(cat $PID_FILE)
+            if ps -p $PID > /dev/null 2>&1; then
+                echo "$APP_NAME is running (PID: $PID)"
+            else
+                echo "$APP_NAME PID file exists but process not running"
+            fi
+        else
+            echo "$APP_NAME is not running"
+        fi
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|status}"
+        exit 1
+        ;;
+esac
+
+exit 0

@@ -1,0 +1,4 @@
+v240101：支持rk628f kernel5.1 media驱动;
+v240105：支持rk628f kernel5.1 media驱动中增加debug节点;
+v240207: 增强RK628F/H hdmi rx兼容性等;
+v240523: 优化修复RK628F/H hdmi rx兼容性的一些已知问题等;

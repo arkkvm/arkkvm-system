@@ -1,0 +1,145 @@
+From 46e4dd432ed12d3801cf1ea6966032cbb8983752 Mon Sep 17 00:00:00 2001
+From: Shunqing Chen <csq@rock-chips.com>
+Date: Fri, 8 Oct 2021 15:10:39 +0800
+Subject: [PATCH 111/232] misc: rk628-for-all: fix the issue of interrupt
+ cannot be triggered
+
+Signed-off-by: Shunqing Chen <csq@rock-chips.com>
+Change-Id: Iefc1f1fb5be9675ac1cce254cd109a47e8a928f8
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/misc/rk628/rk628.c        | 20 ++++++++++++------
+ drivers/misc/rk628/rk628_hdmirx.c | 35 +++++++++++++++++++++----------
+ 2 files changed, 38 insertions(+), 17 deletions(-)
+
+diff --git a/drivers/misc/rk628/rk628.c b/drivers/misc/rk628/rk628.c
+index 7e2fb37d7d576f..8089b7d46d4800 100644
+--- a/drivers/misc/rk628/rk628.c
++++ b/drivers/misc/rk628/rk628.c
+@@ -351,8 +351,11 @@ static void rk628_display_work(struct work_struct *work)
+ #ifdef RK628_HDMI_IN
+ 	ret = rk628_hdmirx_detect(rk628);
+ 	if (!(ret & HDMIRX_CHANGED)) {
+-		queue_delayed_work(rk628->monitor_wq, &rk628->delay_work,
+-				   msecs_to_jiffies(2000));
++		if (!rk628->plugin_det_gpio)
++			queue_delayed_work(rk628->monitor_wq, &rk628->delay_work,
++					   msecs_to_jiffies(2000));
++		else
++			rk628_hdmirx_enable_interrupts(rk628, true);
+ 		return;
+ 	}
+ #endif
+@@ -379,14 +382,15 @@ static irqreturn_t rk628_hdmirx_plugin_irq(int irq, void *dev_id)
+ {
+ 	struct rk628 *rk628 = dev_id;
+ 
+-	/* control hpd after 50ms */
+-	schedule_delayed_work(&rk628->delay_work, HZ / 20);
+-
+ 	rk628_hdmirx_enable_interrupts(rk628, false);
+ 	/* clear interrupts */
+ 	rk628_i2c_write(rk628, HDMI_RX_MD_ICLR, 0xffffffff);
+ 	rk628_i2c_write(rk628, HDMI_RX_PDEC_ICLR, 0xffffffff);
+ 	rk628_i2c_write(rk628, GRF_INTR0_CLR_EN, 0x01000100);
++
++	/* control hpd after 50ms */
++	schedule_delayed_work(&rk628->delay_work, HZ / 20);
++
+ 	return IRQ_HANDLED;
+ }
+ #endif
+@@ -544,13 +548,17 @@ rk628_i2c_probe(struct i2c_client *client, const struct i2c_device_id *id)
+ 			}
+ 			/* hdmirx int en */
+ 			rk628_i2c_write(rk628, GRF_INTR0_EN, 0x01000100);
++			queue_delayed_work(rk628->monitor_wq, &rk628->delay_work,
++					   msecs_to_jiffies(1000));
+ 		}
+ 	} else {
++		rk628_display_enable(rk628);
+ 		queue_delayed_work(rk628->monitor_wq, &rk628->delay_work,
+ 				    msecs_to_jiffies(3000));
+ 	}
+-#endif
++#else
+ 	rk628_display_enable(rk628);
++#endif
+ 
+ 	return 0;
+ }
+diff --git a/drivers/misc/rk628/rk628_hdmirx.c b/drivers/misc/rk628/rk628_hdmirx.c
+index 99db992154cce1..37792640faee2a 100644
+--- a/drivers/misc/rk628/rk628_hdmirx.c
++++ b/drivers/misc/rk628/rk628_hdmirx.c
+@@ -486,13 +486,26 @@ static int rk628_hdmirx_phy_setup(struct rk628 *rk628)
+ 
+ static u32 rk628_hdmirx_get_input_format(struct rk628 *rk628)
+ {
+-	u32 val, format;
++	u32 val, format, avi_pb = 0;
++	u8 i;
++	u8 cnt = 0, max_cnt = 2;
+ 	struct rk628_hdmirx *hdmirx = rk628->hdmirx;
+ 
+ 	rk628_i2c_read(rk628, HDMI_RX_PDEC_ISTS, &val);
+ 	if (val & AVI_RCV_ISTS) {
+-		rk628_i2c_read(rk628, HDMI_RX_PDEC_AVI_PB, &format);
+-		format  = (format & VIDEO_FORMAT) >> 5;
++		for (i = 0; i < 100; i++) {
++			rk628_i2c_read(rk628, HDMI_RX_PDEC_AVI_PB, &format);
++			dev_dbg(rk628->dev, "%s PDEC_AVI_PB:%#x\n", __func__, format);
++			if (format && format == avi_pb) {
++				if (++cnt >= max_cnt)
++					break;
++			} else {
++				cnt = 0;
++				avi_pb = format;
++			}
++			msleep(30);
++		}
++		format  = (avi_pb & VIDEO_FORMAT) >> 5;
+ 		switch (format) {
+ 		case 0:
+ 			hdmirx->input_format = BUS_FMT_RGB;
+@@ -597,18 +610,14 @@ void rk628_hdmirx_enable_interrupts(struct rk628 *rk628, bool en)
+ 	u32 pdec_mask = 0, md_mask = 0;
+ 
+ 	pdec_mask |= AVI_RCV_ENSET;
+-	md_mask = VACT_LIN_ENSET | HACT_PIX_ENSET | HS_CLK_ENSET |
+-		  DE_ACTIVITY_ENSET | VS_ACT_ENSET | HS_ACT_ENSET;
++	md_mask = VACT_LIN_ENSET | HACT_PIX_ENSET | HS_CLK_ENSET;
+ 	dev_dbg(rk628->dev, "%s: %sable\n", __func__, en ? "en" : "dis");
+ 	/* clr irq */
+ 	rk628_i2c_write(rk628, HDMI_RX_MD_ICLR, md_mask);
+-	rk628_i2c_write(rk628, HDMI_RX_PDEC_ICLR, pdec_mask);
+ 	if (en) {
+ 		rk628_i2c_write(rk628, HDMI_RX_MD_IEN_SET, md_mask);
+-		rk628_i2c_write(rk628, HDMI_RX_PDEC_IEN_SET, pdec_mask);
+ 	} else {
+ 		rk628_i2c_write(rk628, HDMI_RX_MD_IEN_CLR, md_mask);
+-		rk628_i2c_write(rk628, HDMI_RX_PDEC_IEN_CLR, pdec_mask);
+ 		rk628_i2c_write(rk628, HDMI_RX_AUD_FIFO_IEN_CLR, 0x1f);
+ 	}
+ 	usleep_range(5000, 5000);
+@@ -676,10 +685,14 @@ void rk628_hdmirx_disable(struct rk628 *rk628)
+ int rk628_hdmirx_detect(struct rk628 *rk628)
+ {
+ 	u32 ret = 0;
+-	struct rk628_hdmirx *hdmirx = rk628->hdmirx;
++	struct rk628_hdmirx *hdmirx;
+ 
+-	if (!hdmirx)
+-		return HDMIRX_PLUGOUT;
++	if (!rk628->hdmirx) {
++		ret = rk628_hdmirx_init(rk628);
++		if (ret < 0)
++			return HDMIRX_PLUGOUT;
++	}
++	hdmirx = rk628->hdmirx;
+ 
+ 	if (tx_5v_power_present(rk628)) {
+ 		ret |= HDMIRX_PLUGIN;
+-- 
+2.17.1
+

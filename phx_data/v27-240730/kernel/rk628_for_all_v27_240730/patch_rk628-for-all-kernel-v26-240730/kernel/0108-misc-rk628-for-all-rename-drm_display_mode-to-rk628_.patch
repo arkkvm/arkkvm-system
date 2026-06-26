@@ -1,0 +1,348 @@
+From 71b9d126edbdc4faa023c671e416f45f001e8848 Mon Sep 17 00:00:00 2001
+From: Shunqing Chen <csq@rock-chips.com>
+Date: Tue, 28 Sep 2021 09:22:38 +0800
+Subject: [PATCH 108/232] misc: rk628-for-all: rename drm_display_mode to
+ rk628_display_mode
+
+Signed-off-by: Shunqing Chen <csq@rock-chips.com>
+Change-Id: I6607494d67d49d6f0cc4877f51633f1b5495a83b
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/misc/rk628/rk628_config.c       | 26 ++++++++++++-------------
+ drivers/misc/rk628/rk628_config.h       | 18 +++++++++++++----
+ drivers/misc/rk628/rk628_csi.c          |  4 ++--
+ drivers/misc/rk628/rk628_dsi.c          |  8 ++++----
+ drivers/misc/rk628/rk628_gvi.c          |  4 ++--
+ drivers/misc/rk628/rk628_hdmirx.c       |  4 ++--
+ drivers/misc/rk628/rk628_lvds.c         |  2 +-
+ drivers/misc/rk628/rk628_post_process.c | 12 ++++++------
+ drivers/misc/rk628/rk628_rgb.c          |  0
+ 9 files changed, 44 insertions(+), 34 deletions(-)
+ mode change 100755 => 100644 drivers/misc/rk628/rk628_config.c
+ mode change 100755 => 100644 drivers/misc/rk628/rk628_config.h
+ mode change 100755 => 100644 drivers/misc/rk628/rk628_rgb.c
+
+diff --git a/drivers/misc/rk628/rk628_config.c b/drivers/misc/rk628/rk628_config.c
+old mode 100755
+new mode 100644
+index 4c80763637de19..015e1ae5e7e56a
+--- a/drivers/misc/rk628/rk628_config.c
++++ b/drivers/misc/rk628/rk628_config.c
+@@ -8,7 +8,7 @@
+ #include "rk628_config.h"
+ 
+ #ifdef RK628_DSI_OUT
+-static struct drm_display_mode src_mode = {
++static struct rk628_display_mode src_mode = {
+ 	/* .clock = */ 132000,
+ 	/* .hdisplay = */ 1080,
+ 	/* .hsync_start = */ 1080 + 15,
+@@ -21,7 +21,7 @@ static struct drm_display_mode src_mode = {
+ 	/* .flags = */ DRM_MODE_FLAG_NVSYNC | DRM_MODE_FLAG_NVSYNC,
+ };
+ 
+-static struct drm_display_mode dst_mode = {
++static struct rk628_display_mode dst_mode = {
+ 	/* .clock = */ 132000,
+ 	/* .hdisplay = */ 1080,
+ 	/* .hsync_start = */ 1080 + 15,
+@@ -37,7 +37,7 @@ static struct drm_display_mode dst_mode = {
+ 
+ #ifdef RK628_LVDS_OUT
+ /* for single lvds */
+-static struct drm_display_mode src_mode = {
++static struct rk628_display_mode src_mode = {
+ 	/* .clock = */ 68000,
+ 	/* .hdisplay = */ 800,
+ 	/* .hsync_start = */ 800 + 30,
+@@ -50,7 +50,7 @@ static struct drm_display_mode src_mode = {
+ 	/* .flags = */ DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC,
+ };
+ 
+-static struct drm_display_mode dst_mode = {
++static struct rk628_display_mode dst_mode = {
+ 	/* .clock = */ 68000,
+ 	/* .hdisplay = */ 800,
+ 	/* .hsync_start = */ 800 + 30,
+@@ -65,7 +65,7 @@ static struct drm_display_mode dst_mode = {
+ 
+ /* for dual lvds */
+ #if 0
+-static struct drm_display_mode src_mode = {
++static struct rk628_display_mode src_mode = {
+ 	/* .clock = */ 148500,
+ 	/* .hdisplay = */ 1920,
+ 	/* .hsync_start = */ 1920 + 120,
+@@ -78,7 +78,7 @@ static struct drm_display_mode src_mode = {
+ 	/* .flags = */ DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC,
+ };
+ 
+-static struct drm_display_mode dst_mode = {
++static struct rk628_display_mode dst_mode = {
+ 	/* .clock = */ 148500,
+ 	/* .hdisplay = */ 1920,
+ 	/* .hsync_start = */ 1920 + 120,
+@@ -94,7 +94,7 @@ static struct drm_display_mode dst_mode = {
+ #endif
+ 
+ #ifdef RK628_GVI_OUT
+-static struct drm_display_mode src_mode = {
++static struct rk628_display_mode src_mode = {
+ 	/* .clock = */ 148500,
+ 	/* .hdisplay = */ 1920,
+ 	/* .hsync_start = */ 1920 + 88,
+@@ -107,7 +107,7 @@ static struct drm_display_mode src_mode = {
+ 	/* .flags = */ DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC,
+ };
+ 
+-static struct drm_display_mode dst_mode = {
++static struct rk628_display_mode dst_mode = {
+ 	/* .clock = */ 594000,
+ 	/* .hdisplay = */ 3840,
+ 	/* .hsync_start = */ 3840 + 176,
+@@ -122,7 +122,7 @@ static struct drm_display_mode dst_mode = {
+ #endif
+ 
+ #ifdef RK628_CSI_OUT
+-static struct drm_display_mode src_mode = {
++static struct rk628_display_mode src_mode = {
+ 	/* .clock = */ 148500,
+ 	/* .hdisplay = */ 1920,
+ 	/* .hsync_start = */ 1920 + 88,
+@@ -135,7 +135,7 @@ static struct drm_display_mode src_mode = {
+ 	/* .flags = */ DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC,
+ };
+ 
+-static struct drm_display_mode dst_mode = {
++static struct rk628_display_mode dst_mode = {
+ 	/* .clock = */ 148500,
+ 	/* .hdisplay = */ 1920,
+ 	/* .hsync_start = */ 1920 + 88,
+@@ -149,17 +149,17 @@ static struct drm_display_mode dst_mode = {
+ };
+ #endif
+ 
+-struct drm_display_mode *rk628_display_get_src_mode(void)
++struct rk628_display_mode *rk628_display_get_src_mode(void)
+ {
+ 	return &src_mode;
+ }
+ 
+-struct drm_display_mode *rk628_display_get_dst_mode(void)
++struct rk628_display_mode *rk628_display_get_dst_mode(void)
+ {
+ 	return &dst_mode;
+ }
+ 
+-void rk628_mode_copy(struct drm_display_mode *to, struct drm_display_mode *from)
++void rk628_mode_copy(struct rk628_display_mode *to, struct rk628_display_mode *from)
+ {
+ 	to->clock = from->clock;
+ 	to->hdisplay = from->hdisplay;
+diff --git a/drivers/misc/rk628/rk628_config.h b/drivers/misc/rk628/rk628_config.h
+old mode 100755
+new mode 100644
+index a1f77cf2469e92..efffe83121c7bd
+--- a/drivers/misc/rk628/rk628_config.h
++++ b/drivers/misc/rk628/rk628_config.h
+@@ -15,7 +15,7 @@
+ #define DRM_MODE_FLAG_PVSYNC                    (1<<2)
+ #define DRM_MODE_FLAG_NVSYNC                    (1<<3)
+ 
+-struct drm_display_mode {
++struct rk628_display_mode {
+ 	int clock; /* in kHz */
+ 	int hdisplay;
+ 	int hsync_start;
+@@ -28,9 +28,9 @@ struct drm_display_mode {
+ 	unsigned int flags;
+ };
+ 
+-struct drm_display_mode *rk628_display_get_src_mode(void);
+-struct drm_display_mode *rk628_display_get_dst_mode(void);
+-void rk628_mode_copy(struct drm_display_mode *to, struct drm_display_mode *from);
++struct rk628_display_mode *rk628_display_get_src_mode(void);
++struct rk628_display_mode *rk628_display_get_dst_mode(void);
++void rk628_mode_copy(struct rk628_display_mode *to, struct rk628_display_mode *from);
+ 
+ /* for mipi-dsi */
+ #define MIPI_DSI_MODE_VIDEO             BIT(0)
+@@ -88,11 +88,21 @@ struct rk628_gvi {
+ #define COLOR_DEPTH_YUV422_16BIT			8
+ #define COLOR_DEPTH_YUV422_20BIT			9
+ 
++#ifndef MEDIA_BUS_FMT_RGB666_1X18
+ #define MEDIA_BUS_FMT_RGB666_1X18               0x09
++#endif
++#ifndef MEDIA_BUS_FMT_RGB888_1X24
+ #define MEDIA_BUS_FMT_RGB888_1X24               0x0a
++#endif
++#ifndef MEDIA_BUS_FMT_RGB101010_1X30
+ #define MEDIA_BUS_FMT_RGB101010_1X30            0x18
++#endif
++#ifndef MEDIA_BUS_FMT_YUYV8_1X16
+ #define MEDIA_BUS_FMT_YUYV8_1X16                0x11
++#endif
++#ifndef MEDIA_BUS_FMT_YUYV10_1X20
+ #define MEDIA_BUS_FMT_YUYV10_1X20               0x0d
++#endif
+ 
+ enum bus_format {
+ 	BUS_FMT_RGB = 0,
+diff --git a/drivers/misc/rk628/rk628_csi.c b/drivers/misc/rk628/rk628_csi.c
+index 47402a1ba75678..232acf3fb73c76 100644
+--- a/drivers/misc/rk628/rk628_csi.c
++++ b/drivers/misc/rk628/rk628_csi.c
+@@ -19,7 +19,7 @@
+ #define HSFREQRANGE(x)			UPDATE(x, 6, 1)
+ 
+ struct rk628_csi {
+-	struct drm_display_mode mode;
++	struct rk628_display_mode mode;
+ 	bool txphy_pwron;
+ 	u64 lane_mbps;
+ };
+@@ -116,7 +116,7 @@ static u8 testif_write(struct rk628 *rk628, u8 test_code, u8 test_data)
+ }
+ static void rk628_csi_get_detected_timings(struct rk628 *rk628)
+ {
+-	struct drm_display_mode *src, *dst;
++	struct rk628_display_mode *src, *dst;
+ 
+ 	src = rk628_display_get_src_mode();
+ 	dst = rk628_display_get_dst_mode();
+diff --git a/drivers/misc/rk628/rk628_dsi.c b/drivers/misc/rk628/rk628_dsi.c
+index 3acc05b329257c..84418cce13da90 100644
+--- a/drivers/misc/rk628/rk628_dsi.c
++++ b/drivers/misc/rk628/rk628_dsi.c
+@@ -1041,7 +1041,7 @@ static int panel_simple_xfer_dsi_cmd_seq(struct rk628 *rk628)
+ 
+ static u32 rk628_dsi_get_lane_rate(const struct rk628_dsi *dsi)
+ {
+-	const struct drm_display_mode *mode = rk628_display_get_dst_mode();
++	const struct rk628_display_mode *mode = rk628_display_get_dst_mode();
+ 	u32 lane_rate;
+ 	u32 max_lane_rate = 1500;
+ 	u8 bpp, lanes;
+@@ -1300,7 +1300,7 @@ void rk628_dsi_bridge_pre_enable(struct rk628 *rk628,
+ 
+ static void rk628_dsi_set_vid_mode(struct rk628 *rk628,
+ 				   const struct rk628_dsi *dsi,
+-				   const struct drm_display_mode *mode)
++				   const struct rk628_display_mode *mode)
+ {
+ 	unsigned int lanebyteclk = (lane_mbps * 1000L) >> 3;
+ 	unsigned int dpipclk = mode->clock;
+@@ -1367,7 +1367,7 @@ static void rk628_dsi_set_vid_mode(struct rk628 *rk628,
+ 
+ static void rk628_dsi_set_cmd_mode(struct rk628 *rk628,
+ 				   const struct rk628_dsi *dsi,
+-				   const struct drm_display_mode *mode)
++				   const struct rk628_display_mode *mode)
+ {
+ 	dsi_update_bits(rk628, dsi, DSI_CMD_MODE_CFG, DCS_LW_TX, 0);
+ 	dsi_write(rk628, dsi, DSI_EDPI_CMD_SIZE,
+@@ -1379,7 +1379,7 @@ static void rk628_dsi_bridge_enable(struct rk628 *rk628,
+ 				    const struct rk628_dsi *dsi)
+ {
+ 	u32 val;
+-	const struct drm_display_mode *mode = rk628_display_get_dst_mode();
++	const struct rk628_display_mode *mode = rk628_display_get_dst_mode();
+ 
+ 	dsi_write(rk628, dsi, DSI_PWR_UP, RESET);
+ 
+diff --git a/drivers/misc/rk628/rk628_gvi.c b/drivers/misc/rk628/rk628_gvi.c
+index 54ca26686aa7de..2c5202281698cc 100644
+--- a/drivers/misc/rk628/rk628_gvi.c
++++ b/drivers/misc/rk628/rk628_gvi.c
+@@ -45,7 +45,7 @@ static void rk628_gvi_get_info(struct rk628_gvi *gvi)
+ 
+ static unsigned int rk628_gvi_get_lane_rate(struct rk628_gvi *gvi)
+ {
+-	const struct drm_display_mode *mode = rk628_display_get_dst_mode();
++	const struct rk628_display_mode *mode = rk628_display_get_dst_mode();
+ 	u32 lane_bit_rate, min_lane_rate = 500000, max_lane_rate = 4000000;
+ 	u64 total_bw;
+ 
+@@ -97,7 +97,7 @@ static void rk628_gvi_pre_enable(struct rk628 *rk628, struct rk628_gvi *gvi)
+ static void rk628_gvi_enable_color_bar(struct rk628 *rk628,
+ 				       struct rk628_gvi *gvi)
+ {
+-	const struct drm_display_mode *mode = rk628_display_get_dst_mode();
++	const struct rk628_display_mode *mode = rk628_display_get_dst_mode();
+ 	u16 vm_hactive, vm_hfront_porch, vm_hback_porch, vm_hsync_len;
+ 	u16 vm_vactive, vm_vfront_porch, vm_vback_porch, vm_vsync_len;
+ 	u16 hsync_len, hact_st, hact_end, htotal;
+diff --git a/drivers/misc/rk628/rk628_hdmirx.c b/drivers/misc/rk628/rk628_hdmirx.c
+index 6a6de10e2ea6f0..99db992154cce1 100644
+--- a/drivers/misc/rk628/rk628_hdmirx.c
++++ b/drivers/misc/rk628/rk628_hdmirx.c
+@@ -396,10 +396,10 @@ static int rk628_hdmirx_phy_setup(struct rk628 *rk628)
+ 	u32 i, cnt, val;
+ 	u32 width, height, frame_width, frame_height, status;
+ 	u32 index;
+-	struct drm_display_mode *src_mode;
++	struct rk628_display_mode *src_mode;
+ 	struct rk628_hdmirx *hdmirx = rk628->hdmirx;
+ 	int f;
+-	struct drm_display_mode *dst_mode;
++	struct rk628_display_mode *dst_mode;
+ 
+ 	/* Bit31 is used to distinguish HDMI cable mode and direct connection
+ 	* mode in the rk628_combrxphy driver.
+diff --git a/drivers/misc/rk628/rk628_lvds.c b/drivers/misc/rk628/rk628_lvds.c
+index 27b004f934a585..1dddcb5ea8a593 100644
+--- a/drivers/misc/rk628/rk628_lvds.c
++++ b/drivers/misc/rk628/rk628_lvds.c
+@@ -28,7 +28,7 @@ void rk628_lvds_enable(struct rk628 *rk628)
+ {
+ 	u32 link_type = rk628_lvds_get_link_type();
+ 	u32 format = rk628_lvds_get_format();
+-	const struct drm_display_mode *mode = rk628_display_get_dst_mode();
++	const struct rk628_display_mode *mode = rk628_display_get_dst_mode();
+ 	u32 val, bus_width;
+ 
+ 	lvds_update_bits(rk628, GRF_SYSTEM_CON0, SW_OUTPUT_MODE_MASK,
+diff --git a/drivers/misc/rk628/rk628_post_process.c b/drivers/misc/rk628/rk628_post_process.c
+index fe4bcfffbaea28..3b69da2c995899 100644
+--- a/drivers/misc/rk628/rk628_post_process.c
++++ b/drivers/misc/rk628/rk628_post_process.c
+@@ -8,8 +8,8 @@
+ #include "rk628_config.h"
+ #include "rk628_cru.h"
+ 
+-static void calc_dsp_frm_hst_vst(const struct drm_display_mode *src,
+-				 const struct drm_display_mode *dst,
++static void calc_dsp_frm_hst_vst(const struct rk628_display_mode *src,
++				 const struct rk628_display_mode *dst,
+ 				 u32 *dsp_frame_hst,
+ 				 u32 *dsp_frame_vst)
+ {
+@@ -80,8 +80,8 @@ __retry:
+ }
+ 
+ static void rk628_post_process_scaler_init(struct rk628 *rk628,
+-					   struct drm_display_mode *src,
+-					   const struct drm_display_mode *dst)
++					   struct rk628_display_mode *src,
++					   const struct rk628_display_mode *dst)
+ {
+ 	u32 dsp_frame_hst, dsp_frame_vst;
+ 	u32 scl_hor_mode, scl_ver_mode;
+@@ -197,8 +197,8 @@ static void rk628_post_process_scaler_init(struct rk628 *rk628,
+ 
+ void rk628_post_process_init(struct rk628 *rk628)
+ {
+-	struct drm_display_mode *src = rk628_display_get_src_mode();
+-	const struct drm_display_mode *dst = rk628_display_get_dst_mode();
++	struct rk628_display_mode *src = rk628_display_get_src_mode();
++	const struct rk628_display_mode *dst = rk628_display_get_dst_mode();
+ 	u64 dst_rate, src_rate;
+ 
+ 	src_rate = src->clock * 1000;
+diff --git a/drivers/misc/rk628/rk628_rgb.c b/drivers/misc/rk628/rk628_rgb.c
+old mode 100755
+new mode 100644
+-- 
+2.17.1
+

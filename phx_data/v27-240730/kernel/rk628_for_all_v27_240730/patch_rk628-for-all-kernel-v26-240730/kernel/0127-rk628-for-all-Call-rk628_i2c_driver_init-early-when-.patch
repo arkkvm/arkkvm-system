@@ -1,0 +1,44 @@
+From 955812e6a0b786312294a125aac58010ecca6a44 Mon Sep 17 00:00:00 2001
+From: Guochun Huang <hero.huang@rock-chips.com>
+Date: Fri, 31 Dec 2021 14:17:48 +0800
+Subject: [PATCH 127/232] rk628-for-all: Call rk628_i2c_driver_init() early
+ when CONFIG_ROCKCHIP_THUNDER_BOOT_RK628=y
+
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+Change-Id: Ie500b208119e5762443cf3a03fd0dc4fe50d251e
+---
+ drivers/misc/rk628/rk628.c | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/drivers/misc/rk628/rk628.c b/drivers/misc/rk628/rk628.c
+index 08a090745a09b2..e9f501e77a7732 100644
+--- a/drivers/misc/rk628/rk628.c
++++ b/drivers/misc/rk628/rk628.c
+@@ -711,7 +711,24 @@ static struct i2c_driver rk628_i2c_driver = {
+ 	.remove = rk628_i2c_remove,
+ 	.id_table = rk628_i2c_id,
+ };
++
++#ifdef CONFIG_ROCKCHIP_THUNDER_BOOT_RK628
++static int __init rk628_i2c_driver_init(void)
++{
++	i2c_add_driver(&rk628_i2c_driver);
++
++	return 0;
++}
++subsys_initcall_sync(rk628_i2c_driver_init);
++
++static void __exit rk628_i2c_driver_exit(void)
++{
++	i2c_del_driver(&rk628_i2c_driver);
++}
++module_exit(rk628_i2c_driver_exit);
++#else
+ module_i2c_driver(rk628_i2c_driver);
++#endif
+ 
+ MODULE_AUTHOR("Wyon Bi <bivvy.bi@rock-chips.com>");
+ MODULE_DESCRIPTION("Rockchip RK628 MFD driver");
+-- 
+2.17.1
+

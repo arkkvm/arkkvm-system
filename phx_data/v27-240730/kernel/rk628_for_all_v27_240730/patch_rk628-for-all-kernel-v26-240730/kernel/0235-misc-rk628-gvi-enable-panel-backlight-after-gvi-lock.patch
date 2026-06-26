@@ -1,0 +1,38 @@
+From 4c1a9b1c20760a2d99ff68c793dd20931c87318d Mon Sep 17 00:00:00 2001
+From: Sandy Huang <hjc@rock-chips.com>
+Date: Wed, 3 Jan 2024 14:37:09 +0800
+Subject: [PATCH 235/235] misc: rk628: gvi: enable panel/backlight after gvi
+ locked
+
+This can avoid display splash screen before gvi locked.
+
+Signed-off-by: Sandy Huang <hjc@rock-chips.com>
+Change-Id: Id32d637cd4af8c33f9629abd7c788db6b7e13df9
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/misc/rk628/rk628_gvi.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/misc/rk628/rk628_gvi.c b/drivers/misc/rk628/rk628_gvi.c
+index 80494cdc3df697..b2dd3d3b25b05b 100644
+--- a/drivers/misc/rk628/rk628_gvi.c
++++ b/drivers/misc/rk628/rk628_gvi.c
+@@ -281,7 +281,6 @@ void rk628_gvi_enable(struct rk628 *rk628)
+ 	rk628_panel_prepare(rk628);
+ 	rk628_gvi_enable_color_bar(rk628, gvi);
+ 	rk628_gvi_post_enable(rk628, gvi);
+-	rk628_panel_enable(rk628);
+ 
+ 	for (i = 0; i < 100; i++) {
+ 		rk628_i2c_read(rk628, GVI_STATUS, &val);
+@@ -302,6 +301,7 @@ void rk628_gvi_enable(struct rk628 *rk628)
+ 		dev_info(rk628->dev, "GVI Lock failed, please check hardware!\n");
+ 		return;
+ 	}
++	rk628_panel_enable(rk628);
+ 
+ 	if (i != 100)
+ 		gvi->retry_times = 0;
+-- 
+2.17.1
+

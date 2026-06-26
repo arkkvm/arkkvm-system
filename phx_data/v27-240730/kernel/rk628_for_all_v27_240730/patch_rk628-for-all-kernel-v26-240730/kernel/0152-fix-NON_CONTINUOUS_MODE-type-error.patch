@@ -1,0 +1,66 @@
+From b3388f1d7f089fa77386cf3d66b54d5d6f9bf1ef Mon Sep 17 00:00:00 2001
+From: Luo Wei <lw@rock-chips.com>
+Date: Thu, 15 Dec 2022 17:15:06 +0800
+Subject: [PATCH 152/232] fix NON_CONTINUOUS_MODE type error
+
+Signed-off-by: Luo Wei <lw@rock-chips.com>
+Change-Id: I10d7c91f9c61209fc953c5429d1a3b42f8f7fc2b
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_csi.c      | 4 ++--
+ drivers/media/i2c/rk628/rk628_csi.h      | 4 ++--
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c | 4 ++--
+ 3 files changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_csi.c b/drivers/media/i2c/rk628/rk628_csi.c
+index 2c492446f9e992..bb84ffe22eadef 100644
+--- a/drivers/media/i2c/rk628/rk628_csi.c
++++ b/drivers/media/i2c/rk628/rk628_csi.c
+@@ -754,10 +754,10 @@ static void rk628_csi_set_csi(struct rk628_csi *csi)
+ 	rk628_i2c_update_bits(csi->rk628, CSITX_SYS_CTRL3_IMD,
+ 			CONT_MODE_CLK_CLR_MASK |
+ 			CONT_MODE_CLK_SET_MASK |
+-			NON_CONTINOUS_MODE_MASK,
++			NON_CONTINUOUS_MODE_MASK,
+ 			CONT_MODE_CLK_CLR(0) |
+ 			CONT_MODE_CLK_SET(0) |
+-			NON_CONTINOUS_MODE(1));
++			NON_CONTINUOUS_MODE(1));
+ 
+ 	rk628_i2c_write(csi->rk628, CSITX_VOP_PATH_CTRL,
+ 			VOP_WC_USERDEFINE(wc_usrdef) |
+diff --git a/drivers/media/i2c/rk628/rk628_csi.h b/drivers/media/i2c/rk628/rk628_csi.h
+index 39198593c9eea0..74b64118170d69 100644
+--- a/drivers/media/i2c/rk628/rk628_csi.h
++++ b/drivers/media/i2c/rk628/rk628_csi.h
+@@ -42,8 +42,8 @@
+ #define CONT_MODE_CLK_CLR(x)		UPDATE(x, 8, 8)
+ #define CONT_MODE_CLK_SET_MASK		BIT(4)
+ #define CONT_MODE_CLK_SET(x)		UPDATE(x, 4, 4)
+-#define NON_CONTINOUS_MODE_MASK		BIT(0)
+-#define NON_CONTINOUS_MODE(x)		UPDATE(x, 0, 0)
++#define NON_CONTINUOUS_MODE_MASK		BIT(0)
++#define NON_CONTINUOUS_MODE(x)		UPDATE(x, 0, 0)
+ #define CSITX_TIMING_HPW_PADDING_NUM	(CSITX_BASE + 0x0030)
+ #define CSITX_VOP_PATH_CTRL		(CSITX_BASE + 0x0040)
+ #define VOP_WC_USERDEFINE_MASK		GENMASK(31, 16)
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index 790b66d501cce0..e00d00a051629b 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -895,10 +895,10 @@ static void rk628_csi_set_csi(struct v4l2_subdev *sd)
+ 	rk628_i2c_update_bits(csi->rk628, CSITX_SYS_CTRL3_IMD,
+ 			CONT_MODE_CLK_CLR_MASK |
+ 			CONT_MODE_CLK_SET_MASK |
+-			NON_CONTINOUS_MODE_MASK,
++			NON_CONTINUOUS_MODE_MASK,
+ 			CONT_MODE_CLK_CLR(0) |
+ 			CONT_MODE_CLK_SET(0) |
+-			NON_CONTINOUS_MODE(1));
++			NON_CONTINUOUS_MODE(1));
+ 
+ 	rk628_i2c_write(csi->rk628, CSITX_VOP_PATH_CTRL,
+ 			VOP_WC_USERDEFINE(wc_usrdef) |
+-- 
+2.17.1
+

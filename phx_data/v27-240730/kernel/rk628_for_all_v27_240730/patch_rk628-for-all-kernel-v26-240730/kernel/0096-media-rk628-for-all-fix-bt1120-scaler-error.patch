@@ -1,0 +1,28 @@
+From 4cb70f330cf1b12ff4e4138cf173814e42330a2f Mon Sep 17 00:00:00 2001
+From: Shunqing Chen <csq@rock-chips.com>
+Date: Tue, 14 Sep 2021 11:42:50 +0800
+Subject: [PATCH 096/232] media: rk628-for-all: fix bt1120 scaler error
+
+Signed-off-by: Shunqing Chen <csq@rock-chips.com>
+Change-Id: Ie2c5510cade7922a2cd1c10a179a3bf2a72d4649
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_bt1120_v4l2.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+index eeae65a93204e4..6990e8c264752e 100644
+--- a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+@@ -694,7 +694,7 @@ static void enable_stream(struct v4l2_subdev *sd, bool en)
+ static void rk628_post_process_setup(struct v4l2_subdev *sd)
+ {
+ 	struct rk628_bt1120 *bt1120 = to_bt1120(sd);
+-	struct v4l2_bt_timings *bt = &bt1120->timings.bt;
++	struct v4l2_bt_timings *bt = &bt1120->src_timings.bt;
+ 	struct v4l2_bt_timings *dst_bt = &bt1120->timings.bt;
+ 	struct videomode src, dst;
+ 	u64 dst_pclk;
+-- 
+2.17.1
+

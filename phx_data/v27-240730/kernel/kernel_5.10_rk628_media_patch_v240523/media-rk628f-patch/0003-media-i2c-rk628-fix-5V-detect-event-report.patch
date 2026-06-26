@@ -1,0 +1,325 @@
+From 0a477570d3480757768967ec54c95f3bd17ce0bb Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Mon, 7 Aug 2023 06:52:45 +0000
+Subject: [PATCH 03/30] media: i2c: rk628: fix 5V detect event report
+
+Change-Id: I35303abc9376c45233b06319bd618e394874ae71
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_bt1120_v4l2.c | 60 +++++++++++----------
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c    | 55 +++++++++----------
+ 2 files changed, 59 insertions(+), 56 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+index e427176a54b32..96cc08fa66d89 100644
+--- a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+@@ -491,6 +491,7 @@ static void rk628_bt1120_delayed_work_enable_hotplug(struct work_struct *work)
+ 	mutex_lock(&bt1120->confctl_mutex);
+ 	bt1120->avi_rcv_rdy = false;
+ 	plugin = tx_5v_power_present(sd);
++	v4l2_ctrl_s_ctrl(bt1120->detect_tx_5v_ctrl, plugin);
+ 	v4l2_dbg(1, debug, sd, "%s: 5v_det:%d\n", __func__, plugin);
+ 	if (plugin) {
+ 		rk628_set_io_func_to_vop(bt1120->rk628);
+@@ -1250,21 +1251,6 @@ static int rk628_bt1120_enum_mbus_code(struct v4l2_subdev *sd,
+ 	return 0;
+ }
+ 
+-static int rk628_bt1120_get_ctrl(struct v4l2_ctrl *ctrl)
+-{
+-	int ret = -1;
+-	struct rk628_bt1120 *bt1120 = container_of(ctrl->handler, struct rk628_bt1120,
+-			hdl);
+-	struct v4l2_subdev *sd = &(bt1120->sd);
+-
+-	if (ctrl->id == V4L2_CID_DV_RX_POWER_PRESENT) {
+-		ret = tx_5v_power_present(sd);
+-		*ctrl->p_new.p_s32 = ret;
+-	}
+-
+-	return ret;
+-}
+-
+ static int rk628_bt1120_enum_frame_sizes(struct v4l2_subdev *sd,
+ 				   struct v4l2_subdev_pad_config *cfg,
+ 				   struct v4l2_subdev_frame_size_enum *fse)
+@@ -1542,6 +1528,9 @@ static long rk628_bt1120_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *a
+ 	case RKMODULE_GET_MODULE_INFO:
+ 		rk628_bt1120_get_module_inf(bt1120, (struct rkmodule_inf *)arg);
+ 		break;
++	case RKMODULE_GET_HDMI_MODE:
++		*(int *)arg = RKMODULE_HDMIIN_MODE;
++		break;
+ 	default:
+ 		ret = -ENOIOCTLCMD;
+ 		break;
+@@ -1557,6 +1546,7 @@ static long rk628_bt1120_compat_ioctl32(struct v4l2_subdev *sd,
+ 	void __user *up = compat_ptr(arg);
+ 	struct rkmodule_inf *inf;
+ 	long ret;
++	int *seq;
+ 
+ 	switch (cmd) {
+ 	case RKMODULE_GET_MODULE_INFO:
+@@ -1574,7 +1564,21 @@ static long rk628_bt1120_compat_ioctl32(struct v4l2_subdev *sd,
+ 		}
+ 		kfree(inf);
+ 		break;
++	case RKMODULE_GET_HDMI_MODE:
++		seq = kzalloc(sizeof(*seq), GFP_KERNEL);
++		if (!seq) {
++			ret = -ENOMEM;
++			return ret;
++		}
+ 
++		ret = rk628_bt1120_ioctl(sd, cmd, seq);
++		if (!ret) {
++			ret = copy_to_user(up, seq, sizeof(*seq));
++			if (ret)
++				ret = -EFAULT;
++		}
++		kfree(seq);
++		break;
+ 	default:
+ 		ret = -ENOIOCTLCMD;
+ 		break;
+@@ -1612,10 +1616,6 @@ static const struct v4l2_subdev_internal_ops bt1120_subdev_internal_ops = {
+ };
+ #endif
+ 
+-static const struct v4l2_ctrl_ops rk628_bt1120_ctrl_ops = {
+-	.g_volatile_ctrl = rk628_bt1120_get_ctrl,
+-};
+-
+ static const struct v4l2_subdev_core_ops rk628_bt1120_core_ops = {
+ 	.interrupt_service_routine = rk628_bt1120_isr,
+ 	.subscribe_event = rk628_bt1120_subscribe_event,
+@@ -1712,21 +1712,21 @@ static int rk628_bt1120_probe_of(struct rk628_bt1120 *bt1120)
+ 	if (IS_ERR(bt1120->enable_gpio)) {
+ 		ret = PTR_ERR(bt1120->enable_gpio);
+ 		dev_err(dev, "failed to request enable GPIO: %d\n", ret);
+-		return ret;
++		goto clk_put;
+ 	}
+ 
+ 	bt1120->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_LOW);
+ 	if (IS_ERR(bt1120->reset_gpio)) {
+ 		ret = PTR_ERR(bt1120->reset_gpio);
+ 		dev_err(dev, "failed to request reset GPIO: %d\n", ret);
+-		return ret;
++		goto clk_put;
+ 	}
+ 
+ 	bt1120->power_gpio = devm_gpiod_get_optional(dev, "power", GPIOD_OUT_HIGH);
+ 	if (IS_ERR(bt1120->power_gpio)) {
+ 		dev_err(dev, "failed to get power gpio\n");
+ 		ret = PTR_ERR(bt1120->power_gpio);
+-		return ret;
++		goto clk_put;
+ 	}
+ 
+ 	bt1120->plugin_det_gpio = devm_gpiod_get_optional(dev, "plugin-det",
+@@ -1734,7 +1734,7 @@ static int rk628_bt1120_probe_of(struct rk628_bt1120 *bt1120)
+ 	if (IS_ERR(bt1120->plugin_det_gpio)) {
+ 		dev_err(dev, "failed to get hdmirx det gpio\n");
+ 		ret = PTR_ERR(bt1120->plugin_det_gpio);
+-		return ret;
++		goto clk_put;
+ 	}
+ 
+ 	if (bt1120->enable_gpio) {
+@@ -1768,14 +1768,15 @@ static int rk628_bt1120_probe_of(struct rk628_bt1120 *bt1120)
+ 	ep = of_graph_get_next_endpoint(dev->of_node, NULL);
+ 	if (!ep) {
+ 		dev_err(dev, "missing endpoint node\n");
+-		return -EINVAL;
++		ret = -EINVAL;
++		goto clk_put;
+ 	}
+ 
+ 	ret = v4l2_fwnode_endpoint_alloc_parse(of_fwnode_handle(ep), &endpoint);
++	of_node_put(ep);
+ 	if (ret) {
+ 		dev_err(dev, "failed to parse endpoint\n");
+-		of_node_put(ep);
+-		return ret;
++		goto clk_put;
+ 	}
+ 
+ 	bt1120->enable_hdcp = hdcp1x_enable;
+@@ -1792,6 +1793,9 @@ static int rk628_bt1120_probe_of(struct rk628_bt1120 *bt1120)
+ 
+ 	v4l2_fwnode_endpoint_free(&endpoint);
+ 
++clk_put:
++	clk_disable_unprepare(bt1120->soc_24M);
++
+ 	return ret;
+ }
+ 
+@@ -1872,10 +1876,8 @@ static int rk628_bt1120_probe(struct i2c_client *client,
+ 			V4L2_CID_PIXEL_RATE, 0, RK628_CSI_PIXEL_RATE_HIGH, 1,
+ 			RK628_CSI_PIXEL_RATE_HIGH);
+ 	bt1120->detect_tx_5v_ctrl = v4l2_ctrl_new_std(&bt1120->hdl,
+-			&rk628_bt1120_ctrl_ops, V4L2_CID_DV_RX_POWER_PRESENT,
++			NULL, V4L2_CID_DV_RX_POWER_PRESENT,
+ 			0, 1, 0, 0);
+-	if (bt1120->detect_tx_5v_ctrl)
+-		bt1120->detect_tx_5v_ctrl->flags |= V4L2_CTRL_FLAG_VOLATILE;
+ 
+ 	/* custom controls */
+ 	bt1120->audio_sampling_rate_ctrl = v4l2_ctrl_new_custom(&bt1120->hdl,
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index d8a39ca5b382c..4fe67b3d58f93 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -492,6 +492,7 @@ static void rk628_csi_delayed_work_enable_hotplug(struct work_struct *work)
+ 	mutex_lock(&csi->confctl_mutex);
+ 	csi->avi_rcv_rdy = false;
+ 	plugin = tx_5v_power_present(sd);
++	v4l2_ctrl_s_ctrl(csi->detect_tx_5v_ctrl, plugin);
+ 	v4l2_dbg(1, debug, sd, "%s: 5v_det:%d\n", __func__, plugin);
+ 	if (plugin) {
+ 		rk628_csi_enable_interrupts(sd, false);
+@@ -1476,21 +1477,6 @@ static int rk628_csi_enum_mbus_code(struct v4l2_subdev *sd,
+ 	return 0;
+ }
+ 
+-static int rk628_csi_get_ctrl(struct v4l2_ctrl *ctrl)
+-{
+-	int ret = -1;
+-	struct rk628_csi *csi = container_of(ctrl->handler, struct rk628_csi,
+-			hdl);
+-	struct v4l2_subdev *sd = &(csi->sd);
+-
+-	if (ctrl->id == V4L2_CID_DV_RX_POWER_PRESENT) {
+-		ret = tx_5v_power_present(sd);
+-		*ctrl->p_new.p_s32 = ret;
+-	}
+-
+-	return ret;
+-}
+-
+ static int rk628_csi_enum_frame_sizes(struct v4l2_subdev *sd,
+ 				   struct v4l2_subdev_pad_config *cfg,
+ 				   struct v4l2_subdev_frame_size_enum *fse)
+@@ -1783,6 +1769,9 @@ static long rk628_csi_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
+ 	case RKMODULE_GET_MODULE_INFO:
+ 		rk628_csi_get_module_inf(csi, (struct rkmodule_inf *)arg);
+ 		break;
++	case RKMODULE_GET_HDMI_MODE:
++		*(int *)arg = RKMODULE_HDMIIN_MODE;
++		break;
+ 	default:
+ 		ret = -ENOIOCTLCMD;
+ 		break;
+@@ -1840,6 +1829,7 @@ static long rk628_csi_compat_ioctl32(struct v4l2_subdev *sd,
+ 	void __user *up = compat_ptr(arg);
+ 	struct rkmodule_inf *inf;
+ 	long ret;
++	int *seq;
+ 
+ 	switch (cmd) {
+ 	case RKMODULE_GET_MODULE_INFO:
+@@ -1857,7 +1847,21 @@ static long rk628_csi_compat_ioctl32(struct v4l2_subdev *sd,
+ 		}
+ 		kfree(inf);
+ 		break;
++	case RKMODULE_GET_HDMI_MODE:
++		seq = kzalloc(sizeof(*seq), GFP_KERNEL);
++		if (!seq) {
++			ret = -ENOMEM;
++			return ret;
++		}
+ 
++		ret = rk628_csi_ioctl(sd, cmd, seq);
++		if (!ret) {
++			ret = copy_to_user(up, seq, sizeof(*seq));
++			if (ret)
++				ret = -EFAULT;
++		}
++		kfree(seq);
++		break;
+ 	default:
+ 		ret = -ENOIOCTLCMD;
+ 		break;
+@@ -1867,10 +1871,6 @@ static long rk628_csi_compat_ioctl32(struct v4l2_subdev *sd,
+ }
+ #endif
+ 
+-static const struct v4l2_ctrl_ops rk628_csi_ctrl_ops = {
+-	.g_volatile_ctrl = rk628_csi_get_ctrl,
+-};
+-
+ static const struct v4l2_subdev_core_ops rk628_csi_core_ops = {
+ 	.interrupt_service_routine = rk628_csi_isr,
+ 	.subscribe_event = rk628_csi_subscribe_event,
+@@ -1986,21 +1986,21 @@ static int rk628_csi_probe_of(struct rk628_csi *csi)
+ 	if (IS_ERR(csi->enable_gpio)) {
+ 		ret = PTR_ERR(csi->enable_gpio);
+ 		dev_err(dev, "failed to request enable GPIO: %d\n", ret);
+-		return ret;
++		goto clk_put;
+ 	}
+ 
+ 	csi->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_LOW);
+ 	if (IS_ERR(csi->reset_gpio)) {
+ 		ret = PTR_ERR(csi->reset_gpio);
+ 		dev_err(dev, "failed to request reset GPIO: %d\n", ret);
+-		return ret;
++		goto clk_put;
+ 	}
+ 
+ 	csi->power_gpio = devm_gpiod_get_optional(dev, "power", GPIOD_OUT_HIGH);
+ 	if (IS_ERR(csi->power_gpio)) {
+ 		dev_err(dev, "failed to get power gpio\n");
+ 		ret = PTR_ERR(csi->power_gpio);
+-		return ret;
++		goto clk_put;
+ 	}
+ 
+ 	csi->plugin_det_gpio = devm_gpiod_get_optional(dev, "plugin-det",
+@@ -2008,7 +2008,7 @@ static int rk628_csi_probe_of(struct rk628_csi *csi)
+ 	if (IS_ERR(csi->plugin_det_gpio)) {
+ 		dev_err(dev, "failed to get hdmirx det gpio\n");
+ 		ret = PTR_ERR(csi->plugin_det_gpio);
+-		return ret;
++		goto clk_put;
+ 	}
+ 
+ 	if (csi->enable_gpio) {
+@@ -2046,7 +2046,8 @@ static int rk628_csi_probe_of(struct rk628_csi *csi)
+ 	ep = of_graph_get_next_endpoint(dev->of_node, NULL);
+ 	if (!ep) {
+ 		dev_err(dev, "missing endpoint node\n");
+-		return -EINVAL;
++		ret = -EINVAL;
++		goto clk_put;
+ 	}
+ 
+ 	ret = v4l2_fwnode_endpoint_alloc_parse(of_fwnode_handle(ep), &endpoint);
+@@ -2080,6 +2081,8 @@ static int rk628_csi_probe_of(struct rk628_csi *csi)
+ 	v4l2_fwnode_endpoint_free(&endpoint);
+ put_node:
+ 	of_node_put(ep);
++clk_put:
++	clk_disable_unprepare(csi->soc_24M);
+ 
+ 	return ret;
+ }
+@@ -2203,10 +2206,8 @@ static int rk628_csi_probe(struct i2c_client *client,
+ 			V4L2_CID_PIXEL_RATE, 0, RK628_CSI_PIXEL_RATE_HIGH, 1,
+ 			RK628_CSI_PIXEL_RATE_HIGH);
+ 	csi->detect_tx_5v_ctrl = v4l2_ctrl_new_std(&csi->hdl,
+-			&rk628_csi_ctrl_ops, V4L2_CID_DV_RX_POWER_PRESENT,
++			NULL, V4L2_CID_DV_RX_POWER_PRESENT,
+ 			0, 1, 0, 0);
+-	if (csi->detect_tx_5v_ctrl)
+-		csi->detect_tx_5v_ctrl->flags |= V4L2_CTRL_FLAG_VOLATILE;
+ 
+ 	/* custom controls */
+ 	csi->audio_sampling_rate_ctrl = v4l2_ctrl_new_custom(&csi->hdl,
+-- 
+2.25.1
+

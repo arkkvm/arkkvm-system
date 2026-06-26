@@ -1,0 +1,48 @@
+From 48d66de799e5a79ff50fc6ba04b5e14bb0d90209 Mon Sep 17 00:00:00 2001
+From: Shunqing Chen <csq@rock-chips.com>
+Date: Fri, 3 Sep 2021 15:04:42 +0800
+Subject: [PATCH 086/232] media: rk628-for-all: fix reset csi error
+
+Signed-off-by: Shunqing Chen <csq@rock-chips.com>
+Change-Id: I3d8f1d6dcb9c955608776a1b50b29ad15fb35216
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_csi.c      | 4 ++--
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c | 4 ++--
+ 2 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_csi.c b/drivers/media/i2c/rk628/rk628_csi.c
+index 60d58deaab1bbb..ff58ea39735ba9 100644
+--- a/drivers/media/i2c/rk628/rk628_csi.c
++++ b/drivers/media/i2c/rk628/rk628_csi.c
+@@ -578,9 +578,9 @@ static void rk628_hdmirx_hpd_ctrl(struct rk628_csi *csi, bool en)
+ 
+ static void rk62_csi_reset(struct rk628_csi *csi)
+ {
+-	rk628_control_assert(csi->rk628, RK628_DEV_CSI);
++	rk628_control_assert(csi->rk628, RGU_CSI);
+ 	udelay(10);
+-	rk628_control_deassert(csi->rk628, RK628_DEV_CSI);
++	rk628_control_deassert(csi->rk628, RGU_CSI);
+ 
+ 	rk628_i2c_write(csi->rk628, CSITX_SYS_CTRL0_IMD, 0x1);
+ 	usleep_range(1000, 1000);
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index d1aeae0ae4be8b..f758e60422bb17 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -588,9 +588,9 @@ static void rk62_csi_reset(struct v4l2_subdev *sd)
+ {
+ 	struct rk628_csi *csi = to_csi(sd);
+ 
+-	rk628_control_assert(csi->rk628, RK628_DEV_CSI);
++	rk628_control_assert(csi->rk628, RGU_CSI);
+ 	udelay(10);
+-	rk628_control_deassert(csi->rk628, RK628_DEV_CSI);
++	rk628_control_deassert(csi->rk628, RGU_CSI);
+ 
+ 	rk628_i2c_write(csi->rk628, CSITX_SYS_CTRL0_IMD, 0x1);
+ 	usleep_range(1000, 1000);
+-- 
+2.17.1
+

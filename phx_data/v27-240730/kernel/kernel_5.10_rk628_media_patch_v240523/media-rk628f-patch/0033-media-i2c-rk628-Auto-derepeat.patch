@@ -1,0 +1,35 @@
+From 4bbec207105f5426ff2a31853a506da04b9771e2 Mon Sep 17 00:00:00 2001
+From: Chen Shunqing <csq@rock-chips.com>
+Date: Tue, 19 Dec 2023 06:40:00 +0000
+Subject: [PATCH 33/53] media: i2c: rk628: Auto derepeat
+
+Change-Id: I1265250b5cbb6d46eac47b787754a9788064e4d1
+Signed-off-by: Chen Shunqing <csq@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_hdmirx.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_hdmirx.c b/drivers/media/i2c/rk628/rk628_hdmirx.c
+index 4afc771804c2..274fedd4d19d 100644
+--- a/drivers/media/i2c/rk628/rk628_hdmirx.c
++++ b/drivers/media/i2c/rk628/rk628_hdmirx.c
+@@ -179,7 +179,7 @@ void rk628_hdmirx_controller_setup(struct rk628 *rk628)
+ 	rk628_i2c_write(rk628, HDMI_RX_HDMI_MODE_RECOVER, 0x00000021);
+ 	rk628_i2c_write(rk628, HDMI_RX_PDEC_CTRL, 0xbfff8011);
+ 	rk628_i2c_write(rk628, HDMI_RX_PDEC_ASP_CTRL, 0x00000040);
+-	rk628_i2c_write(rk628, HDMI_RX_HDMI_RESMPL_CTRL, 0x00000001);
++	rk628_i2c_write(rk628, HDMI_RX_HDMI_RESMPL_CTRL, 0x00000000);
+ 	rk628_i2c_write(rk628, HDMI_RX_HDMI_SYNC_CTRL, 0x00000014);
+ 	rk628_i2c_write(rk628, HDMI_RX_PDEC_ERR_FILTER, 0x00000008);
+ 	rk628_i2c_write(rk628, HDMI_RX_SCDC_I2CCONFIG, 0x01000000);
+@@ -196,7 +196,6 @@ void rk628_hdmirx_controller_setup(struct rk628 *rk628)
+ 	rk628_i2c_write(rk628, HDMI_RX_HDMI_DCM_CTRL, 0x00040414);
+ 	rk628_i2c_write(rk628, HDMI_RX_HDMI_CKM_EVLTM, 0x00103e70);
+ 	rk628_i2c_write(rk628, HDMI_RX_HDMI_CKM_F, 0x0c1c0b54);
+-	rk628_i2c_write(rk628, HDMI_RX_HDMI_RESMPL_CTRL, 0x00000001);
+ 	rk628_i2c_update_bits(rk628, HDMI_RX_HDMI_TIMER_CTRL, VIDEO_PERIOD_MASK, VIDEO_PERIOD(1));
+ 
+ 	rk628_i2c_update_bits(rk628, HDMI_RX_HDCP_SETTINGS,
+-- 
+2.17.1
+

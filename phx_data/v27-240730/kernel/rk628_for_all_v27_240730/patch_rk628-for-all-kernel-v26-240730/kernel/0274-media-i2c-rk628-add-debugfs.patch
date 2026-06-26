@@ -1,0 +1,588 @@
+From d5c9160985323d057d708c4696782e688a607207 Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Mon, 13 May 2024 09:56:33 +0800
+Subject: [PATCH 274/305] media: i2c: rk628 add debugfs
+
+Type: Function
+Redmine ID: N/A
+Associated modifications: N/A
+Test:
+enable rk628 debug:
+    echo 1 > /d/rk628/3-0050/debug
+
+    hdmirx status:
+        cat /d/rk628/3-0050/hdmirx/status
+
+    hdmirx hdcp:
+        cat /d/rk628/3-0050/hdmirx/hdcp/enable
+        echo 1 > /d/rk628/3-0050/hdmirx/hdcp/enable
+        cat /d/rk628/3-0050/hdmirx/hdcp/status
+
+Change-Id: I638710c3e4c60d15b9ca1d0a2d5d42d581bd94ff
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628.c             |  57 +++++
+ drivers/media/i2c/rk628/rk628.h             |   7 +
+ drivers/media/i2c/rk628/rk628_bt1120_v4l2.c |   7 +-
+ drivers/media/i2c/rk628/rk628_cru.c         |   1 +
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c    |   6 +-
+ drivers/media/i2c/rk628/rk628_hdmirx.c      | 243 +++++++++++++++++++-
+ drivers/media/i2c/rk628/rk628_hdmirx.h      |  10 +
+ 7 files changed, 317 insertions(+), 14 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628.c b/drivers/media/i2c/rk628/rk628.c
+index 01a95757d897ed..afae3b8a5ba01d 100644
+--- a/drivers/media/i2c/rk628/rk628.c
++++ b/drivers/media/i2c/rk628/rk628.c
+@@ -595,6 +595,62 @@ static void rk628_debugfs_register_create(struct rk628 *rk628)
+ 	rk628_hdmirx_phy_debugfs_register_create(rk628, dir);
+ }
+ 
++static int rk628_dbg_en_show(struct seq_file *s, void *v)
++{
++	struct rk628 *rk628 = s->private;
++
++	seq_printf(s, "%d\n", rk628->dbg_en);
++
++	return 0;
++}
++
++static ssize_t rk628_dbg_en_write(struct file *file, const char __user *buf,
++				  size_t count, loff_t *ppos)
++{
++	struct rk628 *rk628 = file->f_path.dentry->d_inode->i_private;
++	char kbuf[25];
++	int enable;
++
++	if (!rk628)
++		return -EINVAL;
++
++	if (count >= sizeof(kbuf))
++		return -ENOSPC;
++
++	if (copy_from_user(kbuf, buf, count))
++		return -EFAULT;
++
++	kbuf[count] = '\0';
++
++	if (kstrtoint(kbuf, 10, &enable))
++		return -EINVAL;
++
++	rk628->dbg_en = enable;
++
++	return count;
++}
++
++static int rk628_dbg_en_open(struct inode *inode, struct file *file)
++{
++	struct rk628 *rk628 = inode->i_private;
++
++	return single_open(file, rk628_dbg_en_show, rk628);
++}
++
++static const struct file_operations rk628_dbg_en_fops = {
++	.owner          = THIS_MODULE,
++	.open           = rk628_dbg_en_open,
++	.read           = seq_read,
++	.write          = rk628_dbg_en_write,
++	.llseek         = seq_lseek,
++	.release        = single_release,
++};
++
++static void rk628_dbg_en_node(struct rk628 *rk628)
++{
++	debugfs_create_file("debug", 0600, rk628->debug_dir, rk628, &rk628_dbg_en_fops);
++}
++
+ void rk628_debugfs_create(struct rk628 *rk628)
+ {
+ 	rk628->debug_dir = debugfs_create_dir(dev_name(rk628->dev), debugfs_lookup("rk628", NULL));
+@@ -602,6 +658,7 @@ void rk628_debugfs_create(struct rk628 *rk628)
+ 		return;
+ 
+ 	rk628_debugfs_register_create(rk628);
++	rk628_dbg_en_node(rk628);
+ }
+ EXPORT_SYMBOL(rk628_debugfs_create);
+ 
+diff --git a/drivers/media/i2c/rk628/rk628.h b/drivers/media/i2c/rk628/rk628.h
+index d8a509896a8713..e9af4cdbda3e57 100644
+--- a/drivers/media/i2c/rk628/rk628.h
++++ b/drivers/media/i2c/rk628/rk628.h
+@@ -302,10 +302,17 @@ struct rk628 {
+ 	bool dual_mipi;
+ 	struct mipi_timing mipi_timing[2];
+ 	int tx_mode;
++	int dbg_en;
+ 	struct dentry *debug_dir;
+ 	struct gpio_desc *hdmirx_det_gpio;
+ };
+ 
++#define rk628_dbg(rk628, format, ...)	\
++do {			\
++	if (rk628->dbg_en)	\
++		dev_info(rk628->dev, format, ##__VA_ARGS__); \
++} while (0)
++
+ int rk628_media_i2c_write(struct rk628 *rk628, u32 reg, u32 val);
+ int rk628_media_i2c_read(struct rk628 *rk628, u32 reg, u32 *val);
+ int rk628_media_i2c_update_bits(struct rk628 *rk628, u32 reg, u32 mask, u32 val);
+diff --git a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+index 59d2612ba88f38..6a07bc38d04907 100644
+--- a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+@@ -425,7 +425,7 @@ static void rk628_bt1120_delayed_work_enable_hotplug(struct work_struct *work)
+ 		rk628_set_io_func_to_vop(bt1120->rk628);
+ 		rk628_bt1120_enable_interrupts(sd, false);
+ 		rk628_hdmirx_audio_setup(bt1120->audio_info);
+-		rk628_hdmirx_set_hdcp(bt1120->rk628, &bt1120->hdcp, bt1120->enable_hdcp);
++		rk628_hdmirx_set_hdcp(bt1120->rk628, &bt1120->hdcp, bt1120->hdcp.enable);
+ 		rk628_hdmirx_controller_setup(bt1120->rk628);
+ 		rk628_hdmirx_hpd_ctrl(sd, true);
+ 		ret = rk628_hdmirx_config_all(sd);
+@@ -1928,6 +1928,7 @@ static int rk628_bt1120_probe_of(struct rk628_bt1120 *bt1120)
+ #endif
+ 
+ 	bt1120->enable_hdcp = hdcp1x_enable;
++	bt1120->hdcp.enable = hdcp1x_enable;
+ 	bt1120->i2s_enable_default = i2s_enable_default;
+ 	bt1120->scaler_en = scaler_en;
+ 	if (bt1120->scaler_en)
+@@ -1937,6 +1938,9 @@ static int rk628_bt1120_probe_of(struct rk628_bt1120 *bt1120)
+ 	bt1120->stream_state = 0;
+ 	bt1120->avi_rcv_rdy = false;
+ 
++	rk628_debugfs_create(bt1120->rk628);
++	rk628_hdmirx_debugfs_create(bt1120->rk628, &bt1120->hdcp);
++
+ 	ret = 0;
+ 
+ 	v4l2_fwnode_endpoint_free(endpoint);
+@@ -2175,6 +2179,7 @@ static int rk628_bt1120_remove(struct i2c_client *client)
+ {
+ 	struct rk628_bt1120 *bt1120 = i2c_get_clientdata(client);
+ 
++	debugfs_remove_recursive(bt1120->rk628->debug_dir);
+ 	if (!bt1120->hdmirx_irq) {
+ 		del_timer_sync(&bt1120->timer);
+ 		flush_work(&bt1120->work_i2c_poll);
+diff --git a/drivers/media/i2c/rk628/rk628_cru.c b/drivers/media/i2c/rk628/rk628_cru.c
+index 03b58a5dc0379e..59efb3e38abaee 100644
+--- a/drivers/media/i2c/rk628/rk628_cru.c
++++ b/drivers/media/i2c/rk628/rk628_cru.c
+@@ -455,6 +455,7 @@ void rk628_clk_mux_testout(struct rk628 *rk628, int id)
+ 		break;
+ 	case CGU_CLK_HDMIRX_AUD:
+ 		rk628_i2c_write(rk628, CRU_CLKSEL_CON06, 0x000f000b);
++		break;
+ 	case CGU_CLK_HDMIRX_CEC:
+ 		rk628_i2c_write(rk628, CRU_CLKSEL_CON06, 0x000f000c);
+ 		break;
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index bf1a228221003b..2ed0602a07fbca 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -480,7 +480,7 @@ static void rk628_csi_delayed_work_enable_hotplug(struct work_struct *work)
+ 	if (plugin) {
+ 		rk628_csi_enable_interrupts(sd, false);
+ 		rk628_hdmirx_audio_setup(csi->audio_info);
+-		rk628_hdmirx_set_hdcp(csi->rk628, &csi->hdcp, csi->enable_hdcp);
++		rk628_hdmirx_set_hdcp(csi->rk628, &csi->hdcp, csi->hdcp.enable);
+ 		rk628_hdmirx_controller_setup(csi->rk628);
+ 		rk628_hdmirx_hpd_ctrl(sd, true);
+ 		ret = rk628_hdmirx_config_all(sd);
+@@ -568,7 +568,7 @@ static void rk628_delayed_work_res_change(struct work_struct *work)
+ 				rk628_hdmirx_inno_phy_power_off(sd);
+ 				rk628_hdmirx_controller_reset(csi->rk628);
+ 				rk628_hdmirx_audio_setup(csi->audio_info);
+-				rk628_hdmirx_set_hdcp(csi->rk628, &csi->hdcp, csi->enable_hdcp);
++				rk628_hdmirx_set_hdcp(csi->rk628, &csi->hdcp, csi->hdcp.enable);
+ 				rk628_hdmirx_controller_setup(csi->rk628);
+ 				rk628_hdmirx_hpd_ctrl(sd, true);
+ 				rk628_hdmirx_config_all(sd);
+@@ -2715,6 +2715,7 @@ static int rk628_csi_probe_of(struct rk628_csi *csi)
+ #endif
+ 	csi->csi_lanes_in_use = endpoint->bus.mipi_csi2.num_data_lanes;
+ 	csi->enable_hdcp = hdcp1x_enable;
++	csi->hdcp.enable = hdcp1x_enable;
+ 	csi->i2s_enable_default = i2s_enable_default;
+ 	csi->scaler_en = scaler_en;
+ 	if (csi->scaler_en)
+@@ -2997,6 +2998,7 @@ static int rk628_csi_probe(struct i2c_client *client,
+ 	}
+ 	csi->rk628->dual_mipi = false;
+ 	rk628_debugfs_create(csi->rk628);
++	rk628_hdmirx_debugfs_create(rk628, &csi->hdcp);
+ 
+ 	v4l2_info(sd, "%s found @ 0x%x (%s)\n", client->name,
+ 		  client->addr << 1, client->adapter->name);
+diff --git a/drivers/media/i2c/rk628/rk628_hdmirx.c b/drivers/media/i2c/rk628/rk628_hdmirx.c
+index b61bb294197f93..a4e12bde13aca7 100644
+--- a/drivers/media/i2c/rk628/rk628_hdmirx.c
++++ b/drivers/media/i2c/rk628/rk628_hdmirx.c
+@@ -113,7 +113,7 @@ static int hdcp_load_keys_cb(struct rk628 *rk628, struct rk628_hdcp *hdcp)
+ 
+ 	size = rk_vendor_read(HDMIRX_HDCP1X_ID, hdcp_vendor_data, 314);
+ 	if (size < (HDCP_KEY_SIZE + HDCP_KEY_SEED_SIZE)) {
+-		dev_dbg(rk628->dev, "HDCP: read size %d\n", size);
++		rk628_dbg(rk628, "HDCP: read size %d\n", size);
+ 		kfree(hdcp->keys);
+ 		hdcp->keys = NULL;
+ 		kfree(hdcp->seeds);
+@@ -194,8 +194,10 @@ static int rk628_hdmi_hdcp_load_key(struct rk628 *rk628, struct rk628_hdcp *hdcp
+ 
+ void rk628_hdmirx_set_hdcp(struct rk628 *rk628, struct rk628_hdcp *hdcp, bool en)
+ {
+-	dev_dbg(rk628->dev, "%s: %sable\n", __func__, en ? "en" : "dis");
++	rk628_dbg(rk628, "%s: %sable\n", __func__, en ? "en" : "dis");
+ 
++	hdcp->rk628 = rk628;
++	hdcp->enable = en;
+ 	if (en) {
+ 		rk628_hdmi_hdcp_load_key(rk628, hdcp);
+ 	} else {
+@@ -1136,7 +1138,7 @@ void rk628_hdmirx_verisyno_phy_power_on(struct rk628 *rk628)
+ 	rk628_i2c_read(rk628, HDMI_RX_HDMI20_STATUS, &val);
+ 	scramble = (val & SCRAMBDET_MASK) ? true : false;
+ 
+-	dev_info(rk628->dev, "%s: %s, %s\n", __func__, is_hdmi2 ? "hdmi2.0" : "hdmi1.4",
++	rk628_dbg(rk628, "%s: %s, %s\n", __func__, is_hdmi2 ? "hdmi2.0" : "hdmi1.4",
+ 		 scramble ? "Scramble" : "Descramble");
+ 	/* power down phy */
+ 	rk628_i2c_write(rk628, GRF_SW_HDMIRXPHY_CRTL, 0x17);
+@@ -1163,7 +1165,7 @@ void rk628_hdmirx_phy_prepclk_cfg(struct rk628 *rk628)
+ 	usleep_range(20 * 1000, 30 * 1000);
+ 	rk628_i2c_read(rk628, HDMI_RX_PDEC_AVI_PB, &format);
+ 	format = (format & VIDEO_FORMAT_MASK) >> 5;
+-	dev_info(rk628->dev, "%s: format = %d from AVI\n", __func__, format);
++	rk628_dbg(rk628, "%s: format = %d from AVI\n", __func__, format);
+ 
+ 	/* yuv420 should set phy color depth 8bit */
+ 	if (format == 3)
+@@ -1171,7 +1173,7 @@ void rk628_hdmirx_phy_prepclk_cfg(struct rk628 *rk628)
+ 
+ 	rk628_i2c_read(rk628, HDMI_RX_PDEC_GCP_AVMUTE, &format);
+ 	format = (format & PKTDEC_GCP_CD_MASK) >> 4;
+-	dev_info(rk628->dev, "%s: format = %d from GCP\n", __func__, format);
++	rk628_dbg(rk628, "%s: format = %d from GCP\n", __func__, format);
+ 
+ 	/* 10bit color depth should set phy color depth 8bit */
+ 	if (format == 5)
+@@ -1190,7 +1192,7 @@ u8 rk628_hdmirx_get_format(struct rk628 *rk628)
+ 	video_fmt = (val & VIDEO_FORMAT_MASK) >> 5;
+ 	if (video_fmt > BUS_FMT_UNKNOWN)
+ 		video_fmt = BUS_FMT_UNKNOWN;
+-	dev_info(rk628->dev, "%s: format = %s\n", __func__, bus_format_str[video_fmt]);
++	rk628_dbg(rk628, "%s: format = %s\n", __func__, bus_format_str[video_fmt]);
+ 
+ 	/*
+ 	 * set avmute value to black
+@@ -1246,7 +1248,7 @@ u32 rk628_hdmirx_get_tmdsclk_cnt(struct rk628 *rk628)
+ 		if (!tmdsclk[i].tmds_cnt)
+ 			return tmdsclk_cnt;
+ 
+-		dev_info(rk628->dev, "tmdsclk_cnt: %d, cnt: %d\n",
++		rk628_dbg(rk628, "tmdsclk_cnt: %d, cnt: %d\n",
+ 			 tmdsclk[i].tmds_cnt, tmdsclk[i].cnt);
+ 		if (!i)
+ 			tmdsclk_cnt = tmdsclk[i].tmds_cnt;
+@@ -1342,9 +1344,9 @@ static int rk628_hdmirx_read_timing(struct rk628 *rk628,
+ 		hs *= 2;
+ 	}
+ 
+-	dev_info(rk628->dev, "cnt_num:%d, tmds_cnt:%d, hs_cnt:%d, vs_cnt:%d, hofs:%d\n",
++	rk628_dbg(rk628, "cnt_num:%d, tmds_cnt:%d, hs_cnt:%d, vs_cnt:%d, hofs:%d\n",
+ 		 HDMIRX_MODETCLK_CNT_NUM, tmdsclk_cnt, modetclk_cnt_hs, modetclk_cnt_vs, hofs_pix);
+-	dev_info(rk628->dev, "get current aviif:  vic:%d, color_range: %s, color_space %s",
++	rk628_dbg(rk628, "get current aviif:  vic:%d, color_range: %s, color_space %s",
+ 		 vic, bus_color_range_str[color_range], bus_color_space_str[color_space]);
+ 
+ 	bt->width = hact;
+@@ -1371,7 +1373,7 @@ static int rk628_hdmirx_read_timing(struct rk628 *rk628,
+ 	if (vact == 1080 && vtotal > 1500)
+ 		goto TIMING_ERR;
+ 
+-	dev_info(rk628->dev, "SCDC_REGS1:%#x, act:%dx%d, total:%dx%d, fps:%d, pixclk:%llu\n",
++	rk628_dbg(rk628, "SCDC_REGS1:%#x, act:%dx%d, total:%dx%d, fps:%d, pixclk:%llu\n",
+ 		 status, hact, vact, htotal, vtotal, fps, bt->pixelclock);
+ 
+ 	return 0;
+@@ -1473,7 +1475,7 @@ int rk628_hdmirx_get_timings(struct rk628 *rk628,
+ 		if (bt->pixelclock > 594000000) {
+ 			/* set pll rate according hdmirx tmds clk */
+ 			rk628_clk_set_rate(rk628, CGU_CLK_CPLL, val);
+-			dev_dbg(rk628->dev, "set CPLL to %d\n", val);
++			rk628_dbg(rk628, "set CPLL to %d\n", val);
+ 			msleep(50);
+ 		}
+ 	}
+@@ -1662,6 +1664,225 @@ void rk628_hdmirx_phy_debugfs_register_create(struct rk628 *rk628, struct dentry
+ }
+ EXPORT_SYMBOL(rk628_hdmirx_phy_debugfs_register_create);
+ 
++static int rk628_hdmirx_hdcp_enable_show(struct seq_file *s, void *v)
++{
++	struct rk628_hdcp *hdcp = s->private;
++
++	seq_printf(s, "%d\n", hdcp->enable);
++
++	return 0;
++}
++
++static ssize_t rk628_hdmirx_hdcp_enable_write(struct file *file, const char __user *buf,
++					      size_t count, loff_t *ppos)
++{
++	struct rk628_hdcp *hdcp = file->f_path.dentry->d_inode->i_private;
++	char kbuf[25];
++	int enable;
++
++	if (!hdcp || !hdcp->rk628)
++		return -EINVAL;
++
++	if (count >= sizeof(kbuf))
++		return -ENOSPC;
++
++	if (copy_from_user(kbuf, buf, count))
++		return -EFAULT;
++
++	kbuf[count] = '\0';
++
++	if (kstrtoint(kbuf, 10, &enable))
++		return -EINVAL;
++
++	rk628_hdmirx_set_hdcp(hdcp->rk628, hdcp, enable);
++
++	return count;
++}
++
++static int rk628_hdmirx_hdcp_enable_open(struct inode *inode, struct file *file)
++{
++	struct rk628_hdcp *hdcp = inode->i_private;
++
++	return single_open(file, rk628_hdmirx_hdcp_enable_show, hdcp);
++}
++
++static const struct file_operations rk628_hdmirx_hdcp_enable_fops = {
++	.owner          = THIS_MODULE,
++	.open           = rk628_hdmirx_hdcp_enable_open,
++	.read           = seq_read,
++	.write          = rk628_hdmirx_hdcp_enable_write,
++	.llseek         = seq_lseek,
++	.release        = single_release,
++};
++
++static void rk628_hdmirx_hdcp_enable_node(struct rk628_hdcp *hdcp, struct dentry *dir)
++{
++	if (IS_ERR(dir))
++		return;
++
++	debugfs_create_file("enable", 0600, dir, hdcp, &rk628_hdmirx_hdcp_enable_fops);
++}
++
++static int rk628_hdmirx_hdcp_status_show(struct seq_file *s, void *v)
++{
++	struct rk628_hdcp *hdcp = s->private;
++	struct rk628 *rk628 = hdcp->rk628;
++	u32 val;
++
++	if (!rk628 || !hdcp->enable) {
++		seq_puts(s, "HDCP Disable\n");
++		return 0;
++	}
++
++	rk628_i2c_read(rk628, HDMI_RX_HDCP_STS, &val);
++	if (val & (HDCP_ENC_STATE | HDCP_AUTH_START))
++		seq_puts(s, "HDCP Authenticated success\n");
++	else if (val & HDCP_ENC_STATE)
++		seq_puts(s, "HDCP Authenticated failed\n");
++	else
++		seq_puts(s, "HDCP Source No encrypted\n");
++
++	return 0;
++}
++
++static int rk628_hdmirx_hdcp_status_open(struct inode *inode, struct file *file)
++{
++	struct rk628_hdcp *hdcp = inode->i_private;
++
++	return single_open(file, rk628_hdmirx_hdcp_status_show, hdcp);
++}
++
++static const struct file_operations rk628_hdmirx_hdcp_status_fops = {
++	.owner          = THIS_MODULE,
++	.open           = rk628_hdmirx_hdcp_status_open,
++	.read           = seq_read,
++	.llseek         = seq_lseek,
++	.release        = single_release,
++};
++
++static void rk628_hdmirx_hdcp_status_node(struct rk628_hdcp *hdcp, struct dentry *dir)
++{
++	if (IS_ERR(dir))
++		return;
++
++	debugfs_create_file("status", 0600, dir, hdcp, &rk628_hdmirx_hdcp_status_fops);
++}
++
++static int rk628_hdmirx_status_show(struct seq_file *s, void *v)
++{
++	struct rk628 *rk628 = s->private;
++	struct v4l2_dv_timings timings;
++	struct v4l2_bt_timings *bt = &timings.bt;
++	bool plugin;
++	u32 val, htot, vtot, fps, format;
++	u8 fmt, range, space;
++
++	plugin = rk628_hdmirx_tx_5v_power_detect(rk628->hdmirx_det_gpio);
++	seq_printf(s, "status: %s\n",  plugin ? "plugin" : "plugout");
++	if (!plugin)
++		return 0;
++
++	rk628_i2c_read(rk628, HDMI_RX_SCDC_REGS1, &val);
++	seq_puts(s, "Clk-Ch:");
++	if (val & 0x100)
++		seq_puts(s, "Lock\t");
++	else
++		seq_puts(s, "Unlock\t");
++	seq_puts(s, "Ch0:");
++	if (val & 0x200)
++		seq_puts(s, "Lock\t");
++	else
++		seq_puts(s, "Unlock\t");
++	seq_puts(s, "Ch1:");
++	if (val & 0x400)
++		seq_puts(s, "Lock\t");
++	else
++		seq_puts(s, "Unlock\t");
++	seq_puts(s, "Ch2:");
++	if (val & 0x800)
++		seq_puts(s, "Lock\n");
++	else
++		seq_puts(s, "Unlock\n");
++
++	fmt = rk628_hdmirx_get_format(rk628);
++	seq_printf(s, "Color Format: %s\n", bus_format_str[fmt]);
++	rk628_hdmirx_read_timing(rk628, &timings);
++	htot = bt->width + bt->hfrontporch + bt->hsync + bt->hbackporch;
++	vtot = bt->height + bt->vfrontporch + bt->vsync + bt->vbackporch;
++	fps = div_u64(bt->pixelclock,  (htot * vtot));
++	seq_printf(s, "Timing: %ux%u%s%u (%ux%u)",
++		   bt->width, bt->height, bt->interlaced ? "i" : "p",
++		   fps, htot, vtot);
++	seq_printf(s, "\t\thfp:%d  hs:%d  hbp:%d  vfp:%d  vs:%d  vbp:%d\n",
++		   bt->hfrontporch, bt->hsync, bt->hbackporch,
++		   bt->vfrontporch, bt->vsync, bt->vbackporch);
++	seq_printf(s, "Pixel Clk: %llu\n", bt->pixelclock);
++
++	rk628_i2c_read(rk628, HDMI_RX_PDEC_STS, &val);
++	seq_printf(s, "Mode: %s\n", (val & DVI_DET) ? "DVI" : "HDMI");
++
++	rk628_i2c_read(rk628, HDMI_RX_PDEC_GCP_AVMUTE, &format);
++	format = (format & PKTDEC_GCP_CD_MASK) >> 4;
++	seq_printf(s, "Color Depth: %u bit\n", format == 5 ? 10 : 8);
++
++	range = rk628_hdmirx_get_range(rk628);
++	seq_puts(s, "Color Range: ");
++	seq_printf(s, "%s\n", bus_color_range_str[range]);
++
++	space = rk628_hdmirx_get_color_space(rk628);
++	seq_puts(s, "Color Space: ");
++	if (space < 8)
++		seq_printf(s, "%s\n", bus_color_space_str[space]);
++	else
++		seq_puts(s, "Unknown\n");
++
++	return 0;
++}
++
++static int rk628_hdmirx_status_open(struct inode *inode, struct file *file)
++{
++	struct rk628 *rk628 = inode->i_private;
++
++	return single_open(file, rk628_hdmirx_status_show, rk628);
++}
++
++static const struct file_operations rk628_hdmirx_status_fops = {
++	.owner          = THIS_MODULE,
++	.open           = rk628_hdmirx_status_open,
++	.read           = seq_read,
++	.llseek         = seq_lseek,
++	.release        = single_release,
++};
++
++static void rk628_hdmirx_status_node(struct rk628 *rk628, struct dentry *dir)
++{
++	if (IS_ERR(dir))
++		return;
++
++	debugfs_create_file("status", 0600, dir, rk628, &rk628_hdmirx_status_fops);
++}
++
++void rk628_hdmirx_debugfs_create(struct rk628 *rk628, struct rk628_hdcp *hdcp)
++{
++	struct dentry *hdmirx_dir, *dir;
++
++	if (IS_ERR(rk628->debug_dir))
++		return;
++
++	hdmirx_dir = debugfs_create_dir("hdmirx", rk628->debug_dir);
++	if (IS_ERR(hdmirx_dir))
++		return;
++
++	dir = debugfs_create_dir("hdcp", hdmirx_dir);
++	if (IS_ERR(dir))
++		return;
++
++	rk628_hdmirx_status_node(rk628, hdmirx_dir);
++	rk628_hdmirx_hdcp_enable_node(hdcp, dir);
++	rk628_hdmirx_hdcp_status_node(hdcp, dir);
++}
++EXPORT_SYMBOL(rk628_hdmirx_debugfs_create);
++
+ MODULE_AUTHOR("Shunqing Chen <csq@rock-chips.com>");
+ MODULE_DESCRIPTION("Rockchip RK628 driver");
+ MODULE_LICENSE("GPL v2");
+diff --git a/drivers/media/i2c/rk628/rk628_hdmirx.h b/drivers/media/i2c/rk628/rk628_hdmirx.h
+index 12e0de6a23d189..5051b95bbb0b5e 100644
+--- a/drivers/media/i2c/rk628/rk628_hdmirx.h
++++ b/drivers/media/i2c/rk628/rk628_hdmirx.h
+@@ -126,6 +126,8 @@
+ #define HACT_PIX_ITH(x)			UPDATE(x, 10, 8)
+ #define HACT_PIX_SRC(x)			UPDATE(x, 5, 5)
+ #define HTOT_PIX_SRC(x)			UPDATE(x, 4, 4)
++#define HDCP_ENC_STATE			BIT(9)
++#define HDCP_AUTH_START			BIT(8)
+ #define HDMI_RX_MD_HCTRL2           	(HDMI_RX_BASE + 0x0144)
+ #define HS_CLK_ITH(x)			UPDATE(x, 14, 12)
+ #define HTOT32_CLK_ITH(x)		UPDATE(x, 9, 8)
+@@ -466,6 +468,11 @@ enum bus_format {
+ 	BUS_FMT_UNKNOWN,
+ };
+ 
++enum hdmirx_color_range {
++	HDMIRX_DEFAULT_RANGE = 0,
++	HDMIRX_LIMIT_RANGE = 1,
++	HDMIRX_FULL_RANGE = 2,
++};
+ struct hdcp_keys {
+ 	u8 KSV[HDCP_KEY_KSV_SIZE];
+ 	u8 devicekey[HDCP_PRIVATE_KEY_SIZE];
+@@ -475,6 +482,8 @@ struct hdcp_keys {
+ struct rk628_hdcp {
+ 	char *seeds;
+ 	struct hdcp_keys *keys;
++	struct rk628 *rk628;
++	int enable;
+ };
+ 
+ struct rk628_hdmirx_cec {
+@@ -533,4 +542,5 @@ void rk628_hdmirx_cec_hpd(struct rk628_hdmirx_cec *cec, bool en);
+ void rk628_hdmirx_cec_state_reconfiguration(struct rk628 *rk628,
+ 					    struct rk628_hdmirx_cec *cec);
+ void rk628_hdmirx_phy_debugfs_register_create(struct rk628 *rk628, struct dentry *dir);
++void rk628_hdmirx_debugfs_create(struct rk628 *rk628, struct rk628_hdcp *hdcp);
+ #endif
+-- 
+2.17.1
+

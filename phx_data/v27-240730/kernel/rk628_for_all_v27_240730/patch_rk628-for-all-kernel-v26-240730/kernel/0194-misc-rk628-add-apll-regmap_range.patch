@@ -1,0 +1,44 @@
+From 03b69e862a8a0c14fe9ab11cf6597fac8dd07d45 Mon Sep 17 00:00:00 2001
+From: Shunhua Lan <lsh@rock-chips.com>
+Date: Mon, 6 Nov 2023 12:04:55 +0800
+Subject: [PATCH 194/232] misc: rk628: add apll regmap_range
+
+Signed-off-by: Shunhua Lan <lsh@rock-chips.com>
+Change-Id: Ib5ef51265385d1e3f741d66a89b34255b013c23d
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/misc/rk628/rk628.c     | 1 +
+ drivers/misc/rk628/rk628_cru.h | 5 +++++
+ 2 files changed, 6 insertions(+)
+
+diff --git a/drivers/misc/rk628/rk628.c b/drivers/misc/rk628/rk628.c
+index d70e777269ba54..d80633b9fff7b5 100644
+--- a/drivers/misc/rk628/rk628.c
++++ b/drivers/misc/rk628/rk628.c
+@@ -34,6 +34,7 @@
+ static const struct regmap_range rk628_cru_readable_ranges[] = {
+ 	regmap_reg_range(CRU_CPLL_CON0, CRU_CPLL_CON4),
+ 	regmap_reg_range(CRU_GPLL_CON0, CRU_GPLL_CON4),
++	regmap_reg_range(CRU_APLL_CON0, CRU_APLL_CON4),
+ 	regmap_reg_range(CRU_MODE_CON00, CRU_MODE_CON00),
+ 	regmap_reg_range(CRU_CLKSEL_CON00, CRU_CLKSEL_CON21),
+ 	regmap_reg_range(CRU_GATE_CON00, CRU_GATE_CON05),
+diff --git a/drivers/misc/rk628/rk628_cru.h b/drivers/misc/rk628/rk628_cru.h
+index 6df6c0e64cadc6..f54144d7ca4f36 100644
+--- a/drivers/misc/rk628/rk628_cru.h
++++ b/drivers/misc/rk628/rk628_cru.h
+@@ -46,6 +46,11 @@
+ #define CRU_GPLL_CON2		CRU_REG(0x0028)
+ #define CRU_GPLL_CON3		CRU_REG(0x002c)
+ #define CRU_GPLL_CON4		CRU_REG(0x0030)
++#define CRU_APLL_CON0		CRU_REG(0x0040)
++#define CRU_APLL_CON1		CRU_REG(0x0044)
++#define CRU_APLL_CON2		CRU_REG(0x0048)
++#define CRU_APLL_CON3		CRU_REG(0x004c)
++#define CRU_APLL_CON4		CRU_REG(0x0050)
+ #define CRU_MODE_CON00		CRU_REG(0x0060)
+ #define CLK_APLL_MODE_MASK	BIT(4)
+ #define CLK_APLL_MODE_SHIFT	4
+-- 
+2.17.1
+

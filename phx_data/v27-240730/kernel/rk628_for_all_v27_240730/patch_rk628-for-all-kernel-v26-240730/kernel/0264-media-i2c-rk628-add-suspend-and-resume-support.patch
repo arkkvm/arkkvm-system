@@ -1,0 +1,435 @@
+From 812dd31237943e441b88235c77961c5c68a48162 Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Tue, 6 Feb 2024 09:47:11 +0000
+Subject: [PATCH 264/305] media: i2c: rk628: add suspend and resume support
+
+Type: Function
+Redmine ID: #461209
+Associated modifications: https://10.10.10.29/c/rk/kernel/+/208908
+Test: Wake up after deep sleep to check whether the rk628 works properly
+
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+Change-Id: I8da6815fe9f95d7e29e7dd0fad186e2dbbc35b42
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_bt1120_v4l2.c | 116 +++++++++++++++---
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c    | 128 ++++++++++++++++----
+ 2 files changed, 202 insertions(+), 42 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+index 1c965063f680ce..456dd97b88aed3 100644
+--- a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+@@ -854,12 +854,12 @@ static int rk628_hdmirx_phy_setup(struct v4l2_subdev *sd)
+ 	return 0;
+ }
+ 
+-static void rk628_bt1120_initial_setup(struct v4l2_subdev *sd)
++static void rk628_bt1120_initial(struct v4l2_subdev *sd)
+ {
+ 	struct rk628_bt1120 *bt1120 = to_bt1120(sd);
+ 	struct v4l2_subdev_edid def_edid;
+ 
+-	/* selete int io function */
++	/* select int io function */
+ 	rk628_i2c_write(bt1120->rk628, GRF_GPIO3AB_SEL_CON, 0x30002000);
+ 	rk628_i2c_write(bt1120->rk628, GRF_GPIO1AB_SEL_CON, HIWORD_UPDATE(0xf, 11, 8));
+ 	/* I2S_SCKM0 */
+@@ -906,7 +906,13 @@ static void rk628_bt1120_initial_setup(struct v4l2_subdev *sd)
+ 	def_edid.edid = edid_init_data;
+ 	rk628_bt1120_s_edid(sd, &def_edid);
+ 	rk628_hdmirx_set_hdcp(bt1120->rk628, &bt1120->hdcp, false);
++}
++
++static void rk628_bt1120_initial_setup(struct v4l2_subdev *sd)
++{
++	struct rk628_bt1120 *bt1120 = to_bt1120(sd);
+ 
++	rk628_bt1120_initial(sd);
+ 	if (tx_5v_power_present(sd))
+ 		schedule_delayed_work(&bt1120->delayed_work_enable_hotplug, 4000);
+ }
+@@ -1754,6 +1760,91 @@ static irqreturn_t plugin_detect_irq(int irq, void *dev_id)
+ 	return IRQ_HANDLED;
+ }
+ 
++static int rk628_bt1120_power_on(struct rk628_bt1120 *bt1120)
++{
++	clk_prepare_enable(bt1120->soc_24M);
++	if (bt1120->enable_gpio) {
++		gpiod_set_value(bt1120->enable_gpio, 1);
++		usleep_range(10000, 11000);
++	}
++	gpiod_set_value(bt1120->reset_gpio, 0);
++	usleep_range(10000, 11000);
++	gpiod_set_value(bt1120->reset_gpio, 1);
++	usleep_range(10000, 11000);
++	gpiod_set_value(bt1120->reset_gpio, 0);
++	usleep_range(10000, 11000);
++
++	if (bt1120->power_gpio) {
++		gpiod_set_value(bt1120->power_gpio, 1);
++		usleep_range(10000, 11000);
++	}
++
++	return 0;
++}
++
++static int rk628_bt1120_power_off(struct rk628_bt1120 *bt1120)
++{
++	if (bt1120->enable_gpio) {
++		gpiod_set_value(bt1120->enable_gpio, 0);
++		usleep_range(10000, 11000);
++	}
++	gpiod_set_value(bt1120->reset_gpio, 1);
++	usleep_range(10000, 11000);
++	gpiod_set_value(bt1120->reset_gpio, 0);
++	usleep_range(10000, 11000);
++	gpiod_set_value(bt1120->reset_gpio, 1);
++	usleep_range(10000, 11000);
++
++	if (bt1120->power_gpio) {
++		gpiod_set_value(bt1120->power_gpio, 0);
++		usleep_range(10000, 11000);
++	}
++	clk_disable_unprepare(bt1120->soc_24M);
++
++	return 0;
++}
++
++static int rk628_bt1120_resume(struct device *dev)
++{
++	struct i2c_client *client = to_i2c_client(dev);
++	struct v4l2_subdev *sd = i2c_get_clientdata(client);
++	struct rk628_bt1120 *bt1120 = to_bt1120(sd);
++
++	v4l2_info(sd, "%s: resume!\n", __func__);
++
++	rk628_bt1120_power_on(bt1120);
++	rk628_cru_initialize(bt1120->rk628);
++	rk628_bt1120_initial(sd);
++	rk628_hdmirx_plugout(sd);
++	enable_irq(bt1120->hdmirx_irq);
++	schedule_delayed_work(&bt1120->delayed_work_enable_hotplug,
++				      msecs_to_jiffies(500));
++
++	return 0;
++}
++
++static int rk628_bt1120_suspend(struct device *dev)
++{
++	struct i2c_client *client = to_i2c_client(dev);
++	struct v4l2_subdev *sd = i2c_get_clientdata(client);
++	struct rk628_bt1120 *bt1120 = to_bt1120(sd);
++
++	v4l2_info(sd, "%s: suspend!\n", __func__);
++
++	disable_irq(bt1120->hdmirx_irq);
++	cancel_delayed_work_sync(&bt1120->delayed_work_res_change);
++	cancel_delayed_work_sync(&bt1120->delayed_work_enable_hotplug);
++	rk628_hdmirx_audio_cancel_work_audio(bt1120->audio_info, true);
++	rk628_bt1120_power_off(bt1120);
++
++	return 0;
++}
++
++static const struct dev_pm_ops rk628_bt1120_pm_ops = {
++	.suspend = rk628_bt1120_suspend,
++	.resume = rk628_bt1120_resume,
++};
++
+ static int rk628_bt1120_probe_of(struct rk628_bt1120 *bt1120)
+ {
+ 	struct device *dev = bt1120->dev;
+@@ -1770,7 +1861,6 @@ static int rk628_bt1120_probe_of(struct rk628_bt1120 *bt1120)
+ 		ret = PTR_ERR(bt1120->soc_24M);
+ 		dev_err(dev, "Unable to get soc_24M: %d\n", ret);
+ 	}
+-	clk_prepare_enable(bt1120->soc_24M);
+ 
+ 	bt1120->enable_gpio = devm_gpiod_get_optional(dev, "enable",
+ 						     GPIOD_OUT_LOW);
+@@ -1803,22 +1893,6 @@ static int rk628_bt1120_probe_of(struct rk628_bt1120 *bt1120)
+ 	}
+ 	bt1120->rk628->hdmirx_det_gpio = bt1120->plugin_det_gpio;
+ 
+-	if (bt1120->enable_gpio) {
+-		gpiod_set_value(bt1120->enable_gpio, 1);
+-		usleep_range(10000, 11000);
+-	}
+-	gpiod_set_value(bt1120->reset_gpio, 0);
+-	usleep_range(10000, 11000);
+-	gpiod_set_value(bt1120->reset_gpio, 1);
+-	usleep_range(10000, 11000);
+-	gpiod_set_value(bt1120->reset_gpio, 0);
+-	usleep_range(10000, 11000);
+-
+-	if (bt1120->power_gpio) {
+-		gpiod_set_value(bt1120->power_gpio, 1);
+-		usleep_range(500, 510);
+-	}
+-
+ 	if (of_property_read_bool(dev->of_node, "hdcp-enable"))
+ 		hdcp1x_enable = true;
+ 
+@@ -1927,6 +2001,7 @@ static int rk628_bt1120_probe(struct i2c_client *client,
+ 		return err;
+ 	}
+ 
++	rk628_bt1120_power_on(bt1120);
+ 	rk628_cru_initialize(rk628);
+ 
+ 	rk628_version_parse(rk628);
+@@ -2093,6 +2168,7 @@ err_hdl:
+ 	mutex_destroy(&bt1120->confctl_mutex);
+ 	media_entity_cleanup(&sd->entity);
+ 	v4l2_ctrl_handler_free(&bt1120->hdl);
++	rk628_bt1120_power_off(bt1120);
+ 	return err;
+ }
+ 
+@@ -2125,6 +2201,7 @@ static int rk628_bt1120_remove(struct i2c_client *client)
+ 	rk628_control_assert(bt1120->rk628, RGU_CLK_RX);
+ 	rk628_control_assert(bt1120->rk628, RGU_VOP);
+ 	rk628_control_assert(bt1120->rk628, RGU_BT1120DEC);
++	rk628_bt1120_power_off(bt1120);
+ 
+ 	return 0;
+ }
+@@ -2145,6 +2222,7 @@ MODULE_DEVICE_TABLE(of, rk628_bt1120_of_match);
+ static struct i2c_driver rk628_bt1120_i2c_driver = {
+ 	.driver = {
+ 		.name = "rk628-bt1120-v4l2",
++		.pm = &rk628_bt1120_pm_ops,
+ 		.of_match_table = of_match_ptr(rk628_bt1120_of_match),
+ 	},
+ 	.id_table = rk628_bt1120_i2c_id,
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index 364a083e1dfec9..9c4aea5a46946d 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -1274,14 +1274,14 @@ static int rk628_hdmirx_phy_setup(struct v4l2_subdev *sd)
+ 	return 0;
+ }
+ 
+-static void rk628_csi_initial_setup(struct v4l2_subdev *sd)
++static void rk628_csi_initial(struct v4l2_subdev *sd)
+ {
+ 	struct rk628_csi *csi = to_csi(sd);
+ 	struct v4l2_subdev_edid def_edid;
+ 	u32 mask = SW_OUTPUT_MODE_MASK;
+ 	u32 val = SW_OUTPUT_MODE(OUTPUT_MODE_CSI);
+ 
+-	/* selete int io function */
++	/* select int io function */
+ 	rk628_i2c_write(csi->rk628, GRF_GPIO3AB_SEL_CON, 0x30002000);
+ 	rk628_i2c_write(csi->rk628, GRF_GPIO1AB_SEL_CON, HIWORD_UPDATE(0xf, 11, 8));
+ 	/* I2S_SCKM0 */
+@@ -1338,7 +1338,13 @@ static void rk628_csi_initial_setup(struct v4l2_subdev *sd)
+ 		def_edid.edid = edid_init_data;
+ 	rk628_csi_s_edid(sd, &def_edid);
+ 	rk628_hdmirx_set_hdcp(csi->rk628, &csi->hdcp, false);
++}
++
++static void rk628_csi_initial_setup(struct v4l2_subdev *sd)
++{
++	struct rk628_csi *csi = to_csi(sd);
+ 
++	rk628_csi_initial(sd);
+ 	if (csi->rk628->version >= RK628F_VERSION) {
+ 		csi->rk628->mipi_timing[0] = rk628f_csi0_mipi;
+ 		csi->rk628->mipi_timing[1] = rk628f_csi1_mipi;
+@@ -2445,6 +2451,91 @@ static irqreturn_t plugin_detect_irq(int irq, void *dev_id)
+ 	return IRQ_HANDLED;
+ }
+ 
++static int rk628_csi_power_on(struct rk628_csi *csi)
++{
++	clk_prepare_enable(csi->soc_24M);
++	if (csi->enable_gpio) {
++		gpiod_set_value(csi->enable_gpio, 1);
++		usleep_range(10000, 11000);
++	}
++	gpiod_set_value(csi->reset_gpio, 0);
++	usleep_range(10000, 11000);
++	gpiod_set_value(csi->reset_gpio, 1);
++	usleep_range(10000, 11000);
++	gpiod_set_value(csi->reset_gpio, 0);
++	usleep_range(10000, 11000);
++
++	if (csi->power_gpio) {
++		gpiod_set_value(csi->power_gpio, 1);
++		usleep_range(10000, 11000);
++	}
++
++	return 0;
++}
++
++static int rk628_csi_power_off(struct rk628_csi *csi)
++{
++	if (csi->enable_gpio) {
++		gpiod_set_value(csi->enable_gpio, 0);
++		usleep_range(10000, 11000);
++	}
++	gpiod_set_value(csi->reset_gpio, 1);
++	usleep_range(10000, 11000);
++	gpiod_set_value(csi->reset_gpio, 0);
++	usleep_range(10000, 11000);
++	gpiod_set_value(csi->reset_gpio, 1);
++	usleep_range(10000, 11000);
++
++	if (csi->power_gpio) {
++		gpiod_set_value(csi->power_gpio, 0);
++		usleep_range(10000, 11000);
++	}
++	clk_disable_unprepare(csi->soc_24M);
++
++	return 0;
++}
++
++static int rk628_csi_resume(struct device *dev)
++{
++	struct i2c_client *client = to_i2c_client(dev);
++	struct v4l2_subdev *sd = i2c_get_clientdata(client);
++	struct rk628_csi *csi = to_csi(sd);
++
++	v4l2_info(sd, "%s: resume!\n", __func__);
++
++	rk628_csi_power_on(csi);
++	rk628_cru_initialize(csi->rk628);
++	rk628_csi_initial(sd);
++	rk628_hdmirx_plugout(sd);
++	enable_irq(csi->hdmirx_irq);
++	schedule_delayed_work(&csi->delayed_work_enable_hotplug,
++				      msecs_to_jiffies(500));
++
++	return 0;
++}
++
++static int rk628_csi_suspend(struct device *dev)
++{
++	struct i2c_client *client = to_i2c_client(dev);
++	struct v4l2_subdev *sd = i2c_get_clientdata(client);
++	struct rk628_csi *csi = to_csi(sd);
++
++	v4l2_info(sd, "%s: suspend!\n", __func__);
++
++	disable_irq(csi->hdmirx_irq);
++	cancel_delayed_work_sync(&csi->delayed_work_res_change);
++	cancel_delayed_work_sync(&csi->delayed_work_enable_hotplug);
++	rk628_hdmirx_audio_cancel_work_audio(csi->audio_info, true);
++	rk628_csi_power_off(csi);
++
++	return 0;
++}
++
++static const struct dev_pm_ops rk628_csi_pm_ops = {
++	.suspend = rk628_csi_suspend,
++	.resume = rk628_csi_resume,
++};
++
+ static int rk628_csi_probe_of(struct rk628_csi *csi)
+ {
+ 	struct device *dev = csi->dev;
+@@ -2462,7 +2553,6 @@ static int rk628_csi_probe_of(struct rk628_csi *csi)
+ 		ret = PTR_ERR(csi->soc_24M);
+ 		dev_err(dev, "Unable to get soc_24M: %d\n", ret);
+ 	}
+-	clk_prepare_enable(csi->soc_24M);
+ 
+ 	csi->enable_gpio = devm_gpiod_get_optional(dev, "enable",
+ 						     GPIOD_OUT_LOW);
+@@ -2495,22 +2585,6 @@ static int rk628_csi_probe_of(struct rk628_csi *csi)
+ 	}
+ 	csi->rk628->hdmirx_det_gpio = csi->plugin_det_gpio;
+ 
+-	if (csi->enable_gpio) {
+-		gpiod_set_value(csi->enable_gpio, 1);
+-		usleep_range(10000, 11000);
+-	}
+-	gpiod_set_value(csi->reset_gpio, 0);
+-	usleep_range(10000, 11000);
+-	gpiod_set_value(csi->reset_gpio, 1);
+-	usleep_range(10000, 11000);
+-	gpiod_set_value(csi->reset_gpio, 0);
+-	usleep_range(10000, 11000);
+-
+-	if (csi->power_gpio) {
+-		gpiod_set_value(csi->power_gpio, 1);
+-		usleep_range(500, 510);
+-	}
+-
+ 	if (of_property_read_bool(dev->of_node, "hdcp-enable"))
+ 		hdcp1x_enable = true;
+ 
+@@ -2681,18 +2755,20 @@ static int rk628_csi_probe(struct i2c_client *client,
+ 		return err;
+ 	}
+ 
++	rk628_csi_power_on(csi);
+ 	rk628_cru_initialize(csi->rk628);
+ 
+ 	rk628_version_parse(rk628);
+ 
+-	v4l2_subdev_init(sd, &rk628_csi_ops);
++	v4l2_i2c_subdev_init(sd, client, &rk628_csi_ops);
+ 	sd->flags |= V4L2_SUBDEV_FL_HAS_DEVNODE | V4L2_SUBDEV_FL_HAS_EVENTS;
+ 
+ 	/* i2c access, read chip id*/
+ 	err = rk628_i2c_read(csi->rk628, CSITX_CSITX_VERSION, &val);
+ 	if (err) {
+ 		v4l2_err(sd, "i2c access failed! err:%d\n", err);
+-		return -ENODEV;
++		err = -ENODEV;
++		goto power_off;
+ 	}
+ 	v4l2_dbg(1, debug, sd, "CSITX VERSION: %#x\n", val);
+ 
+@@ -2700,7 +2776,8 @@ static int rk628_csi_probe(struct i2c_client *client,
+ 		err = rk628_i2c_read(csi->rk628, CSITX1_CSITX_VERSION, &val);
+ 		if (err) {
+ 			v4l2_err(sd, "i2c access failed! err:%d\n", err);
+-			return -ENODEV;
++			err = -ENODEV;
++			goto power_off;
+ 		}
+ 		v4l2_dbg(1, debug, sd, "CSITX1 VERSION: %#x\n", val);
+ 	}
+@@ -2710,7 +2787,8 @@ static int rk628_csi_probe(struct i2c_client *client,
+ 	csi->txphy = rk628_txphy_register(rk628);
+ 	if (!csi->txphy) {
+ 		v4l2_err(sd, "register txphy failed\n");
+-		return -ENOMEM;
++		err = -ENOMEM;
++		goto power_off;
+ 	}
+ 
+ 	/* control handlers */
+@@ -2863,6 +2941,8 @@ err_hdl:
+ 	mutex_destroy(&csi->confctl_mutex);
+ 	media_entity_cleanup(&sd->entity);
+ 	v4l2_ctrl_handler_free(&csi->hdl);
++power_off:
++	rk628_csi_power_off(csi);
+ 	return err;
+ }
+ 
+@@ -2899,6 +2979,7 @@ static int rk628_csi_remove(struct i2c_client *client)
+ 	rk628_control_assert(csi->rk628, RGU_CSI);
+ 	if (csi->rk628->version >= RK628F_VERSION)
+ 		rk628_control_assert(csi->rk628, RGU_CSI1);
++	rk628_csi_power_off(csi);
+ 
+ 	return 0;
+ }
+@@ -2906,6 +2987,7 @@ static int rk628_csi_remove(struct i2c_client *client)
+ static struct i2c_driver rk628_csi_i2c_driver = {
+ 	.driver = {
+ 		.name = "rk628-csi-v4l2",
++		.pm = &rk628_csi_pm_ops,
+ 		.of_match_table = of_match_ptr(rk628_csi_of_match),
+ 	},
+ 	.id_table = rk628_csi_i2c_id,
+-- 
+2.17.1
+

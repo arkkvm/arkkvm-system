@@ -1,0 +1,55 @@
+From a02a6dc93eac9915b4851544d279fa16389b429f Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Mon, 15 Jan 2024 06:20:47 +0000
+Subject: [PATCH 47/53] media: i2c: rk628: set default timings when query
+ timing if hdmi unplug
+
+Change-Id: Ia88eb29b8f628ad141a256e9cb9229d9b6491851
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_bt1120_v4l2.c | 8 ++++++++
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c    | 7 +++++++
+ 2 files changed, 15 insertions(+)
+
+diff --git a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+index e9e5536212bd..ecb334a4c4c4 100644
+--- a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+@@ -1163,7 +1163,15 @@ static int rk628_bt1120_query_dv_timings(struct v4l2_subdev *sd,
+ 		struct v4l2_dv_timings *timings)
+ {
+ 	int ret;
++	struct rk628_bt1120 *bt1120 = to_bt1120(sd);
++	struct v4l2_dv_timings default_timing =
++				V4L2_DV_BT_CEA_640X480P59_94;
+ 
++	if (!tx_5v_power_present(sd) || bt1120->nosignal) {
++		*timings = default_timing;
++		v4l2_info(sd, "%s: not detect 5v, set default timing\n", __func__);
++		return 0;
++	}
+ 	ret = rk628_bt1120_get_detected_timings(sd, timings);
+ 	if (ret)
+ 		return ret;
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index 5d327358d4ed..303e92c77168 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -1764,7 +1764,14 @@ static int rk628_csi_query_dv_timings(struct v4l2_subdev *sd,
+ {
+ 	int ret;
+ 	struct rk628_csi *csi = to_csi(sd);
++	struct v4l2_dv_timings default_timing =
++				V4L2_DV_BT_CEA_640X480P59_94;
+ 
++	if (!tx_5v_power_present(sd) || csi->nosignal) {
++		*timings = default_timing;
++		v4l2_info(sd, "%s: not detect 5v, set default timing\n", __func__);
++		return 0;
++	}
+ 	mutex_lock(&csi->confctl_mutex);
+ 	ret = rk628_csi_get_detected_timings(sd, timings);
+ 	mutex_unlock(&csi->confctl_mutex);
+-- 
+2.17.1
+

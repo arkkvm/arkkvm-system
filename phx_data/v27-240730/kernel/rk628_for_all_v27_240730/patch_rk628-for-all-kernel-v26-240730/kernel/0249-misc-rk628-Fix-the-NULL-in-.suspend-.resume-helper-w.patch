@@ -1,0 +1,72 @@
+From 1a536bea3df3bf4ccec709d292c48d5425f507c1 Mon Sep 17 00:00:00 2001
+From: Zhibin Huang <zhibin.huang@rock-chips.com>
+Date: Wed, 24 Jan 2024 09:05:01 +0000
+Subject: [PATCH 10/11] misc: rk628: Fix the NULL in .suspend/.resume helper
+ when working on hdmi tx mode.
+
+Unable to handle kernel NULL pointer dereference at virtual address 000000000000021c
+
+[   36.755198][    T8] Call trace:
+[   36.755491][    T8]  regmap_write+0x14/0x78
+[   36.755892][    T8]  rk628_suspend+0x64/0xc0
+[   36.756290][    T8]  dpm_run_callback+0x4c/0x214
+[   36.756720][    T8]  __device_suspend+0x338/0x528
+[   36.757158][    T8]  async_suspend+0x28/0x14c
+[   36.757562][    T8]  async_run_entry_fn+0x2c/0xfc
+[   36.757994][    T8]  process_one_work+0x1a8/0x3b8
+[   36.758436][    T8]  worker_thread+0x258/0x434
+[   36.758851][    T8]  kthread+0xec/0x1b8
+[   36.759211][    T8]  ret_from_fork+0x10/0x20
+
+Signed-off-by: Zhibin Huang <zhibin.huang@rock-chips.com>
+Change-Id: I062ecbf6c751a05b3820c3dc7644facffa68d38f
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/misc/rk628/rk628_hdmitx.c | 10 ++++++----
+ 1 file changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/misc/rk628/rk628_hdmitx.c b/drivers/misc/rk628/rk628_hdmitx.c
+index 7583191e5df746..f6bf0997f2ae3d 100644
+--- a/drivers/misc/rk628/rk628_hdmitx.c
++++ b/drivers/misc/rk628/rk628_hdmitx.c
+@@ -948,7 +948,8 @@ static int rk628_hdmi_audio_hw_params(struct device *dev, void *d,
+ 				      struct hdmi_codec_daifmt *daifmt,
+ 				      struct hdmi_codec_params *params)
+ {
+-	struct rk628_hdmi *hdmi = dev_get_drvdata(dev);
++	struct rk628 *rk628 = dev_get_drvdata(dev);
++	struct rk628_hdmi *hdmi = rk628->hdmitx;
+ 	struct audio_info audio = {
+ 		.sample_width = params->sample_width,
+ 		.sample_rate = params->sample_rate,
+@@ -986,7 +987,8 @@ static int rk628_hdmi_audio_mute(struct device *dev, void *d, bool mute,
+ static int rk628_hdmi_audio_digital_mute(struct device *dev, void *d, bool mute)
+ #endif
+ {
+-	struct rk628_hdmi *hdmi = dev_get_drvdata(dev);
++	struct rk628 *rk628 = dev_get_drvdata(dev);
++	struct rk628_hdmi *hdmi = rk628->hdmitx;
+ 
+ 	if (!hdmi->hdmi_data.sink_has_audio) {
+ 		dev_err(hdmi->dev, "Sink do not support audio!\n");
+@@ -1008,7 +1010,8 @@ static int rk628_hdmi_audio_digital_mute(struct device *dev, void *d, bool mute)
+ static int rk628_hdmi_audio_get_eld(struct device *dev, void *d,
+ 				    u8 *buf, size_t len)
+ {
+-	struct rk628_hdmi *hdmi = dev_get_drvdata(dev);
++	struct rk628 *rk628 = dev_get_drvdata(dev);
++	struct rk628_hdmi *hdmi = rk628->hdmitx;
+ 	struct drm_mode_config *config = &hdmi->bridge.dev->mode_config;
+ 	struct drm_connector *connector;
+ 	int ret = -ENODEV;
+@@ -1629,7 +1632,6 @@ int rk628_hdmitx_enable(struct rk628 *rk628)
+ 	irq = rk628->client->irq;
+ 	if (irq < 0)
+ 		return irq;
+-	dev_set_drvdata(dev, hdmi);
+ 
+ 	rk628_hdmi_reset(hdmi);
+ 
+-- 
+2.17.1
+

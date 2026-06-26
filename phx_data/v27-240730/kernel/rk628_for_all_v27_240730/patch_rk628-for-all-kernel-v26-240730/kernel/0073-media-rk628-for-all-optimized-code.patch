@@ -1,0 +1,100 @@
+From 9fbb2799ea608990ed12b10fe4dfdd3dc2a22b44 Mon Sep 17 00:00:00 2001
+From: Shunqing Chen <csq@rock-chips.com>
+Date: Tue, 17 Aug 2021 09:22:28 +0800
+Subject: [PATCH 073/232] media: rk628-for-all: optimized code
+
+Signed-off-by: Shunqing Chen <csq@rock-chips.com>
+Change-Id: Icb07d9e30609f3a69d248b49587a5faa5ab59dca
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_bt1120_v4l2.c | 7 ++++++-
+ drivers/media/i2c/rk628/rk628_csi.c         | 7 ++++++-
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c    | 9 +++++++--
+ drivers/media/i2c/rk628/rk628_hdmirx.c      | 2 +-
+ 4 files changed, 20 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+index d3873df9037eab..fe4483aef63548 100644
+--- a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+@@ -969,9 +969,14 @@ static int rk628_hdmirx_phy_setup(struct v4l2_subdev *sd)
+ 	u32 i, cnt, val;
+ 	u32 width, height, frame_width, frame_height, status;
+ 	struct rk628_bt1120 *bt1120 = to_bt1120(sd);
++	int ret;
+ 
+ 	for ( i = 0; i < RXPHY_CFG_MAX_TIMES; i++) {
+-		rk628_hdmirx_phy_power_on(sd);
++		ret = rk628_hdmirx_phy_power_on(sd);
++		if (ret < 0) {
++			msleep(50);
++			continue;
++		}
+ 		cnt = 0;
+ 
+ 		do {
+diff --git a/drivers/media/i2c/rk628/rk628_csi.c b/drivers/media/i2c/rk628/rk628_csi.c
+index c5bfdc5ccd8c71..705f0fb9f5defe 100644
+--- a/drivers/media/i2c/rk628/rk628_csi.c
++++ b/drivers/media/i2c/rk628/rk628_csi.c
+@@ -1053,9 +1053,14 @@ static int rk628_hdmirx_phy_setup(struct rk628_csi *csi)
+ {
+ 	u32 i, cnt, val;
+ 	u32 width, height, frame_width, frame_height, status;
++	int ret;
+ 
+ 	for ( i = 0; i < RXPHY_CFG_MAX_TIMES; i++) {
+-		rk628_hdmirx_phy_power_on(csi);
++		ret = rk628_hdmirx_phy_power_on(csi);
++		if (ret < 0) {
++			msleep(50);
++			continue;
++		}
+ 		cnt = 0;
+ 
+ 		do {
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index 0b0429ce1e6753..38d6763b538aae 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -1080,9 +1080,14 @@ static int rk628_hdmirx_phy_setup(struct v4l2_subdev *sd)
+ 	u32 i, cnt, val;
+ 	u32 width, height, frame_width, frame_height, status;
+ 	struct rk628_csi *csi = to_csi(sd);
++	int ret;
+ 
+ 	for ( i = 0; i < RXPHY_CFG_MAX_TIMES; i++) {
+-		rk628_hdmirx_phy_power_on(sd);
++		ret = rk628_hdmirx_phy_power_on(sd);
++		if (ret < 0) {
++			msleep(50);
++			continue;
++		}
+ 		cnt = 0;
+ 
+ 		do {
+@@ -1184,7 +1189,7 @@ static void rk628_csi_initial_setup(struct v4l2_subdev *sd)
+ 	mipi_dphy_power_on(csi);
+ 	csi->txphy_pwron = true;
+ 	if (tx_5v_power_present(sd))
+-		schedule_delayed_work(&csi->delayed_work_enable_hotplug, 1000);
++		schedule_delayed_work(&csi->delayed_work_enable_hotplug, msecs_to_jiffies(1000));
+ }
+ 
+ static void rk628_csi_format_change(struct v4l2_subdev *sd)
+diff --git a/drivers/media/i2c/rk628/rk628_hdmirx.c b/drivers/media/i2c/rk628/rk628_hdmirx.c
+index dc780be2e0aefd..f46f60a6df1f01 100644
+--- a/drivers/media/i2c/rk628/rk628_hdmirx.c
++++ b/drivers/media/i2c/rk628/rk628_hdmirx.c
+@@ -76,7 +76,7 @@ static int hdcp_load_keys_cb(struct rk628 *rk628, struct rk628_hdcp *hdcp)
+ 		hdcp->keys = NULL;
+ 		kfree(hdcp->seeds);
+ 		hdcp->seeds = NULL;
+-		return size;
++		return -EINVAL;
+ 	}
+ 	memcpy(hdcp->keys, hdcp_vendor_data, HDCP_KEY_SIZE);
+ 	memcpy(hdcp->seeds, hdcp_vendor_data + HDCP_KEY_SIZE,
+-- 
+2.17.1
+

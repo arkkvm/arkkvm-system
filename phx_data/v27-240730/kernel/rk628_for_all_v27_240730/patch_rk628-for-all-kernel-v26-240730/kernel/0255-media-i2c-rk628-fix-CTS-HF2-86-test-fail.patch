@@ -1,0 +1,78 @@
+From fef141f374af21a452091657c99945bc9e14a233 Mon Sep 17 00:00:00 2001
+From: Chen Shunqing <csq@rock-chips.com>
+Date: Fri, 19 Jan 2024 06:10:31 +0000
+Subject: [PATCH 5/9] media: i2c: rk628: fix CTS HF2-86 test fail
+
+If sample_flat field is set to 1, there can't be any sound.
+
+Type: Function
+Redmine ID: N/A
+Associated modifications: N/A
+Test: CTS test HF2-86
+
+Change-Id: I8f2ddfa3c5a7578a28c062817c10de2ea43ad164
+Signed-off-by: Chen Shunqing <csq@rock-chips.com>
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628.c        |  2 +-
+ drivers/media/i2c/rk628/rk628_hdmirx.c | 10 +++++++++-
+ drivers/media/i2c/rk628/rk628_hdmirx.h |  2 ++
+ 3 files changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628.c b/drivers/media/i2c/rk628/rk628.c
+index e6b4ddd0d91697..3ba5fb3854016a 100644
+--- a/drivers/media/i2c/rk628/rk628.c
++++ b/drivers/media/i2c/rk628/rk628.c
+@@ -156,7 +156,7 @@ static const struct regmap_range rk628_hdmirx_readable_ranges[] = {
+ 	regmap_reg_range(HDMI_RX_AUD_PLL_CTRL, HDMI_RX_AUD_PLL_CTRL),
+ 	regmap_reg_range(HDMI_RX_AUD_CLK_CTRL, HDMI_RX_AUD_CLK_CTRL),
+ 	regmap_reg_range(HDMI_RX_AUD_FIFO_CTRL, HDMI_RX_AUD_FIFO_TH),
+-	regmap_reg_range(HDMI_RX_AUD_CHEXTR_CTRL, HDMI_RX_AUD_PAO_CTRL),
++	regmap_reg_range(HDMI_RX_AUD_CHEXTR_CTRL, HDMI_RX_AUD_SPARE),
+ 	regmap_reg_range(HDMI_RX_AUD_FIFO_STS, HDMI_RX_AUD_FIFO_STS),
+ 	regmap_reg_range(HDMI_RX_AUDPLL_GEN_CTS, HDMI_RX_AUDPLL_GEN_N),
+ 	regmap_reg_range(HDMI_RX_I2CM_PHYG3_DATAI, HDMI_RX_I2CM_PHYG3_DATAI),
+diff --git a/drivers/media/i2c/rk628/rk628_hdmirx.c b/drivers/media/i2c/rk628/rk628_hdmirx.c
+index e6032a54613184..34047a34499726 100644
+--- a/drivers/media/i2c/rk628/rk628_hdmirx.c
++++ b/drivers/media/i2c/rk628/rk628_hdmirx.c
+@@ -331,7 +331,7 @@ static void rk628_csi_delayed_work_audio_v2(struct work_struct *work)
+ 						   delayed_work_audio);
+ 	struct rk628_audiostate *audio_state = &aif->audio_state;
+ 	struct rk628 *rk628 = aif->rk628;
+-	u32 fs_audio;
++	u32 fs_audio, sample_flat;
+ 	int init_state, pre_state, fifo_status, fifo_ints;
+ 	unsigned long delay = 500;
+ 
+@@ -386,6 +386,14 @@ static void rk628_csi_delayed_work_audio_v2(struct work_struct *work)
+ 		}
+ 	}
+ 	audio_state->pre_state = fifo_status;
++
++	rk628_i2c_read(rk628, HDMI_RX_AUD_SPARE, &sample_flat);
++	sample_flat = sample_flat & AUDS_MAS_SAMPLE_FLAT;
++	if (!sample_flat)
++		rk628_i2c_update_bits(rk628, GRF_SYSTEM_CON0, SW_I2S_DATA_OEN_MASK, SW_I2S_DATA_OEN(0));
++	else
++		rk628_i2c_update_bits(rk628, GRF_SYSTEM_CON0, SW_I2S_DATA_OEN_MASK, SW_I2S_DATA_OEN(1));
++
+ exit:
+ 	schedule_delayed_work(&aif->delayed_work_audio, msecs_to_jiffies(delay));
+ }
+diff --git a/drivers/media/i2c/rk628/rk628_hdmirx.h b/drivers/media/i2c/rk628/rk628_hdmirx.h
+index 0de5dc0fdea6d3..88f9a4409503cd 100644
+--- a/drivers/media/i2c/rk628/rk628_hdmirx.h
++++ b/drivers/media/i2c/rk628/rk628_hdmirx.h
+@@ -191,6 +191,8 @@
+ #define I2S_32_16(x)			UPDATE(x, 0, 0)
+ #define HDMI_RX_AUD_PAO_CTRL        	(HDMI_RX_BASE + 0x0264)
+ #define PAO_RATE(x)			UPDATE(x, 17, 16)
++#define HDMI_RX_AUD_SPARE		(HDMI_RX_BASE + 0x0268)
++#define AUDS_MAS_SAMPLE_FLAT		GENMASK(7, 4)
+ #define HDMI_RX_AUD_FIFO_STS		(HDMI_RX_BASE + 0x027c)
+ #define HDMI_RX_AUDPLL_GEN_CTS		(HDMI_RX_BASE + 0x0280)
+ #define HDMI_RX_AUDPLL_GEN_N 		(HDMI_RX_BASE + 0x0284)
+-- 
+2.17.1
+

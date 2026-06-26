@@ -1,0 +1,42 @@
+From fb7c9513fdee8c3c8a780953a2946b45e2c041a8 Mon Sep 17 00:00:00 2001
+From: Sandy Huang <hjc@rock-chips.com>
+Date: Wed, 1 Nov 2023 08:47:17 +0800
+Subject: [PATCH 176/232] misc: rk628: gvi: add timing offset for gvi two
+ section mode
+
+Signed-off-by: Sandy Huang <hjc@rock-chips.com>
+Change-Id: I51c618cdb15fadb89bba3a04f233b37f254101c0
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/misc/rk628/rk628_post_process.c | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/misc/rk628/rk628_post_process.c b/drivers/misc/rk628/rk628_post_process.c
+index c76ef979955edd..e3542d4ca0bf9c 100644
+--- a/drivers/misc/rk628/rk628_post_process.c
++++ b/drivers/misc/rk628/rk628_post_process.c
+@@ -97,6 +97,10 @@ static void rk628_post_process_scaler_init(struct rk628 *rk628,
+ 	u32 dst_vsync_len, dst_vback_porch, dst_vfront_porch, dst_vactive;
+ 	u32 src_hactive;
+ 	u32 src_vactive;
++	int gvi_offset = 0;
++
++	if (rk628->version == RK628F_VERSION && rk628->gvi.division_mode)
++		gvi_offset = 4;
+ 
+ 	src_hactive = src->hdisplay;
+ 	src_vactive = src->vdisplay;
+@@ -116,8 +120,8 @@ static void rk628_post_process_scaler_init(struct rk628 *rk628,
+ 		     dst_vactive + dst_vfront_porch;
+ 	dsp_hs_end = dst_hsync_len;
+ 	dsp_vs_end = dst_vsync_len;
+-	dsp_hbor_end = dst_hsync_len + dst_hback_porch + dst_hactive;
+-	dsp_hbor_st = dst_hsync_len + dst_hback_porch;
++	dsp_hbor_end = dst_hsync_len + dst_hback_porch + dst_hactive - gvi_offset;
++	dsp_hbor_st = dst_hsync_len + dst_hback_porch - gvi_offset;
+ 	dsp_vbor_end = dst_vsync_len + dst_vback_porch + dst_vactive;
+ 	dsp_vbor_st = dst_vsync_len + dst_vback_porch;
+ 	dsp_hact_st = dsp_hbor_st + bor_left;
+-- 
+2.17.1
+

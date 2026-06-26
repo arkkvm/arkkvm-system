@@ -1,0 +1,38 @@
+From 00144833fa45ceae53d8dcad773d87cdcbe8cfef Mon Sep 17 00:00:00 2001
+From: Guochun Huang <hero.huang@rock-chips.com>
+Date: Fri, 11 Jun 2021 11:19:10 +0800
+Subject: [PATCH 018/232] misc: rk628: post_process: make hsync/vsync pol
+ adjust
+
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+Change-Id: Iba304f63b235fab13625939eb2f6ee3797f4e69b
+---
+ drivers/misc/rk628/rk628_post_process.c | 12 ++++++++----
+ 1 file changed, 8 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/misc/rk628/rk628_post_process.c b/drivers/misc/rk628/rk628_post_process.c
+index f8211df441a625..eddb21a9ea2e04 100644
+--- a/drivers/misc/rk628/rk628_post_process.c
++++ b/drivers/misc/rk628/rk628_post_process.c
+@@ -213,10 +213,14 @@ void rk628_post_process_init(struct rk628 *rk628)
+ 
+ 	rk628_cru_clk_set_rate(rk628, CGU_CLK_RX_READ, src->clock * 1000);
+ 	rk628_cru_clk_set_rate(rk628, CGU_SCLK_VOP, dst_rate * 1000);
+-	rk628_i2c_update_bits(rk628, GRF_SYSTEM_CON0, SW_VSYNC_POL_MASK,
+-			      SW_VSYNC_POL(1));
+-	rk628_i2c_update_bits(rk628, GRF_SYSTEM_CON0, SW_HSYNC_POL_MASK,
+-			      SW_HSYNC_POL(1));
++
++	if (src->flags & DRM_MODE_FLAG_PVSYNC)
++		rk628_i2c_update_bits(rk628, GRF_SYSTEM_CON0,
++				      SW_VSYNC_POL_MASK, SW_VSYNC_POL(1));
++	if (src->flags & DRM_MODE_FLAG_PHSYNC)
++		rk628_i2c_update_bits(rk628, GRF_SYSTEM_CON0, SW_HSYNC_POL_MASK,
++				      SW_HSYNC_POL(1));
++
+ 	rk628_post_process_scaler_init(rk628, src, dst);
+ }
+ 
+-- 
+2.17.1
+

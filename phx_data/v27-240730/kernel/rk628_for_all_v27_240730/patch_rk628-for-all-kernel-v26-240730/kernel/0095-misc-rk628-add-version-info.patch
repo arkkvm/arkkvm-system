@@ -1,0 +1,67 @@
+From 69298a33fed57a9bf3e99dfc7df51c61896af8fb Mon Sep 17 00:00:00 2001
+From: Guochun Huang <hero.huang@rock-chips.com>
+Date: Thu, 16 Sep 2021 10:22:30 +0800
+Subject: [PATCH 095/232] misc: rk628: add version info
+
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+Change-Id: Idb33f8f26bfbf8fa42ea1f6b1ce5699c7489e91e
+---
+ drivers/misc/rk628/rk628.c        | 2 ++
+ drivers/misc/rk628/rk628.h        | 5 +++--
+ drivers/misc/rk628/rk628_hdmirx.c | 2 --
+ 3 files changed, 5 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/misc/rk628/rk628.c b/drivers/misc/rk628/rk628.c
+index 6492526518c456..9fa3026d80cbc4 100755
+--- a/drivers/misc/rk628/rk628.c
++++ b/drivers/misc/rk628/rk628.c
+@@ -349,6 +349,8 @@ rk628_i2c_probe(struct i2c_client *client, const struct i2c_device_id *id)
+ 	struct rk628 *rk628;
+ 	int i, ret;
+ 
++	dev_info(dev, "RK628 misc driver version: %s\n", DRIVER_VERSION);
++
+ 	rk628 = devm_kzalloc(dev, sizeof(*rk628), GFP_KERNEL);
+ 	if (!rk628)
+ 		return -ENOMEM;
+diff --git a/drivers/misc/rk628/rk628.h b/drivers/misc/rk628/rk628.h
+index 8109cb499fe82f..ed2e40fd7c721a 100755
+--- a/drivers/misc/rk628/rk628.h
++++ b/drivers/misc/rk628/rk628.h
+@@ -15,6 +15,7 @@
+ #include <linux/wakelock.h>
+ #include <linux/workqueue.h>
+ 
++#define DRIVER_VERSION				"0.0.1"
+ #define UPDATE(x, h, l)		(((x) << (l)) & GENMASK((h), (l)))
+ #define HIWORD_UPDATE(v, h, l)	((((v) << (l)) & GENMASK((h), (l))) | \
+ 				 (GENMASK((h), (l)) << 16))
+@@ -240,10 +241,10 @@ enum {
+ 
+ #define RK628_RGB_IN
+ #undef RK628_HDMI_IN
+-#undef RK628_DSI_OUT
++#define RK628_DSI_OUT
+ #undef RK628_LVDS_OUT
+ #undef RK628_GVI_OUT
+-#define RK628_CSI_OUT
++#undef RK628_CSI_OUT
+ 
+ struct panel_simple {
+ 	struct backlight_device *backlight;
+diff --git a/drivers/misc/rk628/rk628_hdmirx.c b/drivers/misc/rk628/rk628_hdmirx.c
+index e1c803f91c2acd..05359a850b9601 100644
+--- a/drivers/misc/rk628/rk628_hdmirx.c
++++ b/drivers/misc/rk628/rk628_hdmirx.c
+@@ -13,8 +13,6 @@
+ #define MODETCLK_HZ				49500000
+ #define RXPHY_CFG_MAX_TIMES			3
+ 
+-#define DRIVER_VERSION				"0.0.1"
+-
+ u8 debug = 0;
+ 
+ static u8 edid_init_data[] = {
+-- 
+2.17.1
+

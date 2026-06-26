@@ -1,0 +1,153 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+// Copyright (c) 2020 Fuzhou Rockchip Electronics Co., Ltd
+
+/dts-v1/;
+#include "rk3288-evb-rk628.dtsi"
+
+/ {
+	model = "Rockchip RK3288 EVB RK628 Board";
+	compatible = "rockchip,rk3288-evb-rk628", "rockchip,rk3288";
+
+	chosen {
+		bootargs = "rootwait earlycon=uart8250,mmio32,0xff690000 vmalloc=496M swiotlb=1 console=ttyFIQ0 androidboot.baseband=N/A androidboot.veritymode=enforcing androidboot.hardware=rk30board androidboot.console=ttyFIQ0 init=/init kpti=0";
+	};
+
+	vcc_lcd1: vcc-lcd1 {
+		compatible = "regulator-fixed";
+		regulator-name = "vcc_lcd1";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		regulator-boot-on;
+		gpio = <&gpio7 RK_PB0 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		vin-supply = <&vcc_io>;
+	};
+
+	panel {
+		compatible = "simple-panel";
+		backlight = <&backlight>;
+		power-supply = <&vcc_lcd1>;
+		enable-gpios = <&gpio7 21 GPIO_ACTIVE_HIGH>;
+		prepare-delay-ms = <120>;
+		enable-delay-ms = <120>;
+		disable-delay-ms = <120>;
+		unprepare-delay-ms = <20>;
+		status = "okay";
+
+		display-timings {
+			native-mode = <&timing0>;
+
+			timing0: timing0 {
+				clock-frequency = <148500000>;
+				hactive = <1920>;
+				vactive = <1080>;
+				hback-porch = <148>;
+				hfront-porch = <88>;
+				vback-porch = <36>;
+				vfront-porch = <4>;
+				hsync-len = <44>;
+				vsync-len = <5>;
+				hsync-active = <0>;
+				vsync-active = <0>;
+				de-active = <0>;
+				pixelclk-active = <0>;
+			};
+		};
+	};
+
+};
+
+&backlight {
+	enable-gpios = <&gpio7 2 GPIO_ACTIVE_HIGH>;
+};
+
+&firmware_android {
+	compatible = "android,firmware";
+	boot_devices = "ff0f0000.dwmmc";
+
+	vbmeta {
+		compatible = "android,vbmeta";
+		parts = "vbmeta,boot,system,vendor,dtbo";
+	};
+
+	fstab {
+		compatible = "android,fstab";
+
+		vendor {
+			compatible = "android,vendor";
+			dev = "/dev/block/by-name/vendor";
+			type = "ext4";
+			mnt_flags = "ro,barrier=1,inode_readahead_blks=8";
+			fsmgr_flags = "wait,avb";
+		};
+	};
+};
+
+&rgb {
+	status = "okay";
+
+	ports {
+		port@1 {
+			reg = <1>;
+
+			rgb_out_hdmi: endpoint {
+				remote-endpoint = <&rgb_in_hdmi>;
+			};
+		};
+	};
+};
+
+&i2c1 {
+	clock-frequency = <400000>;
+	status = "okay";
+
+	rk628: rk628@50 {
+		compatible = "rockchip,rk628";
+		reg = <0x50>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&test_clkout>;
+		assigned-clocks = <&cru SCLK_TESTOUT_SRC>;
+		assigned-clock-parents = <&xin24m>;
+		clocks = <&cru SCLK_TESTOUT>;
+		clock-names = "soc_24M";
+		interrupt-parent = <&gpio7>;
+		interrupts = <15 IRQ_TYPE_LEVEL_HIGH>;
+		enable-gpios = <&gpio5 RK_PC2 GPIO_ACTIVE_HIGH>;
+		reset-gpios = <&gpio7 RK_PB6 GPIO_ACTIVE_LOW>;
+		//panel-enable-gpios = <&gpio7 RK_PA2 GPIO_ACTIVE_HIGH>;
+		rk628,rgb-in;
+		rk628,hdmi-out;
+		status = "okay";
+
+		port {
+			rgb_in_hdmi: endpoint {
+				remote-endpoint = <&rgb_out_hdmi>;
+			};
+		};
+	};
+};
+
+&video_phy {
+	status = "okay";
+};
+
+&rgb_in_vopb {
+	status = "disabled";
+};
+
+&rgb_in_vopl {
+	status = "okay";
+};
+
+&route_rgb {
+	connect = <&vopl_out_rgb>;
+	status = "disabled";
+};
+
+&pinctrl {
+	test {
+		test_clkout: test-clkout {
+			rockchip,pins = <0 17 RK_FUNC_1 &pcfg_pull_none>;
+		};
+	};
+};

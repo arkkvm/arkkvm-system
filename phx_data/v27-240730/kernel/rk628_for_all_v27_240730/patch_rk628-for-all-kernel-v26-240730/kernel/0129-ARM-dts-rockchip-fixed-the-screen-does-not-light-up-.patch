@@ -1,0 +1,49 @@
+From 97c8ba427cbdabe0839f6b7833e2f52786aef249 Mon Sep 17 00:00:00 2001
+From: Guochun Huang <hero.huang@rock-chips.com>
+Date: Wed, 12 Jan 2022 17:13:03 +0800
+Subject: [PATCH 129/232] ARM: dts: rockchip: fixed the screen does not light
+ up after sleep wake-up
+
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+Change-Id: Idfc6eec5f1fbf29e43b3f1160894f5819d8c9bac
+---
+ .../boot/dts/rk3288-evb-rk628-misc-rgb2dsi-avb.dts | 14 +++++++++++++-
+ 1 file changed, 13 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm/boot/dts/rk3288-evb-rk628-misc-rgb2dsi-avb.dts b/arch/arm/boot/dts/rk3288-evb-rk628-misc-rgb2dsi-avb.dts
+index d0dad35f97849e..a7a846b504a577 100644
+--- a/arch/arm/boot/dts/rk3288-evb-rk628-misc-rgb2dsi-avb.dts
++++ b/arch/arm/boot/dts/rk3288-evb-rk628-misc-rgb2dsi-avb.dts
+@@ -11,6 +11,18 @@
+ 	chosen {
+ 		bootargs = "rootwait earlycon=uart8250,mmio32,0xff690000 vmalloc=496M swiotlb=1 console=ttyFIQ0 androidboot.baseband=N/A androidboot.veritymode=enforcing androidboot.hardware=rk30board androidboot.console=ttyFIQ0 init=/init kpti=0";
+ 	};
++
++	vcc_lcd1: vcc-lcd1 {
++		compatible = "regulator-fixed";
++		regulator-name = "vcc_lcd1";
++		regulator-min-microvolt = <3300000>;
++		regulator-max-microvolt = <3300000>;
++		regulator-boot-on;
++		regulator-always-on;
++		gpio = <&gpio7 RK_PA2 GPIO_ACTIVE_HIGH>;
++		enable-active-high;
++	};
++
+ 	panel {
+ 		compatible = "simple-panel";
+ 		backlight = <&backlight>;
+@@ -95,9 +107,9 @@
+ 		reg = <0x50>;
+ 		interrupt-parent = <&gpio7>;
+ 		interrupts = <15 IRQ_TYPE_LEVEL_HIGH>;
++		power-supply = <&vcc_lcd1>;
+ 		enable-gpios = <&gpio5 RK_PC2 GPIO_ACTIVE_HIGH>;
+ 		reset-gpios = <&gpio7 RK_PB6 GPIO_ACTIVE_LOW>;
+-		panel-enable-gpios = <&gpio7 RK_PA2 GPIO_ACTIVE_HIGH>;
+ 		status = "okay";
+ 	};
+ };
+-- 
+2.17.1
+

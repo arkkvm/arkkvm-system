@@ -1,0 +1,243 @@
+From cd237048c6a39e029bdfc0e0849238143bbf51d1 Mon Sep 17 00:00:00 2001
+From: Luo Wei <lw@rock-chips.com>
+Date: Sat, 17 Dec 2022 11:30:39 +0800
+Subject: [PATCH 154/232] fix rk628 media code building error on kernel-5.10
+
+Signed-off-by: Luo Wei <lw@rock-chips.com>
+Change-Id: Ieece3e0156054572a3309e3255d691a780528d66
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628.h             |  3 ++
+ drivers/media/i2c/rk628/rk628_bt1120_v4l2.c | 32 +++++++++++-
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c    | 56 ++++++++++++++++++++-
+ 3 files changed, 87 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628.h b/drivers/media/i2c/rk628/rk628.h
+index 05661c0277ca5f..1ae888ad6f7089 100644
+--- a/drivers/media/i2c/rk628/rk628.h
++++ b/drivers/media/i2c/rk628/rk628.h
+@@ -200,6 +200,9 @@
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0))
+ #define KERNEL_VERSION_4_19
+ #endif
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
++#define KERNEL_VERSION_5_10
++#endif
+ 
+ enum {
+ 	COMBTXPHY_MODULEA_EN = BIT(0),
+diff --git a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+index 873221dcd4f03d..aa1e68a5c08f9c 100644
+--- a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+@@ -6,6 +6,7 @@
+  */
+ 
+ #include <linux/clk.h>
++#include <linux/compat.h>
+ #include <linux/delay.h>
+ #include <linux/gpio/consumer.h>
+ #include <linux/i2c.h>
+@@ -1246,6 +1247,19 @@ static int rk628_bt1120_dv_timings_cap(struct v4l2_subdev *sd,
+ 	return 0;
+ }
+ 
++#ifdef KERNEL_VERSION_5_10
++static int rk628_bt1120_g_mbus_config(struct v4l2_subdev *sd,
++				      unsigned int pad,
++				      struct v4l2_mbus_config *cfg)
++{
++	cfg->type = V4L2_MBUS_BT656;
++	cfg->flags = V4L2_MBUS_HSYNC_ACTIVE_HIGH |
++				V4L2_MBUS_VSYNC_ACTIVE_HIGH |
++				V4L2_MBUS_PCLK_SAMPLE_RISING;
++
++	return 0;
++}
++#else
+ static int rk628_bt1120_g_mbus_config(struct v4l2_subdev *sd,
+ 			     struct v4l2_mbus_config *cfg)
+ {
+@@ -1256,6 +1270,7 @@ static int rk628_bt1120_g_mbus_config(struct v4l2_subdev *sd,
+ 
+ 	return 0;
+ }
++#endif
+ 
+ static int rk628_bt1120_s_stream(struct v4l2_subdev *sd, int enable)
+ {
+@@ -1673,7 +1688,9 @@ static const struct v4l2_subdev_video_ops rk628_bt1120_video_ops = {
+ 	.s_dv_timings = rk628_bt1120_s_dv_timings,
+ 	.g_dv_timings = rk628_bt1120_g_dv_timings,
+ 	.query_dv_timings = rk628_bt1120_query_dv_timings,
++#ifndef KERNEL_VERSION_5_10
+ 	.g_mbus_config = rk628_bt1120_g_mbus_config,
++#endif
+ 	.s_stream = rk628_bt1120_s_stream,
+ 	.g_frame_interval = rk628_bt1120_g_frame_interval,
+ #ifdef KERNEL_VERSION_4_19
+@@ -1692,6 +1709,9 @@ static const struct v4l2_subdev_pad_ops rk628_bt1120_pad_ops = {
+ 	.set_edid = rk628_bt1120_s_edid,
+ 	.enum_dv_timings = rk628_bt1120_enum_dv_timings,
+ 	.dv_timings_cap = rk628_bt1120_dv_timings_cap,
++#ifdef KERNEL_VERSION_5_10
++	.get_mbus_config = rk628_bt1120_g_mbus_config,
++#endif
+ };
+ 
+ static const struct v4l2_subdev_ops rk628_bt1120_ops = {
+@@ -1737,7 +1757,7 @@ static irqreturn_t plugin_detect_irq(int irq, void *dev_id)
+ static int rk628_bt1120_probe_of(struct rk628_bt1120 *bt1120)
+ {
+ 	struct device *dev = bt1120->dev;
+-	struct v4l2_fwnode_endpoint *endpoint;
++	struct v4l2_fwnode_endpoint *endpoint = NULL;
+ 	struct device_node *ep;
+ 	int ret = -EINVAL;
+ 	bool hdcp1x_enable = false, i2s_enable_default = false;
+@@ -1815,12 +1835,20 @@ static int rk628_bt1120_probe_of(struct rk628_bt1120 *bt1120)
+ 		dev_err(dev, "missing endpoint node\n");
+ 		return -EINVAL;
+ 	}
+-
++#ifdef KERNEL_VERSION_5_10
++	ret = v4l2_fwnode_endpoint_alloc_parse(of_fwnode_handle(ep), endpoint);
++	if (ret) {
++		dev_err(dev, "failed to parse endpoint\n");
++		of_node_put(ep);
++		return ret;
++	}
++#else
+ 	endpoint = v4l2_fwnode_endpoint_alloc_parse(of_fwnode_handle(ep));
+ 	if (IS_ERR(endpoint)) {
+ 		dev_err(dev, "failed to parse endpoint\n");
+ 		return PTR_ERR(endpoint);
+ 	}
++#endif
+ 
+ 	bt1120->enable_hdcp = hdcp1x_enable;
+ 	bt1120->i2s_enable_default = i2s_enable_default;
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index e00d00a051629b..ab971a76ae75de 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -6,6 +6,7 @@
+  */
+ 
+ #include <linux/clk.h>
++#include <linux/compat.h>
+ #include <linux/delay.h>
+ #include <linux/gpio/consumer.h>
+ #include <linux/i2c.h>
+@@ -1460,6 +1461,35 @@ static int rk628_csi_dv_timings_cap(struct v4l2_subdev *sd,
+ 	return 0;
+ }
+ 
++#ifdef KERNEL_VERSION_5_10
++static int rk628_csi_g_mbus_config(struct v4l2_subdev *sd, unsigned int pad,
++			     struct v4l2_mbus_config *cfg)
++{
++	struct rk628_csi *csi = to_csi(sd);
++
++	cfg->type = V4L2_MBUS_CSI2_DPHY;
++	cfg->flags = V4L2_MBUS_CSI2_CONTINUOUS_CLOCK;
++
++	switch (csi->csi_lanes_in_use) {
++	case 1:
++		cfg->flags |= V4L2_MBUS_CSI2_1_LANE;
++		break;
++	case 2:
++		cfg->flags |= V4L2_MBUS_CSI2_2_LANE;
++		break;
++	case 3:
++		cfg->flags |= V4L2_MBUS_CSI2_3_LANE;
++		break;
++	case 4:
++		cfg->flags |= V4L2_MBUS_CSI2_4_LANE;
++		break;
++	default:
++		return -EINVAL;
++	}
++
++	return 0;
++}
++#else
+ static int rk628_csi_g_mbus_config(struct v4l2_subdev *sd,
+ 			     struct v4l2_mbus_config *cfg)
+ {
+@@ -1487,6 +1517,7 @@ static int rk628_csi_g_mbus_config(struct v4l2_subdev *sd,
+ 
+ 	return 0;
+ }
++#endif
+ 
+ static int rk628_csi_s_stream(struct v4l2_subdev *sd, int enable)
+ {
+@@ -1933,7 +1964,9 @@ static const struct v4l2_subdev_video_ops rk628_csi_video_ops = {
+ 	.s_dv_timings = rk628_csi_s_dv_timings,
+ 	.g_dv_timings = rk628_csi_g_dv_timings,
+ 	.query_dv_timings = rk628_csi_query_dv_timings,
++#ifndef KERNEL_VERSION_5_10
+ 	.g_mbus_config = rk628_csi_g_mbus_config,
++#endif
+ 	.s_stream = rk628_csi_s_stream,
+ 	.g_frame_interval = rk628_csi_g_frame_interval,
+ };
+@@ -1948,6 +1981,9 @@ static const struct v4l2_subdev_pad_ops rk628_csi_pad_ops = {
+ 	.set_edid = rk628_csi_s_edid,
+ 	.enum_dv_timings = rk628_csi_enum_dv_timings,
+ 	.dv_timings_cap = rk628_csi_dv_timings_cap,
++#ifdef KERNEL_VERSION_5_10
++	.get_mbus_config = rk628_csi_g_mbus_config,
++#endif
+ };
+ 
+ static const struct v4l2_subdev_ops rk628_csi_ops = {
+@@ -2017,7 +2053,7 @@ static irqreturn_t plugin_detect_irq(int irq, void *dev_id)
+ static int rk628_csi_probe_of(struct rk628_csi *csi)
+ {
+ 	struct device *dev = csi->dev;
+-	struct v4l2_fwnode_endpoint *endpoint;
++	struct v4l2_fwnode_endpoint *endpoint = NULL;
+ 	struct device_node *ep;
+ 	int ret = -EINVAL;
+ 	bool hdcp1x_enable = false, i2s_enable_default = false;
+@@ -2100,18 +2136,34 @@ static int rk628_csi_probe_of(struct rk628_csi *csi)
+ 		return -EINVAL;
+ 	}
+ 
++#ifdef KERNEL_VERSION_5_10
++	ret = v4l2_fwnode_endpoint_alloc_parse(of_fwnode_handle(ep), endpoint);
++	if (ret) {
++		dev_err(dev, "failed to parse endpoint\n");
++		of_node_put(ep);
++		return ret;
++	}
++#else
+ 	endpoint = v4l2_fwnode_endpoint_alloc_parse(of_fwnode_handle(ep));
+ 	if (IS_ERR(endpoint)) {
+ 		dev_err(dev, "failed to parse endpoint\n");
+ 		return PTR_ERR(endpoint);
+ 	}
++#endif
+ 
++#ifdef KERNEL_VERSION_5_10
++	if (endpoint->bus_type != V4L2_MBUS_CSI2_DPHY ||
++	    endpoint->bus.mipi_csi2.num_data_lanes == 0) {
++		dev_err(dev, "missing CSI-2 properties in endpoint\n");
++		goto free_endpoint;
++	}
++#else
+ 	if (endpoint->bus_type != V4L2_MBUS_CSI2 ||
+ 	    endpoint->bus.mipi_csi2.num_data_lanes == 0) {
+ 		dev_err(dev, "missing CSI-2 properties in endpoint\n");
+ 		goto free_endpoint;
+ 	}
+-
++#endif
+ 	csi->csi_lanes_in_use = endpoint->bus.mipi_csi2.num_data_lanes;
+ 	csi->enable_hdcp = hdcp1x_enable;
+ 	csi->i2s_enable_default = i2s_enable_default;
+-- 
+2.17.1
+

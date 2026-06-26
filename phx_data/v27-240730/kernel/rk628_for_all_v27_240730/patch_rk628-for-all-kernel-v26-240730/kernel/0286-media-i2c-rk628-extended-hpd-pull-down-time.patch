@@ -1,0 +1,105 @@
+From c7963e4addc70d77ef57dd07c58a14a68ae12a64 Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Mon, 13 May 2024 15:31:55 +0800
+Subject: [PATCH 286/305] media: i2c: rk628: extended hpd pull down time
+
+Type: Function
+Redmine ID: N/A
+Associated modifications: N/A
+Test: N/A
+
+Change-Id: I6a1d531f9c37ad4d7873bd86f2d5dc1f6e66e75f
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_bt1120_v4l2.c | 10 ++++++++--
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c    | 10 ++++++++--
+ 2 files changed, 16 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+index 3fb536ff0b5f28..ff64ab6a0e6a88 100644
+--- a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+@@ -90,6 +90,7 @@ struct rk628_bt1120 {
+ 	int hdmirx_irq;
+ 	int plugin_irq;
+ 	bool plugin_status;
++	int lock_fail_time;
+ 	bool nosignal;
+ 	bool rxphy_pwron;
+ 	bool enable_hdcp;
+@@ -340,13 +341,14 @@ static void rk628_hdmirx_plugout(struct v4l2_subdev *sd)
+ 
+ static int rk628_hdmirx_config_all(struct v4l2_subdev *sd)
+ {
+-	int ret;
++	int ret, delay;
+ 	struct rk628_bt1120 *bt1120 = to_bt1120(sd);
+ 
+ 	ret = rk628_hdmirx_phy_setup(sd);
+ 	if (ret >= 0 && !rk628_hdmirx_scdc_ced_err(bt1120->rk628)) {
+ 		ret = rk628_bt1120_format_change(sd);
+ 		if (!ret) {
++			bt1120->lock_fail_time = 0;
+ 			bt1120->nosignal = false;
+ 			return ret;
+ 		}
+@@ -354,8 +356,12 @@ static int rk628_hdmirx_config_all(struct v4l2_subdev *sd)
+ 
+ 	if (ret < 0 || rk628_hdmirx_scdc_ced_err(bt1120->rk628)) {
+ 		rk628_hdmirx_plugout(sd);
++		bt1120->lock_fail_time++;
++		v4l2_dbg(1, debug, sd, "%s: lock fail time: %d\n",
++			 __func__, bt1120->lock_fail_time);
++		delay = 800 + 800 * ((bt1120->lock_fail_time + 1) % 2);
+ 		schedule_delayed_work(&bt1120->delayed_work_enable_hotplug,
+-				      msecs_to_jiffies(800));
++				      msecs_to_jiffies(delay));
+ 	}
+ 
+ 	return ret;
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index 5ea3cc00fb3e21..2e2e27a28466e1 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -103,6 +103,7 @@ struct rk628_csi {
+ 	int hdmirx_irq;
+ 	int plugin_irq;
+ 	bool plugin_status;
++	int lock_fail_time;
+ 	bool nosignal;
+ 	bool rxphy_pwron;
+ 	bool txphy_pwron;
+@@ -442,13 +443,14 @@ static void rk628_hdmirx_plugout(struct v4l2_subdev *sd)
+ 
+ static int rk628_hdmirx_config_all(struct v4l2_subdev *sd)
+ {
+-	int ret;
++	int ret, delay;
+ 	struct rk628_csi *csi = to_csi(sd);
+ 
+ 	ret = rk628_hdmirx_phy_setup(sd);
+ 	if (ret >= 0 && !rk628_hdmirx_scdc_ced_err(csi->rk628)) {
+ 		ret = rk628_csi_format_change(sd);
+ 		if (!ret) {
++			csi->lock_fail_time = 0;
+ 			csi->nosignal = false;
+ 			return ret;
+ 		}
+@@ -456,8 +458,12 @@ static int rk628_hdmirx_config_all(struct v4l2_subdev *sd)
+ 
+ 	if (ret < 0 || rk628_hdmirx_scdc_ced_err(csi->rk628)) {
+ 		rk628_hdmirx_plugout(sd);
++		csi->lock_fail_time++;
++		v4l2_dbg(1, debug, sd, "%s: lock fail time: %d\n",
++			 __func__, csi->lock_fail_time);
++		delay = 800 + 800 * ((csi->lock_fail_time + 1) % 2);
+ 		schedule_delayed_work(&csi->delayed_work_enable_hotplug,
+-				      msecs_to_jiffies(800));
++				      msecs_to_jiffies(delay));
+ 	}
+ 
+ 	return ret;
+-- 
+2.17.1
+

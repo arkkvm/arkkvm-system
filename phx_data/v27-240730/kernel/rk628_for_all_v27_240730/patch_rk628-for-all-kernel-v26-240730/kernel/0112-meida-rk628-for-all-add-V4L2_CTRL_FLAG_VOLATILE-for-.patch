@@ -1,0 +1,61 @@
+From 75380f6312e198facb13d74025ad91c052de5d1b Mon Sep 17 00:00:00 2001
+From: Shunhua Lan <lsh@rock-chips.com>
+Date: Sun, 26 Sep 2021 14:57:58 +0800
+Subject: [PATCH 112/232] meida: rk628-for-all: add V4L2_CTRL_FLAG_VOLATILE for
+ rk628 audio rate and present status
+
+Signed-off-by: Shunhua Lan <lsh@rock-chips.com>
+Change-Id: I2646e0ef82a3c4ec74434868c00eced2f9784868
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_bt1120_v4l2.c | 4 ++--
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c    | 4 ++--
+ 2 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+index 6990e8c264752e..9ef110eddc7372 100644
+--- a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+@@ -1703,7 +1703,7 @@ static const struct v4l2_ctrl_config rk628_bt1120_ctrl_audio_sampling_rate = {
+ 	.max = 768000,
+ 	.step = 1,
+ 	.def = 0,
+-	.flags = V4L2_CTRL_FLAG_READ_ONLY,
++	.flags = V4L2_CTRL_FLAG_READ_ONLY | V4L2_CTRL_FLAG_VOLATILE,
+ };
+ 
+ static const struct v4l2_ctrl_config rk628_bt1120_ctrl_audio_present = {
+@@ -1714,7 +1714,7 @@ static const struct v4l2_ctrl_config rk628_bt1120_ctrl_audio_present = {
+ 	.max = 1,
+ 	.step = 1,
+ 	.def = 0,
+-	.flags = V4L2_CTRL_FLAG_READ_ONLY,
++	.flags = V4L2_CTRL_FLAG_READ_ONLY | V4L2_CTRL_FLAG_VOLATILE,
+ };
+ 
+ static irqreturn_t plugin_detect_irq(int irq, void *dev_id)
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index 56d13ecc24cbdb..07243b62d89243 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -1969,7 +1969,7 @@ static const struct v4l2_ctrl_config rk628_csi_ctrl_audio_sampling_rate = {
+ 	.max = 768000,
+ 	.step = 1,
+ 	.def = 0,
+-	.flags = V4L2_CTRL_FLAG_READ_ONLY,
++	.flags = V4L2_CTRL_FLAG_READ_ONLY | V4L2_CTRL_FLAG_VOLATILE,
+ };
+ 
+ static const struct v4l2_ctrl_config rk628_csi_ctrl_audio_present = {
+@@ -1980,7 +1980,7 @@ static const struct v4l2_ctrl_config rk628_csi_ctrl_audio_present = {
+ 	.max = 1,
+ 	.step = 1,
+ 	.def = 0,
+-	.flags = V4L2_CTRL_FLAG_READ_ONLY,
++	.flags = V4L2_CTRL_FLAG_READ_ONLY | V4L2_CTRL_FLAG_VOLATILE,
+ };
+ 
+ static irqreturn_t plugin_detect_irq(int irq, void *dev_id)
+-- 
+2.17.1
+

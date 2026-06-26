@@ -1,0 +1,212 @@
+From d3b133894ffe16e2f13ea6882b0387ea1347d6cc Mon Sep 17 00:00:00 2001
+From: Guochun Huang <hero.huang@rock-chips.com>
+Date: Wed, 12 Jan 2022 10:39:05 +0800
+Subject: [PATCH 132/232] misc: rk628: dsi: make mipi dsi pre_enable helper
+ call early
+
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+Change-Id: Ic63fb97b11509277c64290b23d3ef52a7ea7989f
+---
+ drivers/misc/rk628/rk628.c     | 76 ++++++++++++++++++++++++++++++++--
+ drivers/misc/rk628/rk628.h     |  2 +
+ drivers/misc/rk628/rk628_dsi.c | 14 +++++--
+ drivers/misc/rk628/rk628_dsi.h |  3 +-
+ 4 files changed, 88 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/misc/rk628/rk628.c b/drivers/misc/rk628/rk628.c
+index e9f501e77a7732..d2ff4449c4ed65 100644
+--- a/drivers/misc/rk628/rk628.c
++++ b/drivers/misc/rk628/rk628.c
+@@ -383,7 +383,7 @@ static void rk628_display_disable(struct rk628 *rk628)
+ 	rk628->display_enabled = false;
+ }
+ 
+-static void rk628_display_enable(struct rk628 *rk628)
++static void rk628_display_resume(struct rk628 *rk628)
+ {
+ #ifdef RK628_HDMI_IN
+ 	u8 ret = 0;
+@@ -404,13 +404,62 @@ static void rk628_display_enable(struct rk628 *rk628)
+ 	rk628_rgb_rx_enable(rk628);
+ #endif
+ 
++
+ 	rk628_post_process_init(rk628);
+ 	rk628_post_process_enable(rk628);
+ 
+ #ifdef RK628_DSI_OUT
+-	rk628_dsi_enable(rk628);
++	rk628_mipi_dsi_pre_enable(rk628);
++	rk628_mipi_dsi_enable(rk628);
++#endif
++
++#ifdef RK628_LVDS_OUT
++	rk628_lvds_enable(rk628);
++#endif
++
++#ifdef RK628_GVI_OUT
++	rk628_gvi_enable(rk628);
++#endif
++
++#ifdef RK628_CSI_OUT
++	rk628_csi_enable(rk628);
++#endif
++
++#ifdef RK628_HDMI_OUT
++	rk628_hdmitx_enable(rk628);
++#endif
++
++	rk628->display_enabled = true;
++}
++
++static void rk628_display_enable(struct rk628 *rk628)
++{
++#ifdef RK628_HDMI_IN
++	u8 ret = 0;
++#endif
++
++	if (rk628->display_enabled)
++		return;
++
++#ifdef RK628_RGB_IN
++	rk628_rgb_rx_enable(rk628);
++#endif
++
++#ifdef RK628_DSI_OUT
++	queue_delayed_work(rk628->dsi_wq, &rk628->dsi_delay_work, msecs_to_jiffies(10));
+ #endif
+ 
++#ifdef RK628_HDMI_IN
++	ret = rk628_hdmirx_enable(rk628);
++	if ((ret == HDMIRX_PLUGOUT) || (ret & HDMIRX_NOSIGNAL)) {
++		rk628_display_disable(rk628);
++		return;
++	}
++#endif
++
++	rk628_post_process_init(rk628);
++	rk628_post_process_enable(rk628);
++
+ #ifdef RK628_LVDS_OUT
+ 	rk628_lvds_enable(rk628);
+ #endif
+@@ -465,6 +514,14 @@ static void rk628_display_work(struct work_struct *work)
+ #endif
+ }
+ 
++static void rk628_dsi_work(struct work_struct *work)
++{
++	struct rk628 *rk628 = container_of(work, struct rk628, dsi_delay_work.work);
++
++	rk628_mipi_dsi_pre_enable(rk628);
++	rk628_mipi_dsi_enable(rk628);
++}
++
+ #ifdef RK628_HDMI_IN
+ static irqreturn_t rk628_hdmirx_plugin_irq(int irq, void *dev_id)
+ {
+@@ -600,6 +657,12 @@ rk628_i2c_probe(struct i2c_client *client, const struct i2c_device_id *id)
+ 		WQ_MEM_RECLAIM | WQ_FREEZABLE, "rk628-monitor-wq");
+ 	INIT_DELAYED_WORK(&rk628->delay_work, rk628_display_work);
+ 
++#ifdef RK628_DSI_OUT
++	rk628->dsi_wq = alloc_ordered_workqueue("%s",
++		WQ_MEM_RECLAIM | WQ_FREEZABLE, "rk628-dsi-wq");
++	INIT_DELAYED_WORK(&rk628->dsi_delay_work, rk628_dsi_work);
++#endif
++
+ 	rk628_cru_init(rk628);
+ 
+ #ifdef RK628_CSI_OUT
+@@ -656,8 +719,15 @@ rk628_i2c_probe(struct i2c_client *client, const struct i2c_device_id *id)
+ 
+ static int rk628_i2c_remove(struct i2c_client *client)
+ {
++	struct rk628 *rk628 = i2c_get_clientdata(client);
+ 	struct device *dev = &client->dev;
+ 
++#ifdef RK628_DSI_OUT
++	cancel_delayed_work_sync(&rk628->dsi_delay_work);
++	destroy_workqueue(rk628->dsi_wq);
++#endif
++	cancel_delayed_work_sync(&rk628->delay_work);
++	destroy_workqueue(rk628->monitor_wq);
+ 	pm_runtime_disable(dev);
+ 
+ 	return 0;
+@@ -677,7 +747,7 @@ static int rk628_resume(struct device *dev)
+ {
+ 	struct rk628 *rk628 = dev_get_drvdata(dev);
+ 
+-	rk628_display_enable(rk628);
++	rk628_display_resume(rk628);
+ 
+ 	return 0;
+ }
+diff --git a/drivers/misc/rk628/rk628.h b/drivers/misc/rk628/rk628.h
+index 1692f181bdfad0..312a32ea355b4d 100644
+--- a/drivers/misc/rk628/rk628.h
++++ b/drivers/misc/rk628/rk628.h
+@@ -271,6 +271,8 @@ struct rk628 {
+ 	struct clk *soc_24M;
+ 	struct workqueue_struct *monitor_wq;
+ 	struct delayed_work delay_work;
++	struct workqueue_struct *dsi_wq;
++	struct delayed_work dsi_delay_work;
+ 	struct panel_simple *panel;
+ 	void *hdmirx;
+ 	bool display_enabled;
+diff --git a/drivers/misc/rk628/rk628_dsi.c b/drivers/misc/rk628/rk628_dsi.c
+index ca0ff3bcdc1615..268fc5426580ea 100644
+--- a/drivers/misc/rk628/rk628_dsi.c
++++ b/drivers/misc/rk628/rk628_dsi.c
+@@ -1418,7 +1418,7 @@ static void rk628_dsi_bridge_enable(struct rk628 *rk628,
+ 	dsi_write(rk628, dsi, DSI_PWR_UP, POWER_UP);
+ }
+ 
+-void rk628_dsi_enable(struct rk628 *rk628)
++void rk628_mipi_dsi_pre_enable(struct rk628 *rk628)
+ {
+ 	const struct rk628_dsi *dsi = rk628_display_get_dsi0_host();
+ 	const struct rk628_dsi *dsi1 = rk628_display_get_dsi1_host();
+@@ -1474,14 +1474,22 @@ void rk628_dsi_enable(struct rk628 *rk628)
+ 
+ 	dev_info(rk628->dev, "dsi: mode: 0x%x\n", mode);
+ #endif
++
++	dev_info(rk628->dev, "rk628_dsi final DSI-Link bandwidth: %d x %d\n",
++		 lane_mbps, dsi->slave ? dsi->lanes * 2 : dsi->lanes);
++}
++
++void rk628_mipi_dsi_enable(struct rk628 *rk628)
++{
++	const struct rk628_dsi *dsi = rk628_display_get_dsi0_host();
++	const struct rk628_dsi *dsi1 = rk628_display_get_dsi1_host();
++
+ 	rk628_dsi_bridge_enable(rk628, dsi);
+ 
+ 	if (dsi->slave)
+ 	        rk628_dsi_bridge_enable(rk628, dsi1);
+ 
+ 	panel_enable(rk628);
+-	dev_info(rk628->dev, "rk628_dsi final DSI-Link bandwidth: %d x %d\n",
+-		 lane_mbps, dsi->slave ? dsi->lanes * 2 : dsi->lanes);
+ }
+ 
+ void rk628_dsi_disable(struct rk628 *rk628)
+diff --git a/drivers/misc/rk628/rk628_dsi.h b/drivers/misc/rk628/rk628_dsi.h
+index 967ba4521fd8e6..52a02bffe127d8 100644
+--- a/drivers/misc/rk628/rk628_dsi.h
++++ b/drivers/misc/rk628/rk628_dsi.h
+@@ -151,6 +151,7 @@
+ #define DSI_INT_FORCE1			0x00dc
+ #define DSI_MAX_REGISTER		DSI_INT_FORCE1
+ 
+-void rk628_dsi_enable(struct rk628 *rk628);
++void rk628_mipi_dsi_pre_enable(struct rk628 *rk628);
++void rk628_mipi_dsi_enable(struct rk628 *rk628);
+ void rk628_dsi_disable(struct rk628 *rk628);
+ #endif
+-- 
+2.17.1
+

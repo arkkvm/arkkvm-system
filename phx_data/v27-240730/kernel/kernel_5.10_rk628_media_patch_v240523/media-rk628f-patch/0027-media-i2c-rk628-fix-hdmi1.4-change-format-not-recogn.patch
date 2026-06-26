@@ -1,0 +1,127 @@
+From 49dc294ad9f7afed8fb9a747e15e6a611cddcf45 Mon Sep 17 00:00:00 2001
+From: Chen Shunqing <csq@rock-chips.com>
+Date: Wed, 13 Dec 2023 09:16:45 +0000
+Subject: [PATCH 27/30] media: i2c: rk628: fix hdmi1.4 change format not
+ recognized
+
+Change-Id: I347f641584aed18e525e114c7b86ab5c41612887
+Signed-off-by: Chen Shunqing <csq@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_bt1120_v4l2.c | 10 ++++++----
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c    | 10 ++++++----
+ drivers/media/i2c/rk628/rk628_hdmirx.h      |  2 ++
+ 3 files changed, 14 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+index 419b497ab4109..090b2e3fb2322 100644
+--- a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+@@ -910,7 +910,7 @@ static void rk628_bt1120_enable_interrupts(struct v4l2_subdev *sd, bool en)
+ 	u32 pdec_mask = 0, md_mask = 0;
+ 	struct rk628_bt1120 *bt1120 = to_bt1120(sd);
+ 
+-	pdec_mask |= AVI_RCV_ENSET;
++	pdec_mask = AVI_RCV_ENSET | AVI_CKS_CHG_ICLR;
+ 	md_mask = VACT_LIN_ENSET | HACT_PIX_ENSET | HS_CLK_ENSET |
+ 		  DE_ACTIVITY_ENSET | VS_ACT_ENSET | HS_ACT_ENSET;
+ 	v4l2_dbg(1, debug, sd, "%s: %sable\n", __func__, en ? "en" : "dis");
+@@ -944,10 +944,12 @@ static void rk628_work_isr(struct work_struct *work)
+ 
+ 	mutex_lock(&bt1120->rk628->rst_lock);
+ 	rk628_i2c_read(bt1120->rk628, HDMI_RX_MD_ISTS, &md_ints);
++	rk628_i2c_read(bt1120->rk628, HDMI_RX_PDEC_ISTS, &pdec_ints);
+ 	if (bt1120->rk628->version >= RK628F_VERSION &&
+ 	    (md_ints & (VACT_LIN_ISTS | HACT_PIX_ISTS |
+ 			HS_CLK_ISTS | DE_ACTIVITY_ISTS |
+-			VS_ACT_ISTS | HS_ACT_ISTS)))
++			VS_ACT_ISTS | HS_ACT_ISTS) ||
++	     pdec_ints & AVI_CKS_CHG_ISTS))
+ 		rk628_set_bg_enable(bt1120->rk628, true);
+ 
+ 	plugin = tx_5v_power_present(sd);
+@@ -956,7 +958,6 @@ static void rk628_work_isr(struct work_struct *work)
+ 		goto __clear_int;
+ 	}
+ 
+-	rk628_i2c_read(bt1120->rk628, HDMI_RX_PDEC_ISTS, &pdec_ints);
+ 	if (bt1120->rk628->version < RK628F_VERSION) {
+ 		if (rk628_audio_ctsnints_enabled(audio_info)) {
+ 			if (pdec_ints & (ACR_N_CHG_ICLR | ACR_CTS_CHG_ICLR)) {
+@@ -980,7 +981,8 @@ static void rk628_work_isr(struct work_struct *work)
+ 
+ 		if ((md_ints & (VACT_LIN_ISTS | HACT_PIX_ISTS |
+ 				HS_CLK_ISTS | DE_ACTIVITY_ISTS |
+-				VS_ACT_ISTS | HS_ACT_ISTS))) {
++				VS_ACT_ISTS | HS_ACT_ISTS) ||
++		     pdec_ints & AVI_CKS_CHG_ISTS)) {
+ 
+ 			rk628_i2c_read(bt1120->rk628, HDMI_RX_MD_HACT_PX, &hact);
+ 			rk628_i2c_read(bt1120->rk628, HDMI_RX_MD_VAL, &vact);
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index a4ab438f66bc6..956e584edc7f1 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -1382,7 +1382,7 @@ static void rk628_csi_enable_interrupts(struct v4l2_subdev *sd, bool en)
+ 	u32 pdec_mask = 0, md_mask = 0;
+ 	struct rk628_csi *csi = to_csi(sd);
+ 
+-	pdec_mask |= AVI_RCV_ENSET;
++	pdec_mask = AVI_RCV_ENSET | AVI_CKS_CHG_ICLR;
+ 	md_mask = VACT_LIN_ENSET | HACT_PIX_ENSET | HS_CLK_ENSET |
+ 		  DE_ACTIVITY_ENSET | VS_ACT_ENSET | HS_ACT_ENSET;
+ 	v4l2_dbg(1, debug, sd, "%s: %sable\n", __func__, en ? "en" : "dis");
+@@ -1416,10 +1416,12 @@ static void rk628_work_isr(struct work_struct *work)
+ 
+ 	mutex_lock(&csi->rk628->rst_lock);
+ 	rk628_i2c_read(csi->rk628, HDMI_RX_MD_ISTS, &md_ints);
++	rk628_i2c_read(csi->rk628, HDMI_RX_PDEC_ISTS, &pdec_ints);
+ 	if (csi->rk628->version >= RK628F_VERSION &&
+ 	    (md_ints & (VACT_LIN_ISTS | HACT_PIX_ISTS |
+ 			HS_CLK_ISTS | DE_ACTIVITY_ISTS |
+-			VS_ACT_ISTS | HS_ACT_ISTS)))
++			VS_ACT_ISTS | HS_ACT_ISTS) ||
++	     pdec_ints & AVI_CKS_CHG_ISTS))
+ 		rk628_set_bg_enable(csi->rk628, true);
+ 
+ 	plugin = tx_5v_power_present(sd);
+@@ -1428,7 +1430,6 @@ static void rk628_work_isr(struct work_struct *work)
+ 		goto __clear_int;
+ 	}
+ 
+-	rk628_i2c_read(csi->rk628, HDMI_RX_PDEC_ISTS, &pdec_ints);
+ 	if (csi->rk628->version < RK628F_VERSION) {
+ 		if (rk628_audio_ctsnints_enabled(audio_info)) {
+ 			if (pdec_ints & (ACR_N_CHG_ICLR | ACR_CTS_CHG_ICLR)) {
+@@ -1452,7 +1453,8 @@ static void rk628_work_isr(struct work_struct *work)
+ 
+ 		if ((md_ints & (VACT_LIN_ISTS | HACT_PIX_ISTS |
+ 				HS_CLK_ISTS | DE_ACTIVITY_ISTS |
+-				VS_ACT_ISTS | HS_ACT_ISTS))) {
++				VS_ACT_ISTS | HS_ACT_ISTS) ||
++		     pdec_ints & AVI_CKS_CHG_ISTS)) {
+ 
+ 			rk628_i2c_read(csi->rk628, HDMI_RX_MD_HACT_PX, &hact);
+ 			rk628_i2c_read(csi->rk628, HDMI_RX_MD_VAL, &vact);
+diff --git a/drivers/media/i2c/rk628/rk628_hdmirx.h b/drivers/media/i2c/rk628/rk628_hdmirx.h
+index 13f9a5f35738d..238bdf3862226 100644
+--- a/drivers/media/i2c/rk628/rk628_hdmirx.h
++++ b/drivers/media/i2c/rk628/rk628_hdmirx.h
+@@ -288,6 +288,7 @@
+ #define HDMI_RX_HDMI2_IEN_CLR		(HDMI_RX_BASE + 0x0f60)
+ #define HDMI_RX_HDMI2_ISTS		(HDMI_RX_BASE + 0x0f68)
+ #define HDMI_RX_PDEC_IEN_CLR		(HDMI_RX_BASE + 0x0f78)
++#define AVI_CKS_CHG_ICLR		BIT(24)
+ #define ACR_N_CHG_ICLR			BIT(23)
+ #define ACR_CTS_CHG_ICLR		BIT(22)
+ #define GCP_AV_MUTE_CHG_ENCLR		BIT(21)
+@@ -303,6 +304,7 @@
+ #define GCP_RCV_ENSET			BIT(16)
+ #define AMP_RCV_ENSET			BIT(14)
+ #define HDMI_RX_PDEC_ISTS		(HDMI_RX_BASE + 0x0f80)
++#define AVI_CKS_CHG_ISTS		BIT(24)
+ #define GCP_AV_MUTE_CHG_ISTS		BIT(21)
+ #define AIF_RCV_ISTS			BIT(19)
+ #define AVI_RCV_ISTS			BIT(18)
+-- 
+2.25.1
+

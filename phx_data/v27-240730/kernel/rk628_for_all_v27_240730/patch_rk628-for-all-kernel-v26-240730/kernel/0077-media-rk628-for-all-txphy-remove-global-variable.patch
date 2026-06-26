@@ -1,0 +1,203 @@
+From 4014040794debd92984203eadb62ab160db12a6e Mon Sep 17 00:00:00 2001
+From: Shunqing Chen <csq@rock-chips.com>
+Date: Wed, 18 Aug 2021 11:31:14 +0800
+Subject: [PATCH 077/232] media: rk628-for-all: txphy: remove global variable
+
+Signed-off-by: Shunqing Chen <csq@rock-chips.com>
+Change-Id: I253d253aff0b83d722680e694874799bf03fc6cf
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628.h           |  1 +
+ drivers/media/i2c/rk628/rk628_combtxphy.c | 38 ++++++++++++++++-------
+ drivers/media/i2c/rk628/rk628_combtxphy.h | 11 +++++++
+ drivers/media/i2c/rk628/rk628_csi.c       |  7 +++++
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c  |  7 +++++
+ 5 files changed, 52 insertions(+), 12 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628.h b/drivers/media/i2c/rk628/rk628.h
+index d8a03618916447..f1c5fd595319c5 100644
+--- a/drivers/media/i2c/rk628/rk628.h
++++ b/drivers/media/i2c/rk628/rk628.h
+@@ -245,6 +245,7 @@ struct rk628 {
+ 	struct device *dev;
+ 	struct i2c_client *client;
+ 	struct regmap *regmap[RK628_DEV_MAX];
++	void *txphy;
+ };
+ 
+ #ifndef RK628_REGMAP
+diff --git a/drivers/media/i2c/rk628/rk628_combtxphy.c b/drivers/media/i2c/rk628/rk628_combtxphy.c
+index ba34475cc921d3..9e30065032da8a 100644
+--- a/drivers/media/i2c/rk628/rk628_combtxphy.c
++++ b/drivers/media/i2c/rk628/rk628_combtxphy.c
+@@ -10,30 +10,24 @@
+ #include "rk628_combtxphy.h"
+ #include "rk628_cru.h"
+ 
+-struct rk628_combtxphy {
+-	enum phy_mode mode;
+-	unsigned int flags;
+-	u8 ref_div;
+-	u8 fb_div;
+-	u16 frac_div;
+-	u8 rate_div;
+-	u32 bus_width;
+-} g_combtxphy;
+-
+-static struct rk628_combtxphy *txphy = &g_combtxphy;
+-
+ void rk628_txphy_set_bus_width(struct rk628 *rk628, u32 bus_width)
+ {
++	struct rk628_combtxphy *txphy = rk628->txphy;
++
+ 	txphy->bus_width = bus_width;
+ }
+ 
+ u32 rk628_txphy_get_bus_width(struct rk628 *rk628)
+ {
++	struct rk628_combtxphy *txphy = rk628->txphy;
++
+ 	return txphy->bus_width;
+ }
+ 
+ static void rk628_combtxphy_dsi_power_on(struct rk628 *rk628)
+ {
++	struct rk628_combtxphy *txphy = rk628->txphy;
++
+ 	rk628_i2c_update_bits(rk628,  COMBTXPHY_CON0, SW_BUS_WIDTH_MASK |
+ 			      SW_GVI_LVDS_EN_MASK |
+ 			      SW_MIPI_DSI_EN_MASK,
+@@ -60,6 +54,8 @@ static void rk628_combtxphy_dsi_power_on(struct rk628 *rk628)
+ 
+ static void rk628_combtxphy_lvds_power_on(struct rk628 *rk628)
+ {
++	struct rk628_combtxphy *txphy = rk628->txphy;
++
+ 	rk628_i2c_update_bits(rk628,  COMBTXPHY_CON7, SW_TX_MODE_MASK, SW_TX_MODE(3));
+ 	rk628_i2c_write(rk628,  COMBTXPHY_CON10, TX7_CKDRV_EN | TX2_CKDRV_EN);
+ 	rk628_i2c_update_bits(rk628,  COMBTXPHY_CON0, SW_BUS_WIDTH_MASK |
+@@ -84,6 +80,8 @@ static void rk628_combtxphy_lvds_power_on(struct rk628 *rk628)
+ 
+ static void rk628_combtxphy_gvi_power_on(struct rk628 *rk628)
+ {
++	struct rk628_combtxphy *txphy = rk628->txphy;
++
+ 	rk628_i2c_write(rk628,  COMBTXPHY_CON5, SW_REF_DIV(txphy->ref_div - 1) |
+ 			SW_PLL_FB_DIV(txphy->fb_div) |
+ 			SW_PLL_FRAC_DIV(txphy->frac_div) |
+@@ -101,6 +99,7 @@ static void rk628_combtxphy_gvi_power_on(struct rk628 *rk628)
+ void rk628_txphy_set_mode(struct rk628 *rk628, enum phy_mode mode)
+ {
+ 	unsigned int fvco, frac_rate, fin = 24;
++	struct rk628_combtxphy *txphy = rk628->txphy;
+ 
+ 	switch (mode) {
+ 	case PHY_MODE_VIDEO_MIPI:
+@@ -202,6 +201,8 @@ void rk628_txphy_set_mode(struct rk628 *rk628, enum phy_mode mode)
+ 
+ void rk628_txphy_power_on(struct rk628 *rk628)
+ {
++	struct rk628_combtxphy *txphy = rk628->txphy;
++
+ 	rk628_control_assert(rk628, RGU_TXPHY_CON);
+ 	udelay(10);
+ 	rk628_control_deassert(rk628, RGU_TXPHY_CON);
+@@ -244,6 +245,19 @@ void rk628_txphy_power_off(struct rk628 *rk628)
+ 			      SW_TX_PD(0x3ff) | SW_PD_PLL);
+ }
+ 
++struct rk628_combtxphy *rk628_txphy_register(struct rk628 *rk628)
++{
++	struct rk628_combtxphy *txphy;
++
++	txphy = devm_kzalloc(rk628->dev, sizeof(*txphy), GFP_KERNEL);
++	if (!txphy)
++		return NULL;
++
++	rk628->txphy = txphy;
++
++	return txphy;
++}
++
+ MODULE_AUTHOR("Shunqing Chen <csq@rock-chips.com>");
+ MODULE_DESCRIPTION("Rockchip RK628 GVI/LVDS/MIPI Combo TX PHY driver");
+ MODULE_LICENSE("GPL v2");
+diff --git a/drivers/media/i2c/rk628/rk628_combtxphy.h b/drivers/media/i2c/rk628/rk628_combtxphy.h
+index 7bfe91d6d850fb..406dc32f956d72 100644
+--- a/drivers/media/i2c/rk628/rk628_combtxphy.h
++++ b/drivers/media/i2c/rk628/rk628_combtxphy.h
+@@ -75,10 +75,21 @@ enum phy_mode {
+ 	PHY_MODE_VIDEO_GVI,
+ };
+ 
++struct rk628_combtxphy {
++	enum phy_mode mode;
++	unsigned int flags;
++	u8 ref_div;
++	u8 fb_div;
++	u16 frac_div;
++	u8 rate_div;
++	u32 bus_width;
++};
++
+ void rk628_txphy_set_mode(struct rk628 *rk628, enum phy_mode mode);
+ void rk628_txphy_set_bus_width(struct rk628 *rk628, u32 bus_width);
+ u32 rk628_txphy_get_bus_width(struct rk628 *rk628);
+ void rk628_txphy_power_on(struct rk628 *rk628);
+ void rk628_txphy_power_off(struct rk628 *rk628);
++struct rk628_combtxphy *rk628_txphy_register(struct rk628 *rk628);
+ 
+ #endif
+diff --git a/drivers/media/i2c/rk628/rk628_csi.c b/drivers/media/i2c/rk628/rk628_csi.c
+index 7cb60413095819..e1187183f64db9 100644
+--- a/drivers/media/i2c/rk628/rk628_csi.c
++++ b/drivers/media/i2c/rk628/rk628_csi.c
+@@ -100,6 +100,7 @@ struct rk628_csi {
+ 	struct rk628_hdcp hdcp;
+ 	bool i2s_enable_default;
+ 	HAUDINFO audio_info;
++	struct rk628_combtxphy *txphy;
+ };
+ 
+ struct rk628_csi_mode {
+@@ -1809,6 +1810,12 @@ static int rk628_csi_probe(struct i2c_client *client,
+ 
+ 	mutex_init(&csi->confctl_mutex);
+ 
++	csi->txphy = rk628_txphy_register(rk628);
++	if (!csi->txphy) {
++		dev_err(csi->dev, "register txphy failed\n");
++		return -ENOMEM;
++	}
++
+ #ifndef KERNEL_VERSION_4_19
+ 	err = rk628_create_class_attr(csi);
+ 	if (err) {
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index 932ac100fd49b4..6e60ca92fa0985 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -115,6 +115,7 @@ struct rk628_csi {
+ 	struct rk628_hdcp hdcp;
+ 	bool i2s_enable_default;
+ 	HAUDINFO audio_info;
++	struct rk628_combtxphy *txphy;
+ };
+ 
+ struct rk628_csi_mode {
+@@ -2387,6 +2388,12 @@ static int rk628_csi_probe(struct i2c_client *client,
+ 
+ 	mutex_init(&csi->confctl_mutex);
+ 
++	csi->txphy = rk628_txphy_register(rk628);
++	if (!csi->txphy) {
++		v4l2_err(sd, "register txphy failed\n");
++		return -ENOMEM;
++	}
++
+ 	/* control handlers */
+ 	v4l2_ctrl_handler_init(&csi->hdl, 4);
+ 	csi->link_freq = v4l2_ctrl_new_int_menu(&csi->hdl, NULL,
+-- 
+2.17.1
+

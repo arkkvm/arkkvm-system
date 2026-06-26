@@ -1,0 +1,50 @@
+From a0ea47322b7481af2b7b1c15604d0b1371f3fb39 Mon Sep 17 00:00:00 2001
+From: Shunqing Chen <csq@rock-chips.com>
+Date: Fri, 27 Aug 2021 10:20:39 +0800
+Subject: [PATCH 080/232] media: rk628-for-all: add log for hdmirx phy detect
+ status
+
+Signed-off-by: Shunqing Chen <csq@rock-chips.com>
+Change-Id: I02613b5934618ef9970145d98bc8c039866e382e
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_combrxphy.c | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+
+diff --git a/drivers/media/i2c/rk628/rk628_combrxphy.c b/drivers/media/i2c/rk628/rk628_combrxphy.c
+index ba39cd93395ec4..f4a67d75991eb0 100644
+--- a/drivers/media/i2c/rk628/rk628_combrxphy.c
++++ b/drivers/media/i2c/rk628/rk628_combrxphy.c
+@@ -357,6 +357,7 @@ static int rk628_combrxphy_set_hdmi_mode_for_cable(struct rk628 *rk628, int f)
+ 	u32 tmds_bitrate_per_lane;
+ 	u32 cdr_data_min, cdr_data_max;
+ 	u32 temp = 0;
++	u32 state, channel_st;
+ 
+ 	/*
+ 	 * use the mode of automatic clock detection, only supports fixed TMDS
+@@ -402,6 +403,21 @@ static int rk628_combrxphy_set_hdmi_mode_for_cable(struct rk628 *rk628, int f)
+ 	}
+ 	rk628_i2c_read(rk628, COMBRX_REG(0x6654), &val);
+ 	dev_info(rk628->dev, "clk det over cnt:%d, reg_0x6654:%#x\n", i, val);
++	state = (val >> 28) & 0xf;
++	if (state == 5) {
++		dev_info(rk628->dev, "Clock detection anomaly\n");
++	} else if (state == 4) {
++		channel_st = (val >> 21) & 0x7f;
++		dev_info(rk628->dev, "%s%s%s%s%s%s%s%s level detection anomaly\n",
++			 channel_st & 0x40 ? "|clk_p|" : "",
++			 channel_st & 0x20 ? "|clk_n|" : "",
++			 channel_st & 0x10 ? "|d0_p|" : "",
++			 channel_st & 0x08 ? "|d0_n|" : "",
++			 channel_st & 0x04 ? "|d1_p|" : "",
++			 channel_st & 0x02 ? "|d1_n|" : "",
++			 channel_st & 0x01 ? "|d2_p|" : "",
++			 channel_st ? "" : "|d2_n|");
++	}
+ 
+ 	rk628_i2c_read(rk628, COMBRX_REG(0x6620), &val);
+ 	if ((i == CLK_DET_TRY_TIMES) ||
+-- 
+2.17.1
+

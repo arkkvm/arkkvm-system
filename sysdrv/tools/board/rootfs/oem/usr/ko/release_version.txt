@@ -1,0 +1,8 @@
+commit 1b83b745c9c084445c8ab5c00097b26fc80eb72d
+Author: Yandong Lin <yandong.lin@rock-chips.com>
+Date:   Tue Jan 9 18:42:26 2024 +0800
+
+    [vcodec]: reset chan_create flag when chan destory
+    
+    Signed-off-by: Yandong Lin <yandong.lin@rock-chips.com>
+    Change-Id: Ie52abf7ca077a707c297e1069559c4e21ce0b626

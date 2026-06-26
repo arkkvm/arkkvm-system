@@ -1,0 +1,31 @@
+From 67d24261cbeb7ca1523ad8b94399bed535bbd5a9 Mon Sep 17 00:00:00 2001
+From: Guochun Huang <hero.huang@rock-chips.com>
+Date: Wed, 20 Dec 2023 02:39:12 +0000
+Subject: [PATCH 227/232] misc: rk628: cancel delayed_work_audio in hdmirx
+ suspend
+
+Change-Id: I03593dba070f0167e3412e6e80ac7abe2a8e2240
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/misc/rk628/rk628_hdmirx.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/misc/rk628/rk628_hdmirx.c b/drivers/misc/rk628/rk628_hdmirx.c
+index 79ddda6a4f89b5..0750ff53687bb4 100644
+--- a/drivers/misc/rk628/rk628_hdmirx.c
++++ b/drivers/misc/rk628/rk628_hdmirx.c
+@@ -1269,9 +1269,10 @@ void rk628_hdmirx_disable(struct rk628 *rk628)
+ 		rk628_hdmirx_disable_edid(rk628);
+ 		rk628_i2c_update_bits(rk628, GRF_SYSTEM_CON0, SW_I2S_DATA_OEN_MASK,
+ 				      SW_I2S_DATA_OEN(1));
+-		cancel_delayed_work_sync(&hdmirx->delayed_work_audio);
+ 		dev_info(rk628->dev, "hdmirx plug out\n");
+ 	}
++
++	cancel_delayed_work_sync(&hdmirx->delayed_work_audio);
+ }
+ 
+ int rk628_hdmirx_detect(struct rk628 *rk628)
+-- 
+2.17.1
+

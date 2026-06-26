@@ -1,0 +1,96 @@
+From 249d6e0f496c0de0185fa2eb18b53f10ecf14248 Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Mon, 4 Dec 2023 09:43:00 +0000
+Subject: [PATCH] media: platform: vicap: get dsi cmd or video mode from sensor
+
+Change-Id: I8a436399932468a0b4135c8fc27e3b9aacfe059e
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+---
+ drivers/media/platform/rockchip/cif/capture.c | 13 ++++++++++++-
+ drivers/media/platform/rockchip/cif/dev.h     |  2 ++
+ include/uapi/linux/rk-camera-module.h         | 11 +++++++++++
+ 3 files changed, 25 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/media/platform/rockchip/cif/capture.c b/drivers/media/platform/rockchip/cif/capture.c
+index 6b47eae1427e..34387d265fee 100644
+--- a/drivers/media/platform/rockchip/cif/capture.c
++++ b/drivers/media/platform/rockchip/cif/capture.c
+@@ -3484,7 +3484,7 @@ static int rkcif_csi_channel_init(struct rkcif_stream *stream,
+ 
+ 	channel->fmt_val = stream->cif_fmt_out->csi_fmt_val;
+ 
+-	channel->cmd_mode_en = 0; /* default use DSI Video Mode */
++	channel->cmd_mode_en = dev->terminal_sensor.dsi_mode;; /* default use DSI Video Mode */
+ 	channel->dsi_input = dev->terminal_sensor.dsi_input_en;
+ 
+ 	if (stream->crop_enable) {
+@@ -5750,6 +5750,17 @@ int rkcif_update_sensor_info(struct rkcif_stream *stream)
+ 				__func__, terminal_sensor->sd->name);
+ 			terminal_sensor->dsi_input_en = 0;
+ 		}
++		if (terminal_sensor->dsi_input_en) {
++			if (v4l2_subdev_call(terminal_sensor->sd, core, ioctl,
++					RKMODULE_GET_DSI_MODE, &terminal_sensor->dsi_mode)) {
++				v4l2_dbg(1, rkcif_debug, &stream->cifdev->v4l2_dev,
++					"%s: get terminal %s DSI mode failed, set video mode!\n",
++					__func__, terminal_sensor->sd->name);
++				terminal_sensor->dsi_mode = 0;
++			}
++		} else {
++			terminal_sensor->dsi_mode = 0;
++		}
+ 	} else {
+ 		v4l2_err(&stream->cifdev->v4l2_dev,
+ 			 "%s: stream[%d] get remote terminal sensor failed!\n",
+diff --git a/drivers/media/platform/rockchip/cif/dev.h b/drivers/media/platform/rockchip/cif/dev.h
+index dfc0a690191c..a27831fdd732 100644
+--- a/drivers/media/platform/rockchip/cif/dev.h
++++ b/drivers/media/platform/rockchip/cif/dev.h
+@@ -226,6 +226,7 @@ struct rkcif_sensor_info {
+ 	struct v4l2_rect raw_rect;
+ 	struct v4l2_subdev_selection selection;
+ 	int dsi_input_en;
++	int dsi_mode;
+ };
+ 
+ enum cif_fmt_type {
+@@ -291,6 +292,7 @@ struct csi_channel_info {
+ 	unsigned int crop_st_x;
+ 	unsigned int crop_st_y;
+ 	unsigned int dsi_input;
++	unsigned int dsi_mode;
+ 	struct rkmodule_lvds_cfg lvds_cfg;
+ 	struct rkmodule_capture_info capture_info;
+ };
+diff --git a/include/uapi/linux/rk-camera-module.h b/include/uapi/linux/rk-camera-module.h
+index 334b6915a733..a693a774ce0a 100644
+--- a/include/uapi/linux/rk-camera-module.h
++++ b/include/uapi/linux/rk-camera-module.h
+@@ -186,6 +186,9 @@
+ #define RKMODULE_GET_SKIP_FRAME  \
+ 	_IOR('V', BASE_VIDIOC_PRIVATE + 41, __u32)
+ 
++#define RKMODULE_GET_DSI_MODE       \
++	_IOR('V', BASE_VIDIOC_PRIVATE + 42, __u32)
++
+ struct rkmodule_i2cdev_info {
+ 	__u8 slave_addr;
+ } __attribute__ ((packed));
+@@ -458,6 +461,14 @@ enum rkmodule_csi_dsi_seq {
+ 	RKMODULE_DSI_INPUT,
+ };
+ 
++/*
++ * DSI input mode
++ */
++enum rkmodule_dsi_mode {
++	RKMODULE_DSI_VIDEO = 0,
++	RKMODULE_DSI_COMMAND,
++};
++
+ /**
+  * lcnt: line counter
+  *     padnum: the pixels of padding row
+-- 
+2.25.1
+

@@ -1,0 +1,28 @@
+From 011abbec226887aff246465cdba94d507b978c2b Mon Sep 17 00:00:00 2001
+From: Shunqing Chen <csq@rock-chips.com>
+Date: Sun, 19 Sep 2021 10:50:53 +0800
+Subject: [PATCH 100/232] media: rk628-for-all: add hpd-output-inverted support
+
+Signed-off-by: Shunqing Chen <csq@rock-chips.com>
+Change-Id: Id2a25719434163e0cbdcc9e33a1dac9f60c81d15
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_csi.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/media/i2c/rk628/rk628_csi.c b/drivers/media/i2c/rk628/rk628_csi.c
+index bf10f9cca3c101..00f126bdc295f3 100644
+--- a/drivers/media/i2c/rk628/rk628_csi.c
++++ b/drivers/media/i2c/rk628/rk628_csi.c
+@@ -1337,6 +1337,8 @@ static int rk628_csi_probe_of(struct rk628_csi *csi)
+ 		ret = PTR_ERR(csi->plugin_det_gpio);
+ 		return ret;
+ 	}
++	csi->hpd_output_inverted = of_property_read_bool(dev->of_node,
++			"hpd-output-inverted");
+ 
+ 	gpiod_set_value(csi->enable_gpio, 1);
+ 	usleep_range(10000, 11000);
+-- 
+2.17.1
+

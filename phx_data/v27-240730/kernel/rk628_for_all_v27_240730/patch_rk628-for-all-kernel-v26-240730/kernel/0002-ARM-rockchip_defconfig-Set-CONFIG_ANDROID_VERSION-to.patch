@@ -1,0 +1,29 @@
+From b847495df56741f6f96d7c6f8f06e3dba9232806 Mon Sep 17 00:00:00 2001
+From: Wyon Bi <bivvy.bi@rock-chips.com>
+Date: Wed, 2 Jun 2021 08:49:33 +0800
+Subject: [PATCH 002/232] ARM: rockchip_defconfig: Set CONFIG_ANDROID_VERSION
+ to 0x09000000
+
+Signed-off-by: Wyon Bi <bivvy.bi@rock-chips.com>
+Change-Id: I14a161de8fd114f5bd2fbffbd162344f4ae1273a
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ arch/arm/configs/rockchip_defconfig | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/arch/arm/configs/rockchip_defconfig b/arch/arm/configs/rockchip_defconfig
+index e448c4c519bc00..73c8fa167fd6a3 100644
+--- a/arch/arm/configs/rockchip_defconfig
++++ b/arch/arm/configs/rockchip_defconfig
+@@ -635,7 +635,7 @@ CONFIG_FIQ_DEBUGGER_TRUST_ZONE=y
+ CONFIG_RK_CONSOLE_THREAD=y
+ CONFIG_COMMON_CLK_RK808=y
+ CONFIG_ROCKCHIP_IOMMU=y
+-CONFIG_ANDROID_VERSION=0x08000000
++CONFIG_ANDROID_VERSION=0x09000000
+ CONFIG_ROCKCHIP_PM_DOMAINS=y
+ CONFIG_ROCKCHIP_PVTM=y
+ CONFIG_ROCKCHIP_SUSPEND_MODE=y
+-- 
+2.17.1
+

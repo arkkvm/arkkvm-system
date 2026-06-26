@@ -1,0 +1,27 @@
+From 00843f44a3b2926a0e58b6401a0b93a12b8a1fee Mon Sep 17 00:00:00 2001
+From: Shunqing Chen <csq@rock-chips.com>
+Date: Tue, 3 Aug 2021 20:23:49 +0800
+Subject: [PATCH 042/232] ARM: rockchip_defconfig: enable CONFIG_VIDEO_RK628
+
+Signed-off-by: Shunqing Chen <csq@rock-chips.com>
+Change-Id: I06d2a223a08f171060e0f1ce92baad3856e059d4
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ arch/arm/configs/rockchip_defconfig | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/arch/arm/configs/rockchip_defconfig b/arch/arm/configs/rockchip_defconfig
+index b72880dfc0bb52..8e52d7ea518c8c 100644
+--- a/arch/arm/configs/rockchip_defconfig
++++ b/arch/arm/configs/rockchip_defconfig
+@@ -439,6 +439,7 @@ CONFIG_ROCKCHIP_LVDS=y
+ CONFIG_ROCKCHIP_DRM_TVE=y
+ CONFIG_ROCKCHIP_RGB=y
+ CONFIG_DRM_ROCKCHIP_RK628=y
++CONFIG_VIDEO_RK628=y
+ CONFIG_DRM_PANEL_SIMPLE=y
+ CONFIG_DRM_DW_HDMI_I2S_AUDIO=y
+ CONFIG_DRM_DW_HDMI_CEC=y
+-- 
+2.17.1
+

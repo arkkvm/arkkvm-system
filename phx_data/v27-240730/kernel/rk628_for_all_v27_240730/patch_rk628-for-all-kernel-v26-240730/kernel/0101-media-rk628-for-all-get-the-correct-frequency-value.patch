@@ -1,0 +1,27 @@
+From 0a3b97a56fe3d5d688d7954e28513aa7121cd79c Mon Sep 17 00:00:00 2001
+From: Shunqing Chen <csq@rock-chips.com>
+Date: Sun, 19 Sep 2021 10:56:22 +0800
+Subject: [PATCH 101/232] media: rk628-for-all: get the correct frequency value
+
+Signed-off-by: Shunqing Chen <csq@rock-chips.com>
+Change-Id: I09abb6488bc4bc398b128940a18b34b790095c95
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_combrxphy.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/media/i2c/rk628/rk628_combrxphy.c b/drivers/media/i2c/rk628/rk628_combrxphy.c
+index 03593d6a59761b..718220d34d0a82 100644
+--- a/drivers/media/i2c/rk628/rk628_combrxphy.c
++++ b/drivers/media/i2c/rk628/rk628_combrxphy.c
+@@ -566,6 +566,7 @@ int rk628_rxphy_power_on(struct rk628 *rk628, int f)
+ 	rk628_control_deassert(rk628, RGU_RXPHY);
+ 	udelay(10);
+ 
++	f = f & 0x7fffffff;
+ 	return rk628_combrxphy_set_hdmi_mode_for_cable(rk628, f);
+ }
+ 
+-- 
+2.17.1
+

@@ -1,0 +1,28 @@
+From 1f03c2e3fad3b58eb49a7790088efd66d95d9bb8 Mon Sep 17 00:00:00 2001
+From: Shunqing Chen <csq@rock-chips.com>
+Date: Fri, 13 Aug 2021 15:48:59 +0800
+Subject: [PATCH 069/232] media: rk628-for-all: delay detect hotplug
+
+Signed-off-by: Shunqing Chen <csq@rock-chips.com>
+Change-Id: Id53049f842d301ebf16af0098669f4c119fc2d69
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_csi.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_csi.c b/drivers/media/i2c/rk628/rk628_csi.c
+index 0725acb8673f14..c5bfdc5ccd8c71 100644
+--- a/drivers/media/i2c/rk628/rk628_csi.c
++++ b/drivers/media/i2c/rk628/rk628_csi.c
+@@ -227,7 +227,7 @@ static ssize_t rk628_resolution_read(struct class *class,
+ 	static u8 cnt;
+ 
+ 	if (csi->nosignal && tx_5v_power_present(csi)) {
+-		if (cnt++ >= 6) {
++		if (cnt++ >= 60) {
+ 			cnt = 0;
+ 			dev_info(csi->dev, "no signal but 5v_det, recfg hdmirx!\n");
+ 			schedule_delayed_work(&csi->delayed_work_enable_hotplug,
+-- 
+2.17.1
+

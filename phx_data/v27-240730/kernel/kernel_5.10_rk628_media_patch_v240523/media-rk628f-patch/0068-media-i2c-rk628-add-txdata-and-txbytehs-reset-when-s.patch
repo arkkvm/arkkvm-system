@@ -1,0 +1,55 @@
+From 0e8c244e2db1718f4574fa77fa18e5d64a378355 Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Mon, 8 Apr 2024 14:25:53 +0800
+Subject: [PATCH 68/82] media: i2c: rk628: add txdata and txbytehs reset when
+ soft reset
+
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+Change-Id: I24c738e91107de252cf41270f7aafd3caa51fff6
+---
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c | 22 ++++++++++++++++------
+ 1 file changed, 16 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index 06e006438ce3..cfb215c7dfb4 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -660,19 +660,29 @@ static void rk628_csi1_cru_reset(struct v4l2_subdev *sd)
+ 	rk628_control_deassert(csi->rk628, RGU_CSI1);
+ }
+ 
+-static void rk628_csi_soft_reset(struct v4l2_subdev *sd)
++static void rk628_mipi_txdata_reset(struct v4l2_subdev *sd)
+ {
+ 	struct rk628_csi *csi = to_csi(sd);
+ 
+-	rk628_i2c_write(csi->rk628, CSITX_SYS_CTRL0_IMD, 0x1);
++	rk628_control_assert(csi->rk628, RGU_TXDATA);
++	rk628_control_assert(csi->rk628, RGU_TXBYTEHS);
+ 	usleep_range(1000, 1100);
+-	rk628_i2c_write(csi->rk628, CSITX_SYS_CTRL0_IMD, 0x0);
++	rk628_control_deassert(csi->rk628, RGU_TXDATA);
++	rk628_control_deassert(csi->rk628, RGU_TXBYTEHS);
++}
+ 
+-	if (csi->rk628->version >= RK628F_VERSION) {
++static void rk628_csi_soft_reset(struct v4l2_subdev *sd)
++{
++	struct rk628_csi *csi = to_csi(sd);
++
++	rk628_i2c_write(csi->rk628, CSITX_SYS_CTRL0_IMD, 0x1);
++	if (csi->rk628->version >= RK628F_VERSION)
+ 		rk628_i2c_write(csi->rk628, CSITX1_SYS_CTRL0_IMD, 0x1);
+-		usleep_range(1000, 1100);
++
++	rk628_mipi_txdata_reset(sd);
++	rk628_i2c_write(csi->rk628, CSITX_SYS_CTRL0_IMD, 0x0);
++	if (csi->rk628->version >= RK628F_VERSION)
+ 		rk628_i2c_write(csi->rk628, CSITX1_SYS_CTRL0_IMD, 0x0);
+-	}
+ }
+ 
+ static void enable_csitx(struct v4l2_subdev *sd)
+-- 
+2.17.1
+

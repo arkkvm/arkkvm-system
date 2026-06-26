@@ -1,0 +1,122 @@
+From c5bbb485403745967a1045e69d05ede88f8e8aec Mon Sep 17 00:00:00 2001
+From: Guochun Huang <hero.huang@rock-chips.com>
+Date: Fri, 4 Jun 2021 16:10:31 +0800
+Subject: [PATCH 014/232] misc: rk628: add dsi/lvds panel config info
+
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+Change-Id: Ie3675eeff6b6eca10ba75d519479b03ae86d2551
+---
+ drivers/misc/rk628/rk628_config.c | 44 +++++++++++++++++++++++++++++--
+ drivers/misc/rk628/rk628_config.h |  5 ++--
+ 2 files changed, 45 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/misc/rk628/rk628_config.c b/drivers/misc/rk628/rk628_config.c
+index 41c599d5453408..061e2adad82994 100644
+--- a/drivers/misc/rk628/rk628_config.c
++++ b/drivers/misc/rk628/rk628_config.c
+@@ -7,6 +7,7 @@
+ 
+ #include "rk628_config.h"
+ 
++#ifdef RK628_DSI_OUT
+ static struct drm_display_mode src_mode = {
+ 	/* .clock = */ 132000,
+ 	/* .hdisplay = */ 1080,
+@@ -17,7 +18,7 @@ static struct drm_display_mode src_mode = {
+ 	/* .vsync_start = */ 1920 + 15,
+ 	/* .vsync_end = */ 1920 + 15 + 2,
+ 	/* .vtotal = */ 1920 + 15 + 2 + 15,
+-	/* .flags = */ DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC,
++	/* .flags = */ DRM_MODE_FLAG_NVSYNC | DRM_MODE_FLAG_NVSYNC,
+ };
+ 
+ const static struct drm_display_mode dst_mode = {
+@@ -30,8 +31,37 @@ const static struct drm_display_mode dst_mode = {
+ 	/* .vsync_start = */ 1920 + 15,
+ 	/* .vsync_end = */ 1920 + 15 + 2,
+ 	/* .vtotal = */ 1920 + 15 + 2 + 15,
+-	/* .flags = */ DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC,
++	/* .flags = */ DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC,
+ };
++#endif
++
++#ifdef RK628_LVDS_OUT
++static struct drm_display_mode src_mode = {
++	/* .clock = */ 68000,
++	/* .hdisplay = */ 800,
++	/* .hsync_start = */ 800 + 30,
++	/* .hsync_end = */ 800 + 30 + 4,
++	/* .htotal = */ 800 + 30 + 3 + 30,
++	/* .vdisplay = */ 1280,
++	/* .vsync_start = */ 1280 + 3,
++	/* .vsync_end = */ 1280 + 3 + 2,
++	/* .vtotal = */ 1280 + 3 + 2 + 3,
++	/* .flags = */ DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC,
++};
++
++const static struct drm_display_mode dst_mode = {
++	/* .clock = */ 68000,
++	/* .hdisplay = */ 800,
++	/* .hsync_start = */ 800 + 30,
++	/* .hsync_end = */ 800 + 30 + 4,
++	/* .htotal = */ 800 + 30 + 3 + 30,
++	/* .vdisplay = */ 1280,
++	/* .vsync_start = */ 1280 + 3,
++	/* .vsync_end = */ 1280 + 3 + 2,
++	/* .vtotal = */ 1280 + 3 + 2 + 3,
++	/* .flags = */ DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC,
++};
++#endif
+ 
+ struct drm_display_mode *rk628_display_get_src_mode(void)
+ {
+@@ -83,6 +113,16 @@ const struct rk628_dsi *rk628_display_get_dsi1_host(void)
+ 	return &rk628_dsi1;
+ }
+ 
++u32 rk628_lvds_get_link_type(void)
++{
++	return LVDS_SINGLE_LINK;
++}
++
++u32 rk628_lvds_get_format(void)
++{
++	return LVDS_FORMAT_JEIDA_24BIT;
++}
++
+ enum bus_format input_bus_format = BUS_FMT_RGB;
+ enum bus_format output_bus_format = BUS_FMT_RGB;
+ 
+diff --git a/drivers/misc/rk628/rk628_config.h b/drivers/misc/rk628/rk628_config.h
+index d2f622f63fd3c2..60008e8040d8c0 100644
+--- a/drivers/misc/rk628/rk628_config.h
++++ b/drivers/misc/rk628/rk628_config.h
+@@ -59,7 +59,6 @@ struct rk628_dsi {
+ 	unsigned long mode_flags;
+ };
+ 
+-#ifdef RK628_LVDS_OUT
+ #define LVDS_FORMAT_VESA_24BIT		0
+ #define LVDS_FORMAT_JEIDA_24BIT		1
+ #define LVDS_FORMAT_JEIDA_18BIT		2
+@@ -70,7 +69,6 @@ struct rk628_dsi {
+ #define LVDS_DUAL_LINK_EVEN_ODD_PIXELS		2
+ #define LVDS_DUAL_LINK_LEFT_RIGHT_PIXELS	3
+ #define LVDS_DUAL_LINK_RIGHT_LEFT_PIXELS	4
+-#endif
+ 
+ enum bus_format {
+ 	BUS_FMT_RGB = 0,
+@@ -83,6 +81,9 @@ enum bus_format {
+ const struct rk628_dsi *rk628_display_get_dsi0_host(void);
+ const struct rk628_dsi *rk628_display_get_dsi1_host(void);
+ 
++u32 rk628_lvds_get_link_type(void);
++u32 rk628_lvds_get_format(void);
++
+ void rk628_set_input_bus_format(enum bus_format format);
+ enum bus_format rk628_get_input_bus_format(void);
+ void rk628_set_output_bus_format(enum bus_format format);
+-- 
+2.17.1
+

@@ -1,0 +1,43 @@
+From 979be3e83324bdd78fe674a9e21300f37787f8ee Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Wed, 11 May 2022 08:32:15 +0000
+Subject: [PATCH 143/232] media: rk628-for-all: fix r2y_csc_mode when RGB color
+ format input
+
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+Change-Id: Ia28f84862366f21c1de1d0e42cbffe8ee9794129
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628.h          | 2 ++
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c | 2 +-
+ 2 files changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628.h b/drivers/media/i2c/rk628/rk628.h
+index 90f61c02ea3a92..05661c0277ca5f 100644
+--- a/drivers/media/i2c/rk628/rk628.h
++++ b/drivers/media/i2c/rk628/rk628.h
+@@ -91,6 +91,8 @@
+ #define GRF_CSC_CTRL_CON		0x0038
+ #define SW_YUV2VYU_SWP(x)		HIWORD_UPDATE(x, 8, 8)
+ #define SW_R2Y_EN(x)			HIWORD_UPDATE(x, 4, 4)
++#define SW_R2Y_CSC_MODE(x)		HIWORD_UPDATE(x, 7, 6)
++#define SW_Y2R_CSC_MODE(x)		HIWORD_UPDATE(x, 3, 2)
+ #define SW_Y2R_EN(x)			HIWORD_UPDATE(x, 0, 0)
+ #define GRF_LVDS_TX_CON			0x003c
+ #define SW_LVDS_CON_DUAL_SEL(x)		HIWORD_UPDATE(x, 12, 12)
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index 0af1cab8986bb8..c8b4606d99dbfc 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -910,7 +910,7 @@ static void rk628_csi_set_csi(struct v4l2_subdev *sd)
+ 		/* rgb data: cfg SW_R2Y_EN */
+ 		rk628_i2c_write(csi->rk628, GRF_CSC_CTRL_CON,
+ 				SW_YUV2VYU_SWP(0) |
+-				SW_R2Y_EN(1));
++				SW_R2Y_EN(1) | SW_R2Y_CSC_MODE(2));
+ 	}
+ 
+ 	/* if avi packet is not stable, reset ctrl*/
+-- 
+2.17.1
+

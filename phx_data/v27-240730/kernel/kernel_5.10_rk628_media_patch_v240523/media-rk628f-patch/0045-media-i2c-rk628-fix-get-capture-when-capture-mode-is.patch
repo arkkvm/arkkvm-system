@@ -1,0 +1,27 @@
+From 524b8b81fa9f2c0747909dda33573e29154f98dc Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Mon, 15 Jan 2024 12:54:02 +0000
+Subject: [PATCH 45/53] media: i2c: rk628: fix get capture when capture mode is
+ 0
+
+Change-Id: Ieb87f83699f55ebd89a069b8888e554b0329c93f
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index cf81de9b4270..557890e2337b 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -2100,6 +2100,7 @@ static long rk628_csi_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
+ 			capture_info->multi_dev = csi->multi_dev_info;
+ 		} else {
+ 			capture_info->mode = 0;
++			capture_info->multi_dev = csi->multi_dev_info;
+ 		}
+ 		break;
+ 	case RKMODULE_GET_CSI_DSI_INFO:
+-- 
+2.17.1
+

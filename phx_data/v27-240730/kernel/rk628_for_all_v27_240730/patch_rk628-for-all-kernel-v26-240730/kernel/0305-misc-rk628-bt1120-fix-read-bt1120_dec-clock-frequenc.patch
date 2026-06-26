@@ -1,0 +1,77 @@
+From b8a144c2cdc4538ca99d3753b41b6a5de7669e46 Mon Sep 17 00:00:00 2001
+From: Zhibin Huang <zhibin.huang@rock-chips.com>
+Date: Fri, 17 May 2024 17:49:58 +0800
+Subject: [PATCH 305/305] misc: rk628: bt1120: fix read bt1120_dec clock
+ frequency error
+
+Type: Fix
+Redmine ID: N/A
+Associated modifications: N/A
+Test: N/A
+
+Signed-off-by: Zhibin Huang <zhibin.huang@rock-chips.com>
+Change-Id: I40f80f9d6a0daee6aedbae07cadfe24e7e171e56
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/misc/rk628/rk628_cru.c | 17 +++++++++++++++++
+ drivers/misc/rk628/rk628_rgb.c |  3 ++-
+ 2 files changed, 19 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/misc/rk628/rk628_cru.c b/drivers/misc/rk628/rk628_cru.c
+index 442d800f329242..72a9126a7ffbb0 100644
+--- a/drivers/misc/rk628/rk628_cru.c
++++ b/drivers/misc/rk628/rk628_cru.c
+@@ -499,6 +499,19 @@ static unsigned long rk628_cru_clk_set_rate_bt1120_dec(struct rk628 *rk628,
+ 	return parent_rate / div;
+ }
+ 
++static unsigned long rk628_cru_clk_get_rate_bt1120_dec(struct rk628 *rk628)
++{
++	unsigned long parent_rate;
++	u32 div;
++
++	parent_rate = rk628_cru_clk_get_rate_bt1120_dec_parent(rk628);
++
++	rk628_i2c_read(rk628, CRU_CLKSEL_CON02, &div);
++	div = (div & 0x1f) + 1;
++
++	return parent_rate / div;
++}
++
+ int rk628_cru_clk_set_rate(struct rk628 *rk628, unsigned int id,
+ 			   unsigned long rate)
+ {
+@@ -552,12 +565,16 @@ unsigned long rk628_cru_clk_get_rate(struct rk628 *rk628, unsigned int id)
+ 	case CGU_PCLK_HDMITX:
+ 	case CGU_PCLK_LOGIC:
+ 		rate = rk628_cru_clk_get_rate_pclk_logic(rk628);
++		break;
+ 	case CGU_CLK_IMODET:
+ 		rate = rk628_cru_clk_get_rate_clk_imodet(rk628);
+ 		break;
+ 	case CGU_CLK_HDMIRX_AUD:
+ 		rate = rk628_cru_clk_get_rate_sclk_hdmirx_aud(rk628);
+ 		break;
++	case CGU_BT1120DEC:
++		rate = rk628_cru_clk_get_rate_bt1120_dec(rk628);
++		break;
+ 	default:
+ 		return 0;
+ 	}
+diff --git a/drivers/misc/rk628/rk628_rgb.c b/drivers/misc/rk628/rk628_rgb.c
+index 28e7de14db1a4f..7dcf7fa0d5222d 100644
+--- a/drivers/misc/rk628/rk628_rgb.c
++++ b/drivers/misc/rk628/rk628_rgb.c
+@@ -297,7 +297,8 @@ static void rk628_bt1120_decoder_enable(struct rk628 *rk628)
+ 	 * so that the deviation between the actual clk and the required clk
+ 	 * frequency is not significant.
+ 	 */
+-	dec_clk_rate = rk628_cru_clk_set_rate(rk628, CGU_BT1120DEC, mode->clock * 1000);
++	rk628_cru_clk_set_rate(rk628, CGU_BT1120DEC, mode->clock * 1000);
++	dec_clk_rate = rk628_cru_clk_get_rate(rk628, CGU_BT1120DEC);
+ 	if (dec_clk_rate < mode->clock * 1000)
+ 		rk628_cru_clk_set_rate(rk628, CGU_BT1120DEC, mode->clock * 1020);
+ 
+-- 
+2.17.1
+

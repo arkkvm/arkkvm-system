@@ -1,0 +1,65 @@
+From 394fa14f4dabbbc3211a091c4d680ed9b8d812f1 Mon Sep 17 00:00:00 2001
+From: Guochun Huang <hero.huang@rock-chips.com>
+Date: Fri, 11 Jun 2021 11:12:12 +0800
+Subject: [PATCH 016/232] misc: rk628: cru: add get rate of sclk_vop
+
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+Change-Id: I09793329125e4c98df46cb8027fc0e4ceeaaa1ae
+---
+ drivers/misc/rk628/rk628_cru.c | 26 +++++++++++++++++++++++++-
+ 1 file changed, 25 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/misc/rk628/rk628_cru.c b/drivers/misc/rk628/rk628_cru.c
+index 5add31014c9d14..3dc75cf7dc9d65 100644
+--- a/drivers/misc/rk628/rk628_cru.c
++++ b/drivers/misc/rk628/rk628_cru.c
+@@ -276,6 +276,27 @@ static unsigned long rk628_cru_clk_set_rate_sclk_vop(struct rk628 *rk628,
+ 	return rate;
+ }
+ 
++static unsigned long rk628_cru_clk_get_rate_sclk_vop(struct rk628 *rk628)
++{
++	unsigned long rate, parent_rate, m, n;
++	u32 mux, div;
++
++	rk628_i2c_read(rk628, CRU_CLKSEL_CON02, &mux);
++	mux &= CLK_UART_SRC_SEL_MASK;
++	mux >>= SCLK_VOP_SEL_SHIFT;
++	if (mux == SCLK_VOP_SEL_GPLL)
++		parent_rate = rk628_cru_clk_get_rate_pll(rk628, CGU_CLK_GPLL);
++	else
++		parent_rate = rk628_cru_clk_get_rate_pll(rk628, CGU_CLK_CPLL);
++
++	rk628_i2c_read(rk628, CRU_CLKSEL_CON13, &div);
++	m = div >> 16 & 0xffff;
++	n = div & 0xffff;
++	rate = parent_rate * m / n;
++
++	return rate;
++}
++
+ static unsigned long rk628_cru_clk_set_rate_rx_read(struct rk628 *rk628,
+ 						    unsigned long rate)
+ {
+@@ -304,7 +325,7 @@ static unsigned long rk628_cru_clk_get_rate_uart_src(struct rk628 *rk628)
+ 	u32 mux, div;
+ 
+ 	rk628_i2c_read(rk628, CRU_CLKSEL_CON21, &mux);
+-	mux &= CLK_UART_SRC_SEL_MASK;
++	mux &= SCLK_VOP_SEL_MASK;
+ 	if (mux == CLK_UART_SRC_SEL_GPLL)
+ 		parent_rate = rk628_cru_clk_get_rate_pll(rk628, CGU_CLK_GPLL);
+ 	else
+@@ -379,6 +400,9 @@ unsigned long rk628_cru_clk_get_rate(struct rk628 *rk628, unsigned int id)
+ 	case CGU_CLK_GPLL:
+ 		rate = rk628_cru_clk_get_rate_pll(rk628, id);
+ 		break;
++	case CGU_SCLK_VOP:
++		rate = rk628_cru_clk_get_rate_sclk_vop(rk628);
++		break;
+ 	default:
+ 		return 0;
+ 	}
+-- 
+2.17.1
+

@@ -1,0 +1,68 @@
+From 387203cfcf0be7a379999352b5bb568a670cb67a Mon Sep 17 00:00:00 2001
+From: Guochun Huang <hero.huang@rock-chips.com>
+Date: Thu, 30 May 2024 11:35:11 +0800
+Subject: [PATCH 1/3] misc: rk628: hdmitx: optional compile hdmitx module
+
+Type: Fix/Function
+Redmine ID: #
+Associated modifications: gerrit links
+Test: test method
+
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+Change-Id: I8fd6bc42ba4c380732a8578065fef4ffc9cb46db
+---
+ drivers/misc/rk628/Kconfig        | 13 +++++++++++--
+ drivers/misc/rk628/Makefile       |  2 +-
+ drivers/misc/rk628/rk628_hdmitx.h |  2 +-
+ 3 files changed, 13 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/misc/rk628/Kconfig b/drivers/misc/rk628/Kconfig
+index d064f41d8465c..7910f3e86f38c 100644
+--- a/drivers/misc/rk628/Kconfig
++++ b/drivers/misc/rk628/Kconfig
+@@ -3,8 +3,17 @@ config RK628_MISC
+ 	bool "rk628 misc driver"
+ 	default y
+ 	help
+-	  Say y here to enable Rockchip rk628 thunder boot support.
+-          This option is used to support rgb/hdmi/bt1120 input and dsi/lvds/gvi/hdmi output
++	  Say y here to enable Rockchip rk628 support.
++          This option is used to support rgb/hdmi/bt1120 input and dsi/lvds/gvi output
++config RK628_MISC_HDMITX
++	bool "rk628 misc hdmitx driver"
++	default y
++	depends on RK628_MISC
++	depends on DRM
++	depends on CEC_CORE
++	help
++	    Say y here to enable Rockchip rk628 misc hdmitx driver.
++	    This option is used to support hdmi output.
+ 
+ config ROCKCHIP_THUNDER_BOOT_RK628
+ 	bool "Rockchip RK628 Thunder Boot support"
+diff --git a/drivers/misc/rk628/Makefile b/drivers/misc/rk628/Makefile
+index 6ea0ea67cac2a..8b9aeb1fc7da8 100644
+--- a/drivers/misc/rk628/Makefile
++++ b/drivers/misc/rk628/Makefile
+@@ -2,4 +2,4 @@
+ 
+ obj-$(CONFIG_RK628_MISC) += rk628.o rk628_cru.o rk628_config.o rk628_post_process.o rk628_combrxphy.o rk628_hdmirx.o rk628_combtxphy.o rk628_dsi.o panel.o rk628_lvds.o rk628_rgb.o rk628_gvi.o rk628_pinctrl.o \
+ 	 rk628_csi.o rk628_efuse.o
+-obj-$(CONFIG_DRM) += rk628_hdmitx.o
++obj-$(CONFIG_RK628_MISC_HDMITX) += rk628_hdmitx.o
+diff --git a/drivers/misc/rk628/rk628_hdmitx.h b/drivers/misc/rk628/rk628_hdmitx.h
+index da97e441a0c89..94c9df9bbc96e 100644
+--- a/drivers/misc/rk628/rk628_hdmitx.h
++++ b/drivers/misc/rk628/rk628_hdmitx.h
+@@ -349,7 +349,7 @@ enum {
+ #define DISABLE_COLORBAR_BIST(x)	UPDATE(x, 4, 4)
+ #define HDMI_MAX_REG			HDMITX_REG(0xed)
+ 
+-#ifdef CONFIG_DRM
++#ifdef CONFIG_RK628_MISC_HDMITX
+ void rk628_hdmitx_disable(struct rk628 *rk628);
+ int rk628_hdmitx_enable(struct rk628 *rk628);
+ void rk628_hdmitx_remove(struct rk628 *rk628);
+-- 
+2.17.1
+

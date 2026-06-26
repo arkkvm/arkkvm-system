@@ -1,0 +1,1 @@
+project/cfg/BoardConfig_IPC/BoardConfig-EMMC-NONE-RV1106_ARKKVM_V2.mk

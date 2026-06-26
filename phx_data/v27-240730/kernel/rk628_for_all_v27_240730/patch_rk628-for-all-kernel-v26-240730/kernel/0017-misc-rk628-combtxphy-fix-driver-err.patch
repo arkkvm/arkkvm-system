@@ -1,0 +1,216 @@
+From 98f4a20ca68c60a341368aaf6662b94d5973a210 Mon Sep 17 00:00:00 2001
+From: Guochun Huang <hero.huang@rock-chips.com>
+Date: Fri, 11 Jun 2021 11:13:55 +0800
+Subject: [PATCH 017/232] misc: rk628: combtxphy: fix driver err
+
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+Change-Id: I94a132131d6a98c4a4326174d4ff75ff560b39b0
+---
+ drivers/misc/rk628/rk628_combtxphy.c | 92 ++++++++++++++++++++--------
+ drivers/misc/rk628/rk628_combtxphy.h |  3 +-
+ drivers/misc/rk628/rk628_dsi.c       |  2 +-
+ drivers/misc/rk628/rk628_lvds.c      |  2 +-
+ 4 files changed, 69 insertions(+), 30 deletions(-)
+
+diff --git a/drivers/misc/rk628/rk628_combtxphy.c b/drivers/misc/rk628/rk628_combtxphy.c
+index 471b475fc31880..70ac90f9b9ae58 100644
+--- a/drivers/misc/rk628/rk628_combtxphy.c
++++ b/drivers/misc/rk628/rk628_combtxphy.c
+@@ -7,6 +7,7 @@
+ 
+ #include "rk628.h"
+ #include "rk628_combtxphy.h"
++#include "rk628_cru.h"
+ 
+ struct rk628_combtxphy {
+ 	enum phy_mode mode;
+@@ -16,6 +17,7 @@ struct rk628_combtxphy {
+ 	u16 frac_div;
+ 	u8 rate_div;
+ 	u32 bus_width;
++	bool division_mode;
+ } gcombtxphy;
+ 
+ static struct rk628_combtxphy *combtxphy = &gcombtxphy;
+@@ -101,21 +103,31 @@ static void rk628_combtxphy_lvds_power_on(struct rk628 *rk628)
+ 
+ static void rk628_combtxphy_gvi_power_on(struct rk628 *rk628)
+ {
++	int ref_div = 0;
++
++	if (combtxphy->ref_div % 2) {
++		ref_div = combtxphy->ref_div - 1;
++	} else {
++		ref_div = BIT(4);
++		ref_div |= combtxphy->ref_div / 2 - 1;
++	}
+ 	rk628_i2c_write(rk628, COMBTXPHY_CON5,
+-			SW_REF_DIV(combtxphy->ref_div - 1) |
++			SW_REF_DIV(ref_div) |
+ 			SW_PLL_FB_DIV(combtxphy->fb_div) |
+ 			SW_PLL_FRAC_DIV(combtxphy->frac_div) |
+ 			SW_RATE(combtxphy->rate_div / 2));
+ 	rk628_i2c_update_bits(rk628, COMBTXPHY_CON0,
+ 			      SW_BUS_WIDTH_MASK | SW_GVI_LVDS_EN_MASK |
+-			      SW_MIPI_DSI_EN_MASK | SW_MODULEB_EN_MASK |
+-			      SW_MODULEA_EN_MASK,
++			      SW_MIPI_DSI_EN_MASK |
++			      SW_MODULEB_EN_MASK | SW_MODULEA_EN_MASK,
+ 			      SW_BUS_WIDTH_10BIT | SW_GVI_LVDS_EN |
+ 			      SW_MODULEB_EN | SW_MODULEA_EN);
++
+ 	rk628_i2c_update_bits(rk628, COMBTXPHY_CON0,
+ 			      SW_PD_PLL | SW_TX_PD_MASK, 0);
+ 	usleep_range(100, 200);
+-	rk628_i2c_update_bits(rk628, COMBTXPHY_CON0, SW_TX_IDLE_MASK, 0);
++	rk628_i2c_update_bits(rk628, COMBTXPHY_CON0,
++			      SW_TX_IDLE_MASK, 0);
+ }
+ 
+ void rk628_combtxphy_power_on(struct rk628 *rk628)
+@@ -142,7 +154,7 @@ void rk628_combtxphy_power_on(struct rk628 *rk628)
+ 	case PHY_MODE_VIDEO_GVI:
+ 		rk628_i2c_update_bits(rk628, GRF_POST_PROC_CON,
+ 				      SW_TXPHY_REFCLK_SEL_MASK,
+-				      SW_TXPHY_REFCLK_SEL(0));
++				      SW_TXPHY_REFCLK_SEL(2));
+ 		rk628_combtxphy_gvi_power_on(rk628);
+ 	    break;
+ 	default:
+@@ -168,9 +180,14 @@ u32 rk628_combtxphy_get_bus_width(void)
+ 	return combtxphy->bus_width;
+ }
+ 
+-void rk628_combtxphy_set_mode(enum phy_mode mode)
++void rk628_combtxphy_set_gvi_division_mode(bool division)
++{
++	combtxphy->division_mode = division;
++}
++
++void rk628_combtxphy_set_mode(struct rk628 *rk628, enum phy_mode mode)
+ {
+-	unsigned int fvco, frac_rate, fin = 24;
++	unsigned int fvco, fpfd, frac_rate, fin = 24;
+ 
+ 	switch (mode) {
+ 	case PHY_MODE_VIDEO_MIPI:
+@@ -232,35 +249,56 @@ void rk628_combtxphy_set_mode(enum phy_mode mode)
+ 	}
+ 	case PHY_MODE_VIDEO_GVI:
+ 	{
+-		unsigned int fhsc = rk628_combtxphy_get_bus_width() & 0xfff;
++		unsigned int i, delta_freq, best_delta_freq, fb_div;
++		unsigned int bus_width = rk628_combtxphy_get_bus_width();
++		unsigned long ref_clk;
++		unsigned long long pre_clk;
+ 
+-		if (fhsc < 500 || fhsc > 4000)
++		if (bus_width < 500000 || bus_width > 4000000)
+ 			return;
+-		else if (fhsc < 1000)
++		else if (bus_width < 1000000)
+ 			combtxphy->rate_div = 4;
+-		else if (fhsc < 2000)
++		else if (bus_width < 2000000)
+ 			combtxphy->rate_div = 2;
+ 		else
+ 			combtxphy->rate_div = 1;
+-		fvco = fhsc * combtxphy->rate_div;
++		fvco = bus_width * combtxphy->rate_div;
++		ref_clk = rk628_cru_clk_get_rate(rk628, CGU_SCLK_VOP) / 1000; /* khz */
++		if (combtxphy->division_mode)
++			ref_clk /= 2;
++		/*
++		 * the reference clock at PFD(FPFD = ref_clk / ref_div) about
++		 * 25MHz is recommende, FPFD must range from 16MHz to 35MHz,
++		 * here to find the best rev_div.
++		 */
++		best_delta_freq = ref_clk;
++		for (i = 1; i <= 32; i++) {
++			fpfd = ref_clk / i;
++			delta_freq = abs(fpfd - 25000);
++			if (delta_freq < best_delta_freq) {
++				best_delta_freq = delta_freq;
++				combtxphy->ref_div = i;
++			}
++		}
+ 
+-		combtxphy->ref_div = 1;
+-		combtxphy->fb_div = fvco / 8 / fin;
+-		frac_rate = fvco - (fin * 8 * combtxphy->fb_div);
++		/*
++		 * ref_clk / ref_div * 8 * fb_div = FVCO
++		 */
++		pre_clk = (unsigned long long)fvco / 8 * combtxphy->ref_div * 1024;
++		do_div(pre_clk, ref_clk);
++		fb_div = pre_clk / 1024;
+ 
+-		if (frac_rate) {
+-			frac_rate <<= 10;
+-			frac_rate /= fin * 8;
+-			combtxphy->frac_div = frac_rate;
+-		} else {
+-			combtxphy->frac_div = 0;
+-		}
++		/*
++		 * get the actually frequence
++		 */
++		bus_width = ref_clk / combtxphy->ref_div * 8;
++		bus_width *= fb_div;
++		bus_width /= combtxphy->rate_div;
+ 
+-		fvco = fin * (1024 * combtxphy->fb_div + combtxphy->frac_div);
+-		fvco *= 8;
+-		fvco /= 1024 * combtxphy->ref_div;
+-		fhsc = fvco / combtxphy->rate_div;
+-		combtxphy->bus_width = fhsc;
++		combtxphy->frac_div = 0;
++		combtxphy->fb_div = fb_div;
++
++		combtxphy->bus_width = bus_width;
+ 		break;
+ 	}
+ 	default:
+diff --git a/drivers/misc/rk628/rk628_combtxphy.h b/drivers/misc/rk628/rk628_combtxphy.h
+index 823f39fdc5085e..3df3fd778561ec 100644
+--- a/drivers/misc/rk628/rk628_combtxphy.h
++++ b/drivers/misc/rk628/rk628_combtxphy.h
+@@ -76,7 +76,8 @@ enum phy_mode {
+ 	PHY_MODE_VIDEO_GVI,
+ };
+ 
+-void rk628_combtxphy_set_mode(enum phy_mode mode);
++void rk628_combtxphy_set_gvi_division_mode(bool division);
++void rk628_combtxphy_set_mode(struct rk628 *rk628, enum phy_mode mode);
+ void rk628_combtxphy_set_bus_width(uint32_t bus_width);
+ uint32_t rk628_combtxphy_get_bus_width(void);
+ void rk628_combtxphy_power_on(struct rk628 *rk628);
+diff --git a/drivers/misc/rk628/rk628_dsi.c b/drivers/misc/rk628/rk628_dsi.c
+index c75977ae024068..c2f39263a3754c 100644
+--- a/drivers/misc/rk628/rk628_dsi.c
++++ b/drivers/misc/rk628/rk628_dsi.c
+@@ -1417,7 +1417,7 @@ void rk628_dsi_enable(struct rk628 *rk628)
+ 		bus_width |= COMBTXPHY_MODULEA_EN;
+ 
+ 	rk628_combtxphy_set_bus_width(bus_width);
+-	rk628_combtxphy_set_mode(PHY_MODE_VIDEO_MIPI);
++	rk628_combtxphy_set_mode(rk628, PHY_MODE_VIDEO_MIPI);
+ 	lane_mbps = rk628_combtxphy_get_bus_width();
+ 
+ 	if (dsi->slave)
+diff --git a/drivers/misc/rk628/rk628_lvds.c b/drivers/misc/rk628/rk628_lvds.c
+index 38908ad3848106..27b004f934a585 100644
+--- a/drivers/misc/rk628/rk628_lvds.c
++++ b/drivers/misc/rk628/rk628_lvds.c
+@@ -73,7 +73,7 @@ void rk628_lvds_enable(struct rk628 *rk628)
+ 
+ 	bus_width |= (mode->clock / 1000) << 8;
+ 	rk628_combtxphy_set_bus_width(bus_width);
+-	rk628_combtxphy_set_mode(PHY_MODE_VIDEO_LVDS);
++	rk628_combtxphy_set_mode(rk628, PHY_MODE_VIDEO_LVDS);
+ 	rk628_combtxphy_power_on(rk628);
+ 	panel_pre_enable(rk628);
+ 	panel_enable(rk628);
+-- 
+2.17.1
+

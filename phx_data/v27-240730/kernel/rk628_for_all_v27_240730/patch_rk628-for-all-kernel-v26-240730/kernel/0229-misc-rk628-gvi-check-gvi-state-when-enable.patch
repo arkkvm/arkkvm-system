@@ -1,0 +1,95 @@
+From ed6e3ab2da7138121979104933f930bafe31d860 Mon Sep 17 00:00:00 2001
+From: Sandy Huang <hjc@rock-chips.com>
+Date: Fri, 1 Dec 2023 11:52:05 +0800
+Subject: [PATCH 229/232] misc: rk628: gvi: check gvi state when enable
+
+Try to disable and enable GVI and TX phy when GVI lock failed.
+
+Signed-off-by: Sandy Huang <hjc@rock-chips.com>
+Change-Id: I190ed60884850946091185c89e54a7bb551eb03d
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/misc/rk628/rk628.h     |  1 +
+ drivers/misc/rk628/rk628_gvi.c | 26 ++++++++++++++++++++++++++
+ drivers/misc/rk628/rk628_gvi.h |  2 ++
+ 3 files changed, 29 insertions(+)
+
+diff --git a/drivers/misc/rk628/rk628.h b/drivers/misc/rk628/rk628.h
+index b9cffac5cf7ed8..4ab61eda395f7c 100644
+--- a/drivers/misc/rk628/rk628.h
++++ b/drivers/misc/rk628/rk628.h
+@@ -527,6 +527,7 @@ struct rk628_lvds {
+ struct rk628_gvi {
+ 	enum gvi_bus_format bus_format;
+ 	enum gvi_color_depth color_depth;
++	int retry_times;
+ 	uint8_t lanes;
+ 	bool division_mode;
+ 	bool frm_rst;
+diff --git a/drivers/misc/rk628/rk628_gvi.c b/drivers/misc/rk628/rk628_gvi.c
+index 67b07b101ae96a..80494cdc3df697 100644
+--- a/drivers/misc/rk628/rk628_gvi.c
++++ b/drivers/misc/rk628/rk628_gvi.c
+@@ -14,6 +14,8 @@
+ #include "rk628_gvi.h"
+ #include "panel.h"
+ 
++#define GVI_RETRY_TIMEOUT	10
++
+ int rk628_gvi_parse(struct rk628 *rk628, struct device_node *gvi_np)
+ {
+ 	const char *string;
+@@ -256,6 +258,7 @@ void rk628_gvi_enable(struct rk628 *rk628)
+ 	unsigned int rate;
+ 	u32 mask = SW_OUTPUT_MODE_MASK;
+ 	u32 val = SW_OUTPUT_MODE(OUTPUT_MODE_GVI);
++	int i = 0;
+ 
+ 	rk628_gvi_get_info(gvi);
+ 	rate = rk628_gvi_get_lane_rate(rk628);
+@@ -279,6 +282,29 @@ void rk628_gvi_enable(struct rk628 *rk628)
+ 	rk628_gvi_enable_color_bar(rk628, gvi);
+ 	rk628_gvi_post_enable(rk628, gvi);
+ 	rk628_panel_enable(rk628);
++
++	for (i = 0; i < 100; i++) {
++		rk628_i2c_read(rk628, GVI_STATUS, &val);
++		if ((val & GVI_LOCKED_MASK) == GVI_LOCKED_STATUS)
++			break;
++		usleep_range(1000, 1100);
++	}
++
++	if (i == 100 && gvi->retry_times < GVI_RETRY_TIMEOUT) {
++		dev_info(rk628->dev, "GVI Lock failed: 0x%x, try again: %d\n", val, gvi->retry_times);
++		gvi->retry_times++;
++		rk628_gvi_disable(rk628);
++		usleep_range(50000, 51000);
++		rk628_gvi_enable(rk628);
++	}
++
++	if (gvi->retry_times >= GVI_RETRY_TIMEOUT && i == 100) {
++		dev_info(rk628->dev, "GVI Lock failed, please check hardware!\n");
++		return;
++	}
++
++	if (i != 100)
++		gvi->retry_times = 0;
+ 	dev_info(rk628->dev,
+ 		 "GVI-Link bandwidth: %d x %d Mbps, Byte mode: %d, Color Depty: %d, %s division mode\n",
+ 		 rate, gvi->lanes, gvi->byte_mode, gvi->color_depth,
+diff --git a/drivers/misc/rk628/rk628_gvi.h b/drivers/misc/rk628/rk628_gvi.h
+index ba6f08892e612a..81048ce2f43bd4 100644
+--- a/drivers/misc/rk628/rk628_gvi.h
++++ b/drivers/misc/rk628/rk628_gvi.h
+@@ -20,6 +20,8 @@
+ #define GVI_SYS_RST					HOSTREG(0x0014)
+ #define GVI_LINE_FLAG					HOSTREG(0x0018)
+ #define GVI_STATUS					HOSTREG(0x001c)
++#define GVI_LOCKED_MASK					0x70
++#define GVI_LOCKED_STATUS				0x40
+ #define GVI_PLL_LOCK_TIMEOUT				HOSTREG(0x0030)
+ #define GVI_HTPDN_TIMEOUT				HOSTREG(0x0034)
+ #define GVI_LOCKN_TIMEOUT				HOSTREG(0x0038)
+-- 
+2.17.1
+

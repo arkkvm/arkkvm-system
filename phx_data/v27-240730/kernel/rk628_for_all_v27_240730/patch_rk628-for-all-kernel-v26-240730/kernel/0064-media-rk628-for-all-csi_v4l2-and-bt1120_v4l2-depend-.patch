@@ -1,0 +1,41 @@
+From f7e75fd55b4242bb2ce541d4c2b31000bba200e2 Mon Sep 17 00:00:00 2001
+From: Shunqing Chen <csq@rock-chips.com>
+Date: Wed, 11 Aug 2021 17:39:30 +0800
+Subject: [PATCH 064/232] media: rk628-for-all: csi_v4l2 and bt1120_v4l2 depend
+ on V4L2_FWNODE
+
+Signed-off-by: Shunqing Chen <csq@rock-chips.com>
+Change-Id: Ice21daac0ef7331c963806d1d690129640bc205d
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/Makefile | 17 +++++++++--------
+ 1 file changed, 9 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/Makefile b/drivers/media/i2c/rk628/Makefile
+index f56a6e57b7d715..14786ec3108c8f 100644
+--- a/drivers/media/i2c/rk628/Makefile
++++ b/drivers/media/i2c/rk628/Makefile
+@@ -3,11 +3,12 @@
+ # Makefile for the Rockchip RK628 display bridge driver.
+ #
+ 
+-obj-y += rk628.o \
+-	 rk628_cru.o \
+-	 rk628_hdmirx.o \
+-	 rk628_csi.o \
+-	 rk628_csi_v4l2.o \
+-	 rk628_combrxphy.o \
+-	 rk628_combtxphy.o \
+-	 rk628_bt1120_v4l2.o
++obj-y				+= rk628.o \
++				   rk628_cru.o \
++				   rk628_hdmirx.o \
++				   rk628_csi.o \
++				   rk628_combrxphy.o \
++				   rk628_combtxphy.o
++
++obj-$(CONFIG_V4L2_FWNODE)	+= rk628_csi_v4l2.o \
++				   rk628_bt1120_v4l2.o
+-- 
+2.17.1
+

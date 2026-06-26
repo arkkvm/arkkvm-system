@@ -1,0 +1,184 @@
+#!/bin/sh
+#
+# Start the network....
+#
+
+# Debian ifupdown needs the /run/network lock directory
+mkdir -p /run/network
+
+STATIC_CONF=/userdata/arkkvm/static_ip.conf
+STATIC_IF=eth0
+
+case "$0" in
+/*) SCRIPT_DIR=$(dirname "$0") ;;
+*) SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" && pwd) ;;
+esac
+LOGFILE="/userdata/arkkvm//S16network.log"
+
+log_msg() {
+	TS=$(date '+%Y-%m-%d %H:%M:%S')
+	LINE="$TS $*"
+	if ! echo "$LINE" >>"$LOGFILE" 2>/dev/null; then
+		echo "$LINE" >>/tmp/S16network.log 2>/dev/null || true
+	fi
+}
+
+# Parse statc_ip.conf as key = value (ip, netmask, gateway, dns)
+apply_static_ip() {
+	STATIC_IP=
+	STATIC_MASK=
+	STATIC_GW=
+	STATIC_DNS=
+
+	while IFS= read -r line || [ -n "$line" ]; do
+		line=$(echo "$line" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+		[ -z "$line" ] && continue
+		case "$line" in \#*) continue ;; esac
+		key=$(echo "${line%%=*}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+		val=$(echo "${line#*=}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+		case "$key" in
+		ip) STATIC_IP=$val ;;
+		netmask) STATIC_MASK=$val ;;
+		gateway) STATIC_GW=$val ;;
+		dns) STATIC_DNS=$val ;;
+		esac
+	done <"$STATIC_CONF"
+
+	if [ -z "$STATIC_IP" ] || [ -z "$STATIC_MASK" ]; then
+		log_msg "Invalid static config: missing ip or netmask (ip=[$STATIC_IP] netmask=[$STATIC_MASK])"
+		return 1
+	fi
+
+	log_msg "Parsed static config: ip=$STATIC_IP netmask=$STATIC_MASK gateway=$STATIC_GW dns=[$STATIC_DNS]"
+
+	if [ -x /etc/init.d/S15dhcpcd ]; then
+		/etc/init.d/S15dhcpcd stop 2>/dev/null || true
+	fi
+	killall dhcpcd 2>/dev/null || true
+	killall udhcpc 2>/dev/null || true
+	log_msg "Stopped dhcpcd/udhcpc (best effort)"
+
+	if command -v ip >/dev/null 2>&1; then
+		ip -4 addr flush dev "$STATIC_IF" 2>/dev/null || true
+		log_msg "Ran: ip -4 addr flush dev $STATIC_IF (clear leftover DHCP addresses)"
+	fi
+
+	if ! ifconfig "$STATIC_IF" "$STATIC_IP" netmask "$STATIC_MASK" up; then
+		log_msg "ifconfig failed: $STATIC_IF $STATIC_IP netmask $STATIC_MASK"
+		return 1
+	fi
+
+	route del default 2>/dev/null
+	if [ -n "$STATIC_GW" ]; then
+		if route add default gw "$STATIC_GW" dev "$STATIC_IF" >/dev/null 2>&1; then
+			log_msg "Default route added: gw=$STATIC_GW dev=$STATIC_IF"
+		else
+			log_msg "Failed to add default route: gw=$STATIC_GW dev=$STATIC_IF (check route -n)"
+		fi
+	else
+		log_msg "No gateway in config; skipped default route"
+	fi
+
+	if [ -n "$STATIC_DNS" ]; then
+		{
+			echo "# Static from $STATIC_CONF (S16network)"
+			for ns in $STATIC_DNS; do
+				echo "nameserver $ns"
+			done
+		} >/etc/resolv.conf
+		log_msg "Wrote /etc/resolv.conf: $STATIC_DNS"
+	else
+		log_msg "No dns in config; left /etc/resolv.conf unchanged"
+	fi
+
+	log_msg "Static IP apply finished"
+	return 0
+}
+
+start_iface_dhcp() {
+	if command -v ip >/dev/null 2>&1; then
+		ip -4 addr flush dev "$STATIC_IF" 2>/dev/null || true
+		ip -4 route del default dev "$STATIC_IF" 2>/dev/null || true
+		ip link set "$STATIC_IF" up 2>/dev/null || true
+		log_msg "DHCP prepare: flushed IPv4/default route and set $STATIC_IF up"
+	else
+		ifconfig "$STATIC_IF" 0.0.0.0 up 2>/dev/null || true
+		route del default dev "$STATIC_IF" 2>/dev/null || true
+		log_msg "DHCP prepare (no ip cmd): reset $STATIC_IF to 0.0.0.0 and removed default route"
+	fi
+
+	if [ -x /etc/init.d/S15dhcpcd ] && [ -f /etc/dhcpcd.conf ]; then
+		if [ -f /var/run/dhcpcd/pid ] && kill -0 "$(cat /var/run/dhcpcd/pid 2>/dev/null)" 2>/dev/null; then
+			dhcpcd -n "$STATIC_IF" >/dev/null 2>&1 || true
+			log_msg "dhcpcd already running (S15), requested rebind on $STATIC_IF"
+			return 0
+		fi
+		if /etc/init.d/S15dhcpcd start 2>/dev/null; then
+			dhcpcd -n "$STATIC_IF" >/dev/null 2>&1 || true
+			log_msg "Started dhcpcd (S15, late start)"
+			return 0
+		fi
+	fi
+	MAC_HEX=$(cat "/sys/class/net/$STATIC_IF/address" 2>/dev/null | tr -d ':')
+	if [ -n "$MAC_HEX" ]; then
+		udhcpc -i "$STATIC_IF" -b -n -t 5 -T 1 -A 1 -s /usr/share/udhcpc/default.script -x "0x3d:01$MAC_HEX"
+	else
+		udhcpc -i "$STATIC_IF" -b -n -t 5 -T 1 -A 1 -s /usr/share/udhcpc/default.script
+	fi
+	log_msg "Started udhcpc (single instance, client-id 0x3d if MAC ok)"
+}
+
+case "$1" in
+start)
+	log_msg "======== S16network start ========"
+	log_msg "STATIC_CONF=$STATIC_CONF iface=$STATIC_IF"
+
+	printf "Starting network: "
+	/sbin/ifup -a
+	IFUP_RC=$?
+	if [ "$IFUP_RC" = 0 ]; then
+		echo "OK"
+		log_msg "ifup -a OK"
+	else
+		echo "FAIL"
+		log_msg "ifup -a failed rc=$IFUP_RC"
+	fi
+
+	if [ -e "$STATIC_CONF" ]; then
+		log_msg "Config file exists, size_bytes=$(wc -c <"$STATIC_CONF" 2>/dev/null || echo 0)"
+	else
+		log_msg "Config file not readable here (often S16 before S20, /userdata not mounted yet)"
+	fi
+
+	if [ -s "$STATIC_CONF" ]; then
+		log_msg "Non-empty static config; applying static IP"
+		printf "Using static IP from %s\n" "$STATIC_CONF"
+		if apply_static_ip; then
+			:
+		else
+			log_msg "Static apply failed; falling back to DHCP"
+			echo "static config invalid or ifconfig failed, falling back to DHCP"
+			start_iface_dhcp
+		fi
+	else
+		log_msg "Using DHCP: config missing or empty (-s check failed)"
+		start_iface_dhcp
+	fi
+	log_msg "======== S16network start end ========"
+	;;
+stop)
+	printf "Stopping network: "
+	/sbin/ifdown -a
+	[ $? = 0 ] && echo "OK" || echo "FAIL"
+	;;
+restart|reload)
+	"$0" stop
+	"$0" start
+	;;
+*)
+	echo "Usage: $0 {start|stop|restart}"
+	exit 1
+	;;
+esac
+
+exit $?

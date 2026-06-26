@@ -1,0 +1,107 @@
+From 51e7cf9d9bc1e75bea18ae2fd14c81cbaa81c2a7 Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Mon, 13 May 2024 19:14:40 +0800
+Subject: [PATCH 290/305] media: i2c: rk628: for-all fix compile in kernel-5.10
+
+Type: Fix
+Redmine ID: N/A
+Associated modifications: N/A
+Test: N/A
+
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+Change-Id: I2334bb44ca8bdf512f08ab04fbc1f4241f2c5285
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c | 27 ++++++++++++++++++------
+ 1 file changed, 20 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index 8f36f51dc13224..dc39812dce9042 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -405,10 +405,10 @@ static int rk628_csi_get_detected_timings(struct v4l2_subdev *sd,
+ 
+ 	if ((bt->pixelclock > 300000000 && csi->rk628->version >= RK628F_VERSION) ||
+ 		(bt->width > 2048 && csi->plat_data->tx_mode == DSI_MODE)) {
+-		v4l2_info(sd, "rk628f detect pixclk more than 300M, use dual mipi mode\n");
++		v4l2_dbg(1, debug, sd, "rk628f detect pixclk more than 300M, use dual mipi mode\n");
+ 		csi->rk628->dual_mipi = true;
+ 	} else {
+-		v4l2_info(sd, "pixclk less than 300M, use single mipi mode\n");
++		v4l2_dbg(1, debug, sd, "pixclk less than 300M, use single mipi mode\n");
+ 		csi->rk628->dual_mipi = false;
+ 	}
+ 
+@@ -2347,6 +2347,11 @@ static long rk628_csi_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
+ 		stream = *((u32 *)arg);
+ 		rk628_csi_reset_streaming(sd, !!stream);
+ 		break;
++#ifdef KERNEL_VERSION_5_10
++	case RKMODULE_GET_HDMI_MODE:
++		*(int *)arg = RKMODULE_HDMIIN_MODE;
++		break;
++#endif
+ 	default:
+ 		ret = -ENOIOCTLCMD;
+ 		break;
+@@ -2679,7 +2684,11 @@ static const struct dev_pm_ops rk628_csi_pm_ops = {
+ static int rk628_csi_probe_of(struct rk628_csi *csi)
+ {
+ 	struct device *dev = csi->dev;
++#ifdef KERNEL_VERSION_5_10
++	struct v4l2_fwnode_endpoint endpoint = { .bus_type = 0 };
++#else
+ 	struct v4l2_fwnode_endpoint *endpoint = NULL;
++#endif
+ 	struct device_node *ep;
+ 	int ret = -EINVAL;
+ 	bool hdcp1x_enable = false, i2s_enable_default = false;
+@@ -2758,7 +2767,7 @@ static int rk628_csi_probe_of(struct rk628_csi *csi)
+ 	}
+ 
+ #ifdef KERNEL_VERSION_5_10
+-	ret = v4l2_fwnode_endpoint_alloc_parse(of_fwnode_handle(ep), endpoint);
++	ret = v4l2_fwnode_endpoint_alloc_parse(of_fwnode_handle(ep), &endpoint);
+ 	if (ret) {
+ 		dev_err(dev, "failed to parse endpoint\n");
+ 		of_node_put(ep);
+@@ -2773,19 +2782,20 @@ static int rk628_csi_probe_of(struct rk628_csi *csi)
+ #endif
+ 
+ #ifdef KERNEL_VERSION_5_10
+-	if (endpoint->bus_type != V4L2_MBUS_CSI2_DPHY ||
+-	    endpoint->bus.mipi_csi2.num_data_lanes == 0) {
++	if (endpoint.bus_type != V4L2_MBUS_CSI2_DPHY ||
++	    endpoint.bus.mipi_csi2.num_data_lanes == 0) {
+ 		dev_err(dev, "missing CSI-2 properties in endpoint\n");
+ 		goto free_endpoint;
+ 	}
++	csi->csi_lanes_in_use = endpoint.bus.mipi_csi2.num_data_lanes;
+ #else
+ 	if (endpoint->bus_type != V4L2_MBUS_CSI2 ||
+ 	    endpoint->bus.mipi_csi2.num_data_lanes == 0) {
+ 		dev_err(dev, "missing CSI-2 properties in endpoint\n");
+ 		goto free_endpoint;
+ 	}
+-#endif
+ 	csi->csi_lanes_in_use = endpoint->bus.mipi_csi2.num_data_lanes;
++#endif
+ 	csi->enable_hdcp = hdcp1x_enable;
+ 	csi->hdcp.enable = hdcp1x_enable;
+ 	csi->i2s_enable_default = i2s_enable_default;
+@@ -2804,8 +2814,11 @@ static int rk628_csi_probe_of(struct rk628_csi *csi)
+ 	ret = 0;
+ 
+ free_endpoint:
++#ifdef KERNEL_VERSION_5_10
++	v4l2_fwnode_endpoint_free(&endpoint);
++#else
+ 	v4l2_fwnode_endpoint_free(endpoint);
+-
++#endif
+ 	return ret;
+ }
+ 
+-- 
+2.17.1
+

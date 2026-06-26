@@ -1,0 +1,98 @@
+HEAD detached from ff9520f9f
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   ../../../../arch/arm/boot/dts/phx-rv1106-public-628f.dtsi
+	modified:   ../../../../arch/arm/boot/dts/phx-rv1106-public-core-v1.dts
+	modified:   ../../../../arch/arm/boot/dts/phx-rv1106-public.dtsi
+	modified:   ../../../../arch/arm/configs/rv1106-evb.config
+	modified:   ../../../../arch/arm/configs/rv1106_defconfig
+	modified:   ../../../devfreq/rockchip_dmc_common.c
+	modified:   ../cam-tb-setup.c
+	modified:   ../cam-tb-setup.h
+	modified:   Kconfig
+	modified:   Makefile
+	modified:   rk628.c
+	modified:   rk628.h
+	modified:   rk628_bt1120_v4l2.c
+	modified:   rk628_combtxphy.c
+	modified:   rk628_combtxphy.h
+	modified:   rk628_cru.c
+	modified:   rk628_cru.h
+	modified:   rk628_csi.h
+	modified:   rk628_csi_v4l2.c
+	modified:   rk628_dsi.c
+	modified:   rk628_dsi.h
+	modified:   rk628_hdmirx.c
+	modified:   rk628_hdmirx.h
+	modified:   rk628_mipi_dphy.h
+	modified:   ../tc35874x.c
+	modified:   ../../platform/Makefile
+	modified:   ../../platform/rockchip/cif/capture.c
+	modified:   ../../platform/rockchip/cif/dev.h
+	modified:   ../../platform/rockchip/cif/rkcif-externel.h
+	modified:   ../../platform/rockchip/cif/subdev-itf.c
+	modified:   ../../platform/rockchip/cif/subdev-itf.h
+	modified:   ../../platform/rockchip/hdmirx/Kconfig
+	modified:   ../../platform/rockchip/hdmirx/Makefile
+	modified:   ../../platform/rockchip/hdmirx/rk_hdmirx.c
+	modified:   ../../platform/rockchip/isp/isp_external.h
+	modified:   ../../../../drv_ko/lib/modules/5.10.160/modules.builtin.modinfo
+	modified:   ../../../../drv_ko/lib/modules/5.10.160/modules.dep
+	modified:   ../../../../drv_ko/lib/modules/5.10.160/modules.symbols
+	modified:   ../../../../include/soc/rockchip/rockchip-system-status.h
+	modified:   ../../../../include/soc/rockchip/rockchip_dmc.h
+	modified:   ../../../../include/uapi/linux/rk-camera-module.h
+	modified:   ../../../../include/uapi/linux/rk_hdmirx_config.h
+	modified:   ../../../../include/uapi/linux/rkcif-config.h
+	modified:   ../../../../sound/soc/rockchip/Kconfig
+	modified:   ../../../../sound/soc/rockchip/Makefile
+	modified:   ../../../../sound/soc/rockchip/rockchip_dlp.c
+	modified:   ../../../../sound/soc/rockchip/rockchip_dlp.h
+	modified:   ../../../../sound/soc/rockchip/rockchip_i2s.c
+	modified:   ../../../../sound/soc/rockchip/rockchip_i2s.h
+	modified:   ../../../../sound/soc/rockchip/rockchip_i2s_tdm.c
+	modified:   ../../../../sound/soc/rockchip/rockchip_i2s_tdm.h
+	modified:   ../../../../sound/soc/rockchip/rockchip_multi_dais.c
+	modified:   ../../../../sound/soc/rockchip/rockchip_multi_dais.h
+	modified:   ../../../../sound/soc/rockchip/rockchip_multi_dais_pcm.c
+	modified:   ../../../../sound/soc/rockchip/rockchip_multicodecs.c
+	modified:   ../../../../sound/soc/rockchip/rockchip_pdm.c
+	modified:   ../../../../sound/soc/rockchip/rockchip_sai.c
+	modified:   ../../../../sound/soc/rockchip/rockchip_sai.h
+	modified:   ../../../../sound/soc/rockchip/rockchip_spdif.c
+	modified:   ../../../../sound/soc/rockchip/rockchip_spdifrx.c
+	modified:   ../../../../sound/soc/rockchip/rockchip_spdifrx.h
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	../../../../arch/arm/boot/dts/phx-rv1106-public-TC358743XBG.dtsi
+	git_status.txt
+	rk628_bt1120_csi.c
+	rk628_csi.c
+	rk628_gpio.h
+	rk628_grf.h
+	rk628_hdmirx_c_back
+	rk628_mipi_dphy.c
+	rk628_pinctrl.c
+	rk628_pinctrl.h
+	rk628_post_process.c
+	rk628_post_process.h
+	rk628_v4l2_controls.h
+	../../platform/rockchip/hdmirx/rk_hdmirx_class.c
+	../../platform/rockchip/rk_hdmirx_class.c
+	../../../../git_status.txt
+	../../../../git_status_now.txt
+	../../../../include/linux/rk_hdmirx_class.h
+	../../../../sound/soc/rockchip/rockchip_dlp_pcm.c
+	../../../../sound/soc/rockchip/rockchip_dlp_pcm.h
+	../../../../sound/soc/rockchip/rockchip_dummy_dai.c
+	../../../../sound/soc/rockchip/rockchip_trcm.c
+	../../../../sound/soc/rockchip/rockchip_trcm.h
+	../../../../sound/soc/rockchip/rockchip_utils.c
+	../../../../sound/soc/rockchip/rockchip_utils.h
+	../../../../sound/soc/rockchip_orgin/
+	../../../../t.dts
+	../../../../t_0806.dts
+
+no changes added to commit (use "git add" and/or "git commit -a")

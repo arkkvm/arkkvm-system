@@ -1,0 +1,110 @@
+From f772a775b82bdccb43c5ba91267663bc3e888819 Mon Sep 17 00:00:00 2001
+From: Guochun Huang <hero.huang@rock-chips.com>
+Date: Wed, 6 Dec 2023 05:50:16 +0000
+Subject: [PATCH 186/232] misc: rk628: gvi: add color_bar debugfs node
+
+Enable color bar
+echo 1 > /sys/kernel/debug/rk628/2-0050/gvi_color_bar
+
+Disable color bar
+echo 0 > /sys/kernel/debug/rk628/2-0050/gvi_color_bar
+
+Change-Id: Ieb12d4160a90f27f505aa9c537b9005e35aa7c41
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/misc/rk628/rk628.c     |  1 +
+ drivers/misc/rk628/rk628_gvi.c | 47 ++++++++++++++++++++++++++++++++++
+ drivers/misc/rk628/rk628_gvi.h |  2 +-
+ 3 files changed, 49 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/misc/rk628/rk628.c b/drivers/misc/rk628/rk628.c
+index b1c936692b1eef..6a521422ad8209 100644
+--- a/drivers/misc/rk628/rk628.c
++++ b/drivers/misc/rk628/rk628.c
+@@ -1223,6 +1223,7 @@ static void rk628_debugfs_create(struct rk628 *rk628)
+ 
+ 	rk628_post_process_create_debugfs_file(rk628);
+ 	rk628_mipi_dsi_create_debugfs_file(rk628);
++	rk628_gvi_create_debugfs_file(rk628);
+ }
+ 
+ static int
+diff --git a/drivers/misc/rk628/rk628_gvi.c b/drivers/misc/rk628/rk628_gvi.c
+index 23ff0c34fa9824..eb591157edb6e1 100644
+--- a/drivers/misc/rk628/rk628_gvi.c
++++ b/drivers/misc/rk628/rk628_gvi.c
+@@ -5,6 +5,9 @@
+  * Author: Guochun Huang <hero.huang@rock-chips.com>
+  */
+ 
++#include <linux/debugfs.h>
++#include "linux/printk.h"
++
+ #include "rk628.h"
+ #include "rk628_config.h"
+ #include "rk628_combtxphy.h"
+@@ -187,6 +190,50 @@ static void rk628_gvi_enable_color_bar(struct rk628 *rk628,
+ 	rk628_i2c_update_bits(rk628, GVI_COLOR_BAR_CTRL, COLOR_BAR_EN, 0);
+ }
+ 
++static int rk628_gvi_color_bar_show(struct seq_file *s, void *data)
++{
++	seq_puts(s, "  Enable color bar:\n");
++	seq_puts(s, "      example: echo 1 > /sys/kernel/debug/rk628/2-0050/gvi_color_bar\n");
++	seq_puts(s, "  Disable color bar:\n");
++	seq_puts(s, "      example: echo 0 > /sys/kernel/debug/rk628/2-0050/gvi_color_bar\n");
++
++	return 0;
++}
++
++static int rk628_gvi_color_bar_open(struct inode *inode, struct file *file)
++{
++	return single_open(file, rk628_gvi_color_bar_show, inode->i_private);
++}
++
++static ssize_t rk628_gvi_color_bar_write(struct file *file, const char __user *ubuf,
++					 size_t len, loff_t *offp)
++{
++	struct rk628 *rk628 = ((struct seq_file *)file->private_data)->private;
++	u8 mode;
++
++	if (kstrtou8_from_user(ubuf, len, 0, &mode))
++		return -EFAULT;
++
++	rk628_i2c_update_bits(rk628, GVI_COLOR_BAR_CTRL, COLOR_BAR_EN, mode ? 1 : 0);
++
++	return len;
++}
++
++static const struct file_operations rk628_gvi_color_bar_fops = {
++	.owner = THIS_MODULE,
++	.open = rk628_gvi_color_bar_open,
++	.read = seq_read,
++	.write = rk628_gvi_color_bar_write,
++	.llseek = seq_lseek,
++	.release = single_release,
++};
++
++void rk628_gvi_create_debugfs_file(struct rk628 *rk628)
++{
++	if (rk628_output_is_gvi(rk628))
++		debugfs_create_file("gvi_color_bar", 0600, rk628->debug_dir,
++				    rk628, &rk628_gvi_color_bar_fops);
++}
+ 
+ static void rk628_gvi_post_enable(struct rk628 *rk628, struct rk628_gvi *gvi)
+ {
+diff --git a/drivers/misc/rk628/rk628_gvi.h b/drivers/misc/rk628/rk628_gvi.h
+index dc7cbd1549479e..ba6f08892e612a 100644
+--- a/drivers/misc/rk628/rk628_gvi.h
++++ b/drivers/misc/rk628/rk628_gvi.h
+@@ -214,5 +214,5 @@
+ int rk628_gvi_parse(struct rk628 *rk628, struct device_node *gvi_np);
+ void rk628_gvi_enable(struct rk628 *rk628);
+ void rk628_gvi_disable(struct rk628 *rk628);
+-
++void rk628_gvi_create_debugfs_file(struct rk628 *rk628);
+ #endif
+-- 
+2.17.1
+

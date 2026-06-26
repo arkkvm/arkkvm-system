@@ -1,0 +1,208 @@
+From fb21bc952aace2bc67e1cd75b0c295d88743b542 Mon Sep 17 00:00:00 2001
+From: Luo Wei <lw@rock-chips.com>
+Date: Fri, 26 Nov 2021 11:28:20 +0800
+Subject: [PATCH 121/232] Auto generate hdmirx edid init data according to
+ src_mode value
+
+Signed-off-by: Guo Linan<antony.guo@rock-chips.com>
+Change-Id: Ic967ebea887738597f60f72248fdd8ef6e14e727
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/misc/rk628/rk628_config.c |   2 +-
+ drivers/misc/rk628/rk628_hdmirx.c | 130 +++++++++++++++++++++++++-----
+ 2 files changed, 111 insertions(+), 21 deletions(-)
+
+diff --git a/drivers/misc/rk628/rk628_config.c b/drivers/misc/rk628/rk628_config.c
+index cee4e62e4207a3..3fc2f68207aa7d 100644
+--- a/drivers/misc/rk628/rk628_config.c
++++ b/drivers/misc/rk628/rk628_config.c
+@@ -104,7 +104,7 @@ static struct rk628_display_mode src_mode = {
+ 	/* .vsync_start = */ 1080 + 4,
+ 	/* .vsync_end = */ 1080 + 4 + 5,
+ 	/* .vtotal = */ 1080 + 4 + 5 + 36,
+-	/* .flags = */ DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC,
++	/* .flags = */ DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC,
+ };
+ 
+ static struct rk628_display_mode dst_mode = {
+diff --git a/drivers/misc/rk628/rk628_hdmirx.c b/drivers/misc/rk628/rk628_hdmirx.c
+index 37792640faee2a..38014a16e6c7f7 100644
+--- a/drivers/misc/rk628/rk628_hdmirx.c
++++ b/drivers/misc/rk628/rk628_hdmirx.c
+@@ -28,30 +28,31 @@ static u8 edid_init_data[] = {
+ 	0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x02, 0x3A,
+ 	0x80, 0x18, 0x71, 0x38, 0x2D, 0x40, 0x58, 0x2C,
+ 	0x45, 0x00, 0xC4, 0x8E, 0x21, 0x00, 0x00, 0x1E,
+-	0x01, 0x1D, 0x00, 0x72, 0x51, 0xD0, 0x1E, 0x20,
+-	0x6E, 0x28, 0x55, 0x00, 0xC4, 0x8E, 0x21, 0x00,
+-	0x00, 0x1E, 0x00, 0x00, 0x00, 0xFC, 0x00, 0x50,
++	0x00, 0x00, 0x00, 0x11, 0x00, 0x00, 0x00, 0x00,
++	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++	0x00, 0x00, 0x00, 0x00, 0x00, 0xFC, 0x00, 0x50,
+ 	0x72, 0x6F, 0x6A, 0x65, 0x63, 0x74, 0x6F, 0x72,
+ 	0x0A, 0x20, 0x20, 0x20, 0x00, 0x00, 0x00, 0xFD,
+ 	0x00, 0x14, 0x78, 0x01, 0xFF, 0x1D, 0x00, 0x0A,
+ 	0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x01, 0x18,
+ 
+-	0x02, 0x03, 0x1A, 0x71, 0x47, 0x5F, 0x90, 0x22,
+-	0x04, 0x11, 0x02, 0x01, 0x23, 0x09, 0x07, 0x01,
+-	0x83, 0x01, 0x00, 0x00, 0x65, 0x03, 0x0C, 0x00,
+-	0x10, 0x00, 0x8C, 0x0A, 0xD0, 0x8A, 0x20, 0xE0,
+-	0x2D, 0x10, 0x10, 0x3E, 0x96, 0x00, 0x13, 0x8E,
+-	0x21, 0x00, 0x00, 0x1E, 0xD8, 0x09, 0x80, 0xA0,
+-	0x20, 0xE0, 0x2D, 0x10, 0x10, 0x60, 0xA2, 0x00,
+-	0xC4, 0x8E, 0x21, 0x00, 0x00, 0x18, 0x8C, 0x0A,
+-	0xD0, 0x90, 0x20, 0x40, 0x31, 0x20, 0x0C, 0x40,
+-	0x55, 0x00, 0x48, 0x39, 0x00, 0x00, 0x00, 0x18,
+-	0x01, 0x1D, 0x80, 0x18, 0x71, 0x38, 0x2D, 0x40,
+-	0x58, 0x2C, 0x45, 0x00, 0xC0, 0x6C, 0x00, 0x00,
+-	0x00, 0x18, 0x01, 0x1D, 0x80, 0x18, 0x71, 0x1C,
+-	0x16, 0x20, 0x58, 0x2C, 0x25, 0x00, 0xC0, 0x6C,
+-	0x00, 0x00, 0x00, 0x18, 0x00, 0x00, 0x00, 0x00,
+-	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xD8,
++	0x02, 0x03, 0x13, 0x71, 0x40, 0x23, 0x09, 0x07,
++	0x01, 0x83, 0x01, 0x00, 0x00, 0x65, 0x03, 0x0C,
++	0x00, 0x10, 0x00, 0x02, 0x3A, 0x80, 0x18, 0x71,
++	0x38, 0x2D, 0x40, 0x58, 0x2C, 0x45, 0x00, 0x20,
++	0xC2, 0x31, 0x00, 0x00, 0x1E, 0x00, 0x00, 0x00,
++	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
++	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x17,
++
+ };
+ 
+ struct rk628_hdmi_mode {
+@@ -180,6 +181,89 @@ static int tx_5v_power_present(struct rk628 *rk628)
+ 	return ret;
+ }
+ 
++static int rk628_hdmirx_init_edid(struct rk628 *rk628)
++{
++	struct rk628_display_mode *src_mode;
++	struct rk628_hdmirx *hdmirx = rk628->hdmirx;
++	u32 val;
++	u8 csum = 0;
++	int i, base, j;
++
++	src_mode = rk628_display_get_src_mode();
++	for (j = 0, base = 0x36; j < 2; j++) {
++		csum = 0;
++		/* clock-frequency */
++		edid_init_data[base + 1]  = ((src_mode->clock / 10) & 0xff00) >> 8;
++		edid_init_data[base]  = (src_mode->clock / 10) & 0xff;
++		/* hactive low 8 bits */
++		edid_init_data[base + 2]  = src_mode->hdisplay & 0xff;
++
++		/* hblanking low 8 bits */
++		val = src_mode->htotal - src_mode->hdisplay;
++		edid_init_data[base + 3] =  val & 0xff;
++
++		/* hactive high 4 bits & hblanking low 4 bits */
++		edid_init_data[base + 4] =  ((src_mode->hdisplay & 0xf00) >> 4) + ((val & 0xf00) >> 8);
++
++		/* vactive low 8 bits */
++		edid_init_data[base + 5] =  src_mode->vdisplay & 0xff;
++
++		/* vblanking low 8 bits */
++		val = src_mode->vtotal - src_mode->vdisplay;
++		edid_init_data[base + 6] =  val & 0xff;
++
++		/* vactive high 4 bits & vblanking low 4 bits */
++		edid_init_data[base + 7] =  ((src_mode->vdisplay & 0xf00) >> 4) + ((val & 0xf00) >> 8);
++
++		/* hsync pulse offset low 8 bits */
++		val = src_mode->hsync_start - src_mode->hdisplay;
++		edid_init_data[base + 8] =  val & 0xff;
++
++		/* hsync pulse width low 8 bits */
++		val = src_mode->hsync_end - src_mode->hsync_start;
++		edid_init_data[base + 9] =  val & 0xff;
++
++		/* vsync pulse offset low 4 bits & vsync pulse width low 4 bits */
++		val = ((src_mode->vsync_start - src_mode->vdisplay) & 0xf) << 4;
++		edid_init_data[base + 10] =  val;
++		edid_init_data[base + 10] += (src_mode->vsync_end - src_mode->vsync_start) & 0xf;
++
++		/* 6~7bits:hsync pulse offset;
++		 * 4~6bits:hsync pulse width;
++		 * 2~3bits:vsync pulse offset;
++		 * 0~1bits:vsync pulse width
++		 * */
++		edid_init_data[base + 11] = ((src_mode->hsync_start - src_mode->hdisplay) & 0x300) >> 2;
++		edid_init_data[base + 11] += ((src_mode->hsync_end - src_mode->hsync_start) & 0x700) >> 4;
++		edid_init_data[base + 11] += ((src_mode->vsync_start - src_mode->vdisplay) & 0x30) >> 2;
++		edid_init_data[base + 11] += ((src_mode->vsync_end - src_mode->vsync_start) & 0x30) >> 4;
++
++		edid_init_data[base + 17]  = 0x18;
++		if (src_mode->flags & DRM_MODE_FLAG_PHSYNC)
++			edid_init_data[base + 17] |= 0x2;
++
++		if (src_mode->flags & DRM_MODE_FLAG_PVSYNC)
++			edid_init_data[base + 17] |= 0x4;
++
++		if (hdmirx->src_mode_4K_yuv420 && src_mode->clock == 594000) {
++			edid_init_data[0x80 + 0x2] = 0x16;
++			edid_init_data[0x80 + 0x13] = 0xe2;
++			edid_init_data[0x80 + 0x14] = 0x0E;
++			edid_init_data[0x80 + 0x15] = 0x61;
++			base += (0x5d + 0x3);
++		} else {
++			base += 0x5d;
++		}
++
++		for (i = 0; i < 127; i++)
++			csum += edid_init_data[i + j * 128];
++
++		edid_init_data[127 +  j * 128] = (u8)0 - csum;
++	}
++
++	return 0;
++}
++
+ static int rk628_hdmirx_set_edid(struct rk628 *rk628)
+ {
+ 	int i;
+@@ -195,6 +279,8 @@ static int rk628_hdmirx_set_edid(struct rk628 *rk628)
+ 	     SW_ADAPTER_I2CSLADR(0) |
+ 	     SW_EDID_MODE(1));
+ 
++	rk628_hdmirx_init_edid(rk628);
++
+ 	edid_len = ARRAY_SIZE(edid_init_data);
+ 	for (i = 0; i < edid_len; i++) {
+ 		rk628_i2c_write(rk628, EDID_BASE + i * 4, edid_init_data[i]);
+@@ -267,9 +353,11 @@ static int rk628_hdmirx_phy_power_on(struct rk628 *rk628, int f)
+ 			printk("hdmi rxphy power on failed\n");
+ 		} else {
+ 			rxphy_pwron = true;
++			printk("hdmi rxphy power on success\n");
+ 		}
+ 	}
+ 
++	pr_info("%s:rxphy_pwron=%d\n", __func__, rxphy_pwron);
+ 	return ret;
+ }
+ 
+@@ -471,8 +559,10 @@ static int rk628_hdmirx_phy_setup(struct rk628 *rk628)
+ 			src_mode->vsync_end = hdmirx->mode.vend;
+ 			src_mode->vtotal = hdmirx->mode.vtotal;
+ 			src_mode->flags = hdmirx->mode.flags;
+-			if (hdmirx->src_mode_4K_yuv420 && dst_mode->clock == 594000)
++			if (hdmirx->src_mode_4K_yuv420 && dst_mode->clock == 594000) {
+ 				rk628_mode_copy(src_mode, dst_mode);
++				src_mode->flags = DRM_MODE_FLAG_PHSYNC|DRM_MODE_FLAG_PVSYNC;
++			}
+ 
+ 			break;
+ 		}
+-- 
+2.17.1
+

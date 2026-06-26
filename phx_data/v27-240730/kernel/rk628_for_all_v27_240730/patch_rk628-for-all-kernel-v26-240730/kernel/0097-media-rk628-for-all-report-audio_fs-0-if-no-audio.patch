@@ -1,0 +1,47 @@
+From 197e82a3bf2f054bb4773d1c749bc0177b72443b Mon Sep 17 00:00:00 2001
+From: Shunhua Lan <lsh@rock-chips.com>
+Date: Sat, 18 Sep 2021 16:42:13 +0800
+Subject: [PATCH 097/232] media: rk628-for-all: report audio_fs 0 if no audio
+ check audio_fs when audio rate change
+
+Signed-off-by: Shunhua Lan <lsh@rock-chips.com>
+Change-Id: Icc8251a1df207ed0d7248c16c03290a6f265fc4c
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_csi.c    | 3 +++
+ drivers/media/i2c/rk628/rk628_hdmirx.c | 2 +-
+ 2 files changed, 4 insertions(+), 1 deletion(-)
+ mode change 100644 => 100755 drivers/media/i2c/rk628/rk628_hdmirx.c
+
+diff --git a/drivers/media/i2c/rk628/rk628_csi.c b/drivers/media/i2c/rk628/rk628_csi.c
+index 38af597d357548..bf10f9cca3c101 100644
+--- a/drivers/media/i2c/rk628/rk628_csi.c
++++ b/drivers/media/i2c/rk628/rk628_csi.c
+@@ -258,6 +258,9 @@ static ssize_t rk628_resolution_read(struct class *class,
+ 	height = csi->timings.bt.height;
+ 	fps = csi->fps;
+ 	fs_audio = rk628_hdmirx_audio_fs(csi->audio_info);
++	if(!rk628_hdmirx_audio_present(csi->audio_info)) {
++		fs_audio = 0;
++	}
+ 
+ 	/* update resolution for userspace only if signal is stable */
+ 	if (csi->nosignal) {
+diff --git a/drivers/media/i2c/rk628/rk628_hdmirx.c b/drivers/media/i2c/rk628/rk628_hdmirx.c
+old mode 100644
+new mode 100755
+index 05b51e0f3d5480..d9b7d14e66cf48
+--- a/drivers/media/i2c/rk628/rk628_hdmirx.c
++++ b/drivers/media/i2c/rk628/rk628_hdmirx.c
+@@ -358,7 +358,7 @@ static void rk628_csi_delayed_work_audio_rate_change(struct work_struct *work)
+ 	dev_dbg(aif->dev, "%s get audio fs %u\n", __func__, fs_audio);
+ 	if (aif->audio_state.ctsn_flag == (ACR_N_CHG_ICLR | ACR_CTS_CHG_ICLR)) {
+ 		aif->audio_state.ctsn_flag = 0;
+-		if (/* is_validfs(fs_audio)*/0) {
++		if (is_validfs(fs_audio)) {
+ 			rk628_hdmirx_audio_set_fs(aif, fs_audio);
+ 			/* We start audio work after recieveing cts n interrupt */
+ 			rk628_hdmirx_audio_enable(aif);
+-- 
+2.17.1
+

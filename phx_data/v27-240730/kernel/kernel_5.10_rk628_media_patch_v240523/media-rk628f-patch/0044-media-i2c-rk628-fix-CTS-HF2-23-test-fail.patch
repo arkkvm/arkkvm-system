@@ -1,0 +1,49 @@
+From ce0762a9f6e236a6b0cad94663248cce17254551 Mon Sep 17 00:00:00 2001
+From: Chen Shunqing <csq@rock-chips.com>
+Date: Fri, 19 Jan 2024 06:48:24 +0000
+Subject: [PATCH 44/53] media: i2c: rk628: fix CTS HF2-23 test fail
+
+Type: Fix
+Redmine ID: N/A
+Associated modifications: N/A
+Test: CTS HF2-23, clk jitter + 0.5%
+
+Change-Id: Iae2c79f368ceeb1a4284dd40de79e235b119b6aa
+Signed-off-by: Chen Shunqing <csq@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_hdmirx.c | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/drivers/media/i2c/rk628/rk628_hdmirx.c b/drivers/media/i2c/rk628/rk628_hdmirx.c
+index 996f504fcf4f..e1533536a348 100644
+--- a/drivers/media/i2c/rk628/rk628_hdmirx.c
++++ b/drivers/media/i2c/rk628/rk628_hdmirx.c
+@@ -1395,6 +1395,7 @@ int rk628_hdmirx_get_timings(struct rk628 *rk628,
+ {
+ 	int i, cnt = 0, ret = 0;
+ 	u32 last_w, last_h;
++	u32 val;
+ 	u8 last_fmt;
+ 	struct v4l2_bt_timings *bt = &timings->bt;
+ 
+@@ -1430,6 +1431,17 @@ int rk628_hdmirx_get_timings(struct rk628 *rk628,
+ 		ret = -EINVAL;
+ 	}
+ 
++	if (rk628->version >= RK628F_VERSION) {
++		val = DIV_ROUND_CLOSEST_ULL(1188000000, bt->pixelclock);
++		val *= bt->pixelclock;
++		if (val > 1188000000) {
++			/* set pll rate according hdmirx tmds clk */
++			rk628_clk_set_rate(rk628, CGU_CLK_CPLL, val);
++			dev_dbg(rk628->dev, "set CPLL to %d\n", val);
++			msleep(50);
++		}
++	}
++
+ 	return ret;
+ }
+ EXPORT_SYMBOL(rk628_hdmirx_get_timings);
+-- 
+2.17.1
+

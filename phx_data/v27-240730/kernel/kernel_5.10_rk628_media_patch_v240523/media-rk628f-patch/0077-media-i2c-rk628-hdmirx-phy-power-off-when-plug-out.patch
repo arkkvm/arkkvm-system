@@ -1,0 +1,91 @@
+From 2da6bc1df58ccc4249e3a44a545bc62f8b5acf65 Mon Sep 17 00:00:00 2001
+From: Chen Shunqing <csq@rock-chips.com>
+Date: Fri, 19 Apr 2024 14:40:22 +0800
+Subject: [PATCH 77/82] media: i2c: rk628: hdmirx phy power off when plug out
+
+Change-Id: I0173e25ce4c87ba883c87c36322112a7d1821c30
+Signed-off-by: Chen Shunqing <csq@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_bt1120_v4l2.c | 3 ++-
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c    | 3 ++-
+ drivers/media/i2c/rk628/rk628_hdmirx.c      | 9 +++++++++
+ drivers/media/i2c/rk628/rk628_hdmirx.h      | 1 +
+ 4 files changed, 14 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+index 632c080b4575..79c9d7402093 100644
+--- a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+@@ -332,6 +332,7 @@ static void rk628_hdmirx_plugout(struct v4l2_subdev *sd)
+ 	rk628_hdmirx_audio_cancel_work_audio(bt1120->audio_info, true);
+ 	rk628_hdmirx_hpd_ctrl(sd, false);
+ 	rk628_hdmirx_inno_phy_power_off(sd);
++	rk628_hdmirx_verisyno_phy_power_off(bt1120->rk628);
+ 	rk628_hdmirx_controller_reset(bt1120->rk628);
+ 	rk628_clk_set_rate(bt1120->rk628, CGU_CLK_CPLL, CPLL_REF_CLK);
+ }
+@@ -471,7 +472,7 @@ static void rk628_delayed_work_res_change(struct work_struct *work)
+ 				rk628_bt1120_enable_interrupts(sd, false);
+ 				rk628_hdmirx_audio_cancel_work_audio(bt1120->audio_info, true);
+ 				rk628_hdmirx_hpd_ctrl(sd, false);
+-				rk628_hdmirx_inno_phy_power_off(sd);
++				rk628_hdmirx_verisyno_phy_power_off(bt1120->rk628);
+ 				rk628_hdmirx_controller_reset(bt1120->rk628);
+ 				schedule_delayed_work(&bt1120->delayed_work_enable_hotplug,
+ 						      msecs_to_jiffies(1100));
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index e4cfb22e0cce..e81512e4784f 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -467,6 +467,7 @@ static void rk628_hdmirx_plugout(struct v4l2_subdev *sd)
+ 	rk628_hdmirx_audio_cancel_work_audio(csi->audio_info, true);
+ 	rk628_hdmirx_hpd_ctrl(sd, false);
+ 	rk628_hdmirx_inno_phy_power_off(sd);
++	rk628_hdmirx_verisyno_phy_power_off(csi->rk628);
+ 	rk628_hdmirx_controller_reset(csi->rk628);
+ 	rk628_clk_set_rate(csi->rk628, CGU_CLK_CPLL, CPLL_REF_CLK);
+ }
+@@ -571,7 +572,7 @@ static void rk628_delayed_work_res_change(struct work_struct *work)
+ 				rk628_csi_enable_interrupts(sd, false);
+ 				rk628_hdmirx_audio_cancel_work_audio(csi->audio_info, true);
+ 				rk628_hdmirx_hpd_ctrl(sd, false);
+-				rk628_hdmirx_inno_phy_power_off(sd);
++				rk628_hdmirx_verisyno_phy_power_off(csi->rk628);
+ 				rk628_hdmirx_controller_reset(csi->rk628);
+ 				schedule_delayed_work(&csi->delayed_work_enable_hotplug,
+ 						      msecs_to_jiffies(1100));
+diff --git a/drivers/media/i2c/rk628/rk628_hdmirx.c b/drivers/media/i2c/rk628/rk628_hdmirx.c
+index 1a1a746e94f8..4a9c417b47f1 100644
+--- a/drivers/media/i2c/rk628/rk628_hdmirx.c
++++ b/drivers/media/i2c/rk628/rk628_hdmirx.c
+@@ -1186,6 +1186,15 @@ void rk628_hdmirx_verisyno_phy_power_on(struct rk628 *rk628)
+ }
+ EXPORT_SYMBOL(rk628_hdmirx_verisyno_phy_power_on);
+ 
++void rk628_hdmirx_verisyno_phy_power_off(struct rk628 *rk628)
++{
++	if (rk628->version < RK628F_VERSION)
++		return;
++
++	rk628_i2c_write(rk628, GRF_SW_HDMIRXPHY_CRTL, 0x07);
++}
++EXPORT_SYMBOL(rk628_hdmirx_verisyno_phy_power_off);
++
+ void rk628_hdmirx_phy_prepclk_cfg(struct rk628 *rk628)
+ {
+ 	u32 format;
+diff --git a/drivers/media/i2c/rk628/rk628_hdmirx.h b/drivers/media/i2c/rk628/rk628_hdmirx.h
+index bb88f3bc3993..b9deafed68f6 100644
+--- a/drivers/media/i2c/rk628/rk628_hdmirx.h
++++ b/drivers/media/i2c/rk628/rk628_hdmirx.h
+@@ -511,6 +511,7 @@ void rk628_csi_isr_ctsn(HAUDINFO info, u32 pdec_ints);
+ void rk628_csi_isr_fifoints(HAUDINFO info, u32 fifo_ints);
+ int rk628_is_avi_ready(struct rk628 *rk628, bool avi_rcv_rdy);
+ void rk628_hdmirx_verisyno_phy_power_on(struct rk628 *rk628);
++void rk628_hdmirx_verisyno_phy_power_off(struct rk628 *rk628);
+ void rk628_hdmirx_phy_prepclk_cfg(struct rk628 *rk628);
+ int rk628_hdmirx_verisyno_phy_init(struct rk628 *rk628);
+ u8 rk628_hdmirx_get_format(struct rk628 *rk628);
+-- 
+2.17.1
+

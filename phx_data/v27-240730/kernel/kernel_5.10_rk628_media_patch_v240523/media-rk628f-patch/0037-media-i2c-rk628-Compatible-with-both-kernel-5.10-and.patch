@@ -1,0 +1,67 @@
+From e3f7d79af1b514a182765d6d95e65d88aba6f94f Mon Sep 17 00:00:00 2001
+From: Algea Cao <algea.cao@rock-chips.com>
+Date: Wed, 17 Jan 2024 17:25:26 +0800
+Subject: [PATCH 37/53] media: i2c: rk628: Compatible with both kernel-5.10 and
+ kernel-6.1
+
+Signed-off-by: Algea Cao <algea.cao@rock-chips.com>
+Change-Id: I44d2e7e78c0b340daff88d98833ba72a24156a69
+---
+ drivers/media/i2c/rk628/rk628_bt1120_v4l2.c | 8 ++++++++
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c    | 7 ++++++-
+ 2 files changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+index 090b2e3fb232..1b02ebeafa0e 100644
+--- a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+@@ -1192,11 +1192,19 @@ static int rk628_bt1120_g_mbus_config(struct v4l2_subdev *sd,
+ 	struct rk628_bt1120 *bt1120 = to_bt1120(sd);
+ 
+ 	cfg->type = V4L2_MBUS_BT656;
++#if KERNEL_VERSION(5, 18, 0) <= LINUX_VERSION_CODE
++	cfg->bus.parallel.flags = V4L2_MBUS_HSYNC_ACTIVE_HIGH |
++				V4L2_MBUS_VSYNC_ACTIVE_HIGH |
++				V4L2_MBUS_PCLK_SAMPLE_RISING;
++	if (bt1120->dual_edge)
++		cfg->bus.parallel.flags |= V4L2_MBUS_PCLK_SAMPLE_FALLING;
++#else
+ 	cfg->flags = V4L2_MBUS_HSYNC_ACTIVE_HIGH |
+ 				V4L2_MBUS_VSYNC_ACTIVE_HIGH |
+ 				V4L2_MBUS_PCLK_SAMPLE_RISING;
+ 	if (bt1120->dual_edge)
+ 		cfg->flags |= V4L2_MBUS_PCLK_SAMPLE_FALLING;
++#endif
+ 
+ 	return 0;
+ }
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index 6ca9a1b77e2e..049bf1a8e367 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -2842,7 +2842,11 @@ static int rk628_csi_probe(struct i2c_client *client,
+ 	return err;
+ }
+ 
++#if KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE
++static void rk628_csi_remove(struct i2c_client *client)
++#else
+ static int rk628_csi_remove(struct i2c_client *client)
++#endif
+ {
+ 	struct rk628_csi *csi = i2c_get_clientdata(client);
+ 
+@@ -2872,8 +2876,9 @@ static int rk628_csi_remove(struct i2c_client *client)
+ 	rk628_control_assert(csi->rk628, RGU_CSI);
+ 	if (csi->rk628->version >= RK628F_VERSION)
+ 		rk628_control_assert(csi->rk628, RGU_CSI1);
+-
++#if KERNEL_VERSION(6, 1, 0) > LINUX_VERSION_CODE
+ 	return 0;
++#endif
+ }
+ 
+ static struct i2c_driver rk628_csi_i2c_driver = {
+-- 
+2.17.1
+

@@ -1,0 +1,1 @@
+cmd_sound/soc/rockchip/built-in.a := echo >/dev/null; rm -f sound/soc/rockchip/built-in.a; arm-rockchip830-linux-uclibcgnueabihf-ar cDPrST sound/soc/rockchip/built-in.a sound/soc/rockchip/rockchip_i2s_tdm.o sound/soc/rockchip/rockchip_hdmi.o

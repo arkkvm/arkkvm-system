@@ -1,0 +1,81 @@
+From b4c6fe8787388e49a3f19de73377953cbfdeb50d Mon Sep 17 00:00:00 2001
+From: Guochun Huang <hero.huang@rock-chips.com>
+Date: Mon, 10 Jan 2022 09:53:46 +0800
+Subject: [PATCH 135/232] rk628-for-all: add support power supply for panel
+
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+Change-Id: I4eb0b668a12310380fc40d9699d60efbe75fa533
+---
+ drivers/misc/rk628/panel.c | 11 +++++++++++
+ drivers/misc/rk628/rk628.c |  7 +++++++
+ drivers/misc/rk628/rk628.h |  2 ++
+ 3 files changed, 20 insertions(+)
+
+diff --git a/drivers/misc/rk628/panel.c b/drivers/misc/rk628/panel.c
+index 3b98fb0457e925..e509ad045fb084 100644
+--- a/drivers/misc/rk628/panel.c
++++ b/drivers/misc/rk628/panel.c
+@@ -13,6 +13,14 @@
+ 
+ void panel_pre_enable(struct rk628 *rk628)
+ {
++	int ret;
++
++	if (rk628->panel->supply) {
++		ret = regulator_enable(rk628->panel->supply);
++		if (ret)
++			printk("failed to enable panel power supply\n");
++	}
++
+ 	if (rk628->panel->enable_gpio) {
+ 		gpiod_set_value(rk628->panel->enable_gpio, 0);
+ 		mdelay(120);
+@@ -53,4 +61,7 @@ void panel_disable(struct rk628 *rk628)
+ 		gpiod_set_value(rk628->panel->enable_gpio, 0);
+ 		mdelay(120);
+ 	}
++
++	if (rk628->panel->supply)
++		regulator_disable(rk628->panel->supply);
+ }
+diff --git a/drivers/misc/rk628/rk628.c b/drivers/misc/rk628/rk628.c
+index b310179b53f99e..173a7e409c61ed 100644
+--- a/drivers/misc/rk628/rk628.c
++++ b/drivers/misc/rk628/rk628.c
+@@ -609,6 +609,13 @@ rk628_i2c_probe(struct i2c_client *client, const struct i2c_device_id *id)
+ 	if (!rk628->panel)
+ 		return -ENOMEM;
+ 
++	rk628->panel->supply = devm_regulator_get(dev, "power");
++	if (IS_ERR(rk628->panel->supply)) {
++		ret = PTR_ERR(rk628->panel->supply);
++		dev_err(dev, "failed to get power regulator: %d\n", ret);
++		return ret;
++	}
++
+ 	rk628->panel->enable_gpio = devm_gpiod_get_optional(dev, "panel-enable", GPIOD_OUT_LOW);
+ 	if (IS_ERR(rk628->panel->enable_gpio)) {
+ 		ret = PTR_ERR(rk628->panel->enable_gpio);
+diff --git a/drivers/misc/rk628/rk628.h b/drivers/misc/rk628/rk628.h
+index c873965c59fbb8..2222137f5ae1b0 100644
+--- a/drivers/misc/rk628/rk628.h
++++ b/drivers/misc/rk628/rk628.h
+@@ -15,6 +15,7 @@
+ #include <linux/version.h>
+ #include <linux/wakelock.h>
+ #include <linux/workqueue.h>
++#include <linux/regulator/consumer.h>
+ 
+ #define DRIVER_VERSION				"0.0.1"
+ #define UPDATE(x, h, l)		(((x) << (l)) & GENMASK((h), (l)))
+@@ -258,6 +259,7 @@ enum {
+ struct panel_simple {
+ 	struct backlight_device *backlight;
+ 
++	struct regulator *supply;
+ 	struct gpio_desc *enable_gpio;
+ 	struct gpio_desc *reset_gpio;
+ };
+-- 
+2.17.1
+

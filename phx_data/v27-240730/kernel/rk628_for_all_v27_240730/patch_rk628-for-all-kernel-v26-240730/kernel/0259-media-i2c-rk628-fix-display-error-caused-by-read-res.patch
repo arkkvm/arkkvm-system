@@ -1,0 +1,175 @@
+From 5b4a94af4c363c5c17eae7564a7f63b2f9bcc83d Mon Sep 17 00:00:00 2001
+From: Chen Shunqing <csq@rock-chips.com>
+Date: Wed, 24 Jan 2024 07:06:17 +0000
+Subject: [PATCH 9/9] media: i2c: rk628: fix display error caused by read
+ resolution error
+
+Type: Fix
+Redmine ID: #461216
+Associated modifications: N/A
+Test: plugin and plugout the HDMI cable.
+
+Change-Id: Id2be68bc74aa22e8f731f4800c5f22fc6fc8f342
+Signed-off-by: Chen Shunqing <csq@rock-chips.com>
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_bt1120_v4l2.c | 21 +++++++++++++++------
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c    | 21 +++++++++++++++------
+ drivers/media/i2c/rk628/rk628_hdmirx.c      |  3 +++
+ drivers/media/i2c/rk628/rk628_hdmirx.h      |  2 +-
+ 4 files changed, 34 insertions(+), 13 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+index 07c257a3e9fa30..1c965063f680ce 100644
+--- a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+@@ -234,7 +234,7 @@ static int rk628_bt1120_s_edid(struct v4l2_subdev *sd,
+ static int rk628_hdmirx_inno_phy_power_on(struct v4l2_subdev *sd);
+ static int rk628_hdmirx_inno_phy_power_off(struct v4l2_subdev *sd);
+ static int rk628_hdmirx_phy_setup(struct v4l2_subdev *sd);
+-static void rk628_bt1120_format_change(struct v4l2_subdev *sd);
++static int rk628_bt1120_format_change(struct v4l2_subdev *sd);
+ static void enable_stream(struct v4l2_subdev *sd, bool enable);
+ static void rk628_hdmirx_vid_enable(struct v4l2_subdev *sd, bool en);
+ static void rk628_hdmirx_hpd_ctrl(struct v4l2_subdev *sd, bool en);
+@@ -343,9 +343,11 @@ static int rk628_hdmirx_config_all(struct v4l2_subdev *sd)
+ 
+ 	ret = rk628_hdmirx_phy_setup(sd);
+ 	if (ret >= 0 && !rk628_hdmirx_scdc_ced_err(bt1120->rk628)) {
+-		rk628_bt1120_format_change(sd);
+-		bt1120->nosignal = false;
+-		return ret;
++		ret = rk628_bt1120_format_change(sd);
++		if (!ret) {
++			bt1120->nosignal = false;
++			return ret;
++		}
+ 	}
+ 
+ 	if (ret < 0 || rk628_hdmirx_scdc_ced_err(bt1120->rk628)) {
+@@ -909,7 +911,7 @@ static void rk628_bt1120_initial_setup(struct v4l2_subdev *sd)
+ 		schedule_delayed_work(&bt1120->delayed_work_enable_hotplug, 4000);
+ }
+ 
+-static void rk628_bt1120_format_change(struct v4l2_subdev *sd)
++static int rk628_bt1120_format_change(struct v4l2_subdev *sd)
+ {
+ 	struct rk628_bt1120 *bt1120 = to_bt1120(sd);
+ 	struct v4l2_dv_timings timings;
+@@ -917,9 +919,14 @@ static void rk628_bt1120_format_change(struct v4l2_subdev *sd)
+ 		.type = V4L2_EVENT_SOURCE_CHANGE,
+ 		.u.src_change.changes = V4L2_EVENT_SRC_CH_RESOLUTION,
+ 	};
++	int ret;
+ 
+-	rk628_bt1120_get_detected_timings(sd, &timings);
++	ret = rk628_bt1120_get_detected_timings(sd, &timings);
+ #ifdef KERNEL_VERSION_4_19
++	if (ret) {
++		v4l2_dbg(1, debug, sd, "%s: get timing fail\n", __func__);
++		return ret;
++	}
+ 	if (!v4l2_match_dv_timings(&bt1120->timings, &timings, 0, false)) {
+ #else
+ 	if (!v4l2_match_dv_timings(&bt1120->timings, &timings, 0)) {
+@@ -933,6 +940,8 @@ static void rk628_bt1120_format_change(struct v4l2_subdev *sd)
+ 
+ 	if (sd->devnode)
+ 		v4l2_subdev_notify_event(sd, &rk628_bt1120_ev_fmt);
++
++	return 0;
+ }
+ 
+ static void rk628_bt1120_enable_interrupts(struct v4l2_subdev *sd, bool en)
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index d6bf4c7ed3ea0f..364a083e1dfec9 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -320,7 +320,7 @@ static void mipi_dphy_power_off(struct rk628_csi *csi);
+ static int rk628_hdmirx_inno_phy_power_on(struct v4l2_subdev *sd);
+ static int rk628_hdmirx_inno_phy_power_off(struct v4l2_subdev *sd);
+ static int rk628_hdmirx_phy_setup(struct v4l2_subdev *sd);
+-static void rk628_csi_format_change(struct v4l2_subdev *sd);
++static int rk628_csi_format_change(struct v4l2_subdev *sd);
+ static void enable_stream(struct v4l2_subdev *sd, bool enable);
+ static void rk628_hdmirx_vid_enable(struct v4l2_subdev *sd, bool en);
+ static void rk628_csi_set_csi(struct v4l2_subdev *sd);
+@@ -444,9 +444,11 @@ static int rk628_hdmirx_config_all(struct v4l2_subdev *sd)
+ 
+ 	ret = rk628_hdmirx_phy_setup(sd);
+ 	if (ret >= 0 && !rk628_hdmirx_scdc_ced_err(csi->rk628)) {
+-		rk628_csi_format_change(sd);
+-		csi->nosignal = false;
+-		return ret;
++		ret = rk628_csi_format_change(sd);
++		if (!ret) {
++			csi->nosignal = false;
++			return ret;
++		}
+ 	}
+ 
+ 	if (ret < 0 || rk628_hdmirx_scdc_ced_err(csi->rk628)) {
+@@ -1359,7 +1361,7 @@ static void rk628_csi_initial_setup(struct v4l2_subdev *sd)
+ 		schedule_delayed_work(&csi->delayed_work_enable_hotplug, msecs_to_jiffies(4000));
+ }
+ 
+-static void rk628_csi_format_change(struct v4l2_subdev *sd)
++static int rk628_csi_format_change(struct v4l2_subdev *sd)
+ {
+ 	struct rk628_csi *csi = to_csi(sd);
+ 	struct v4l2_dv_timings timings;
+@@ -1367,9 +1369,14 @@ static void rk628_csi_format_change(struct v4l2_subdev *sd)
+ 		.type = V4L2_EVENT_SOURCE_CHANGE,
+ 		.u.src_change.changes = V4L2_EVENT_SRC_CH_RESOLUTION,
+ 	};
++	int ret;
+ 
+-	rk628_csi_get_detected_timings(sd, &timings);
++	ret = rk628_csi_get_detected_timings(sd, &timings);
+ #ifdef KERNEL_VERSION_4_19
++	if (ret) {
++		v4l2_dbg(1, debug, sd, "%s: get timing fail\n", __func__);
++		return ret;
++	}
+ 	if (!v4l2_match_dv_timings(&csi->timings, &timings, 0, false)) {
+ #else
+ 	if (!v4l2_match_dv_timings(&csi->timings, &timings, 0)) {
+@@ -1383,6 +1390,8 @@ static void rk628_csi_format_change(struct v4l2_subdev *sd)
+ 
+ 	if (sd->devnode)
+ 		v4l2_subdev_notify_event(sd, &rk628_csi_ev_fmt);
++
++	return 0;
+ }
+ 
+ static void rk628_csi_enable_csi_interrupts(struct v4l2_subdev *sd, bool en)
+diff --git a/drivers/media/i2c/rk628/rk628_hdmirx.c b/drivers/media/i2c/rk628/rk628_hdmirx.c
+index 83ebafc763958a..ba7666fae3dda3 100644
+--- a/drivers/media/i2c/rk628/rk628_hdmirx.c
++++ b/drivers/media/i2c/rk628/rk628_hdmirx.c
+@@ -1411,6 +1411,9 @@ int rk628_hdmirx_get_timings(struct rk628 *rk628,
+ 			last_fmt = rk628_hdmirx_get_format(rk628);
+ 		}
+ 
++		if (ret && i > 2)
++			return -EINVAL;
++
+ 		if (ret || (last_w != bt->width) || (last_h != bt->height)
+ 		    || (last_fmt != rk628_hdmirx_get_format(rk628)))
+ 			cnt = 0;
+diff --git a/drivers/media/i2c/rk628/rk628_hdmirx.h b/drivers/media/i2c/rk628/rk628_hdmirx.h
+index 3df1c0658199ac..eb5efcbcd8f29a 100644
+--- a/drivers/media/i2c/rk628/rk628_hdmirx.h
++++ b/drivers/media/i2c/rk628/rk628_hdmirx.h
+@@ -440,7 +440,7 @@
+ #define MIPI_DATARATE_MBPS_HIGH		1300
+ 
+ #define POLL_INTERVAL_MS		1000
+-#define RXPHY_CFG_MAX_TIMES		10
++#define RXPHY_CFG_MAX_TIMES		5
+ #define CSITX_ERR_RETRY_TIMES		3
+ 
+ #define USE_4_LANES			4
+-- 
+2.17.1
+

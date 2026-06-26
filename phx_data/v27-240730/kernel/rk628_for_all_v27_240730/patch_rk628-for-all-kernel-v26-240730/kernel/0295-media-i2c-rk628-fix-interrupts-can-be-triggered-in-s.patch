@@ -1,0 +1,106 @@
+From 6b58a7c31dad2d7fbd13b2fb9e8faa34fe52f451 Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Mon, 20 May 2024 14:03:55 +0800
+Subject: [PATCH 295/305] media: i2c: rk628: fix interrupts can be triggered in
+ suspend
+
+Type: Fix
+Redmine ID: N/A
+Associated modifications: N/A
+Test: N/A
+
+Signed-off-by: Chen Shunqing <csq@rock-chips.com>
+Change-Id: I39955e126729c9ec1ffabcd53d3bc679d354cd0f
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628.h             | 1 +
+ drivers/media/i2c/rk628/rk628_bt1120_v4l2.c | 7 +++++++
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c    | 7 +++++++
+ 3 files changed, 15 insertions(+)
+
+diff --git a/drivers/media/i2c/rk628/rk628.h b/drivers/media/i2c/rk628/rk628.h
+index ab5cc77a38b4f5..d617107695adb6 100644
+--- a/drivers/media/i2c/rk628/rk628.h
++++ b/drivers/media/i2c/rk628/rk628.h
+@@ -314,6 +314,7 @@ struct rk628 {
+ 	struct dentry *debug_dir;
+ 	struct gpio_desc *hdmirx_det_gpio;
+ 	bool last_mipi_status;
++	bool is_suspend;
+ };
+ 
+ #define rk628_dbg(rk628, format, ...)	\
+diff --git a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+index adf3c7d2aebe5f..f1b4d262c8af63 100644
+--- a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+@@ -252,6 +252,8 @@ static bool tx_5v_power_present(struct v4l2_subdev *sd)
+ 
+ 	ret = rk628_hdmirx_tx_5v_power_detect(bt1120->plugin_det_gpio);
+ 	v4l2_dbg(2, debug, sd, "%s: %d\n", __func__, ret);
++	if (bt1120->rk628->is_suspend)
++		ret = false;
+ 
+ 	return ret;
+ }
+@@ -1844,9 +1846,11 @@ static int rk628_bt1120_resume(struct device *dev)
+ 	rk628_cru_initialize(bt1120->rk628);
+ 	rk628_bt1120_initial(sd);
+ 	rk628_hdmirx_plugout(sd);
++	enable_irq(bt1120->plugin_irq);
+ 	enable_irq(bt1120->hdmirx_irq);
+ 	schedule_delayed_work(&bt1120->delayed_work_enable_hotplug,
+ 				      msecs_to_jiffies(500));
++	bt1120->rk628->is_suspend = false;
+ 
+ 	return 0;
+ }
+@@ -1859,6 +1863,9 @@ static int rk628_bt1120_suspend(struct device *dev)
+ 
+ 	v4l2_info(sd, "%s: suspend!\n", __func__);
+ 
++	bt1120->rk628->is_suspend = true;
++	rk628_hdmirx_plugout(sd);
++	disable_irq(bt1120->plugin_irq);
+ 	disable_irq(bt1120->hdmirx_irq);
+ 	cancel_delayed_work_sync(&bt1120->delayed_work_res_change);
+ 	cancel_delayed_work_sync(&bt1120->delayed_work_enable_hotplug);
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index 79fe70309ea5bc..86f35b703463cc 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -346,6 +346,8 @@ static bool tx_5v_power_present(struct v4l2_subdev *sd)
+ 
+ 	ret = rk628_hdmirx_tx_5v_power_detect(csi->plugin_det_gpio);
+ 	v4l2_dbg(2, debug, sd, "%s: %d\n", __func__, ret);
++	if (csi->rk628->is_suspend)
++		ret = false;
+ 
+ 	return ret;
+ }
+@@ -2656,9 +2658,11 @@ static int rk628_csi_resume(struct device *dev)
+ 	rk628_cru_initialize(csi->rk628);
+ 	rk628_csi_initial(sd);
+ 	rk628_hdmirx_plugout(sd);
++	enable_irq(csi->plugin_irq);
+ 	enable_irq(csi->hdmirx_irq);
+ 	schedule_delayed_work(&csi->delayed_work_enable_hotplug,
+ 				      msecs_to_jiffies(500));
++	csi->rk628->is_suspend = false;
+ 
+ 	return 0;
+ }
+@@ -2671,6 +2675,9 @@ static int rk628_csi_suspend(struct device *dev)
+ 
+ 	v4l2_info(sd, "%s: suspend!\n", __func__);
+ 
++	csi->rk628->is_suspend = true;
++	rk628_hdmirx_plugout(sd);
++	disable_irq(csi->plugin_irq);
+ 	disable_irq(csi->hdmirx_irq);
+ 	cancel_delayed_work_sync(&csi->delayed_work_res_change);
+ 	cancel_delayed_work_sync(&csi->delayed_work_enable_hotplug);
+-- 
+2.17.1
+

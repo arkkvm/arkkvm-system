@@ -1,0 +1,150 @@
+From 0289e6b375af5d1078e54bd44a664052c370498e Mon Sep 17 00:00:00 2001
+From: Guochun Huang <hero.huang@rock-chips.com>
+Date: Tue, 16 Jul 2024 15:13:38 +0800
+Subject: [PATCH 3/3] arm64: dts: rockchip: rk3568-evb-rk628: add support uboot
+ logo
+
+1.hdmi2dsi
+2.hdmi2gvi
+3.hdmi2lvds
+4.rgb2dsi
+5.rgb2gvi
+6.rgb2lvds
+
+Type: Function
+Redmine ID: #496880 #491750
+Associated modifications: NULL
+Test: NULL
+
+Change-Id: I815a3bb994390f2629cec1f98a9fdfe2a45613f9
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ .../boot/dts/rockchip/rk3568-evb-rk628-hdmi2dsi-ddr4-v10.dts    | 1 +
+ .../dts/rockchip/rk3568-evb-rk628-hdmi2dsi-dual-ddr4-v10.dts    | 2 ++
+ .../boot/dts/rockchip/rk3568-evb-rk628-hdmi2gvi-ddr4-v10.dts    | 1 +
+ .../boot/dts/rockchip/rk3568-evb-rk628-hdmi2lvds-ddr4-v10.dts   | 2 ++
+ .../dts/rockchip/rk3568-evb-rk628-hdmi2lvds-dual-ddr4-v10.dts   | 2 ++
+ .../boot/dts/rockchip/rk3568-evb-rk628-rgb2dsi-ddr4-v10.dts     | 2 ++
+ .../boot/dts/rockchip/rk3568-evb-rk628-rgb2gvi-ddr4-v10.dts     | 2 ++
+ .../boot/dts/rockchip/rk3568-evb-rk628-rgb2lvds-ddr4-v10.dts    | 2 ++
+ .../dts/rockchip/rk3568-evb-rk628-rgb2lvds-dual-ddr4-v10.dts    | 2 ++
+ 9 files changed, 16 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2dsi-ddr4-v10.dts b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2dsi-ddr4-v10.dts
+index 1397d9b3522b9..93b3082315dac 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2dsi-ddr4-v10.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2dsi-ddr4-v10.dts
+@@ -372,6 +372,7 @@
+ &route_hdmi {
+ 	status = "okay";
+ 
++	bridge = <&i2c2_rk628>;
+ 	force-bus-format = <MEDIA_BUS_FMT_RGB888_1X24>;
+ 	force-output;
+ 	force_timing{
+diff --git a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2dsi-dual-ddr4-v10.dts b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2dsi-dual-ddr4-v10.dts
+index 80a73eefe4538..672a92e58fc55 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2dsi-dual-ddr4-v10.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2dsi-dual-ddr4-v10.dts
+@@ -219,6 +219,8 @@
+ 
+ &route_hdmi {
+ 	status = "okay";
++
++	bridge = <&i2c2_rk628>;
+ 	force-bus-format = <MEDIA_BUS_FMT_RGB888_1X24>;
+ 	force-output;
+ 	force_timing {
+diff --git a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2gvi-ddr4-v10.dts b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2gvi-ddr4-v10.dts
+index 42e965bb0aa8e..6fb57aa5aaefb 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2gvi-ddr4-v10.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2gvi-ddr4-v10.dts
+@@ -112,6 +112,7 @@
+ 
+ &route_hdmi {
+ 	status = "okay";
++	bridge = <&i2c2_rk628>;
+ 	force-bus-format = <MEDIA_BUS_FMT_RGB888_1X24>;
+ 	force-output;
+ 	force_timing {
+diff --git a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2lvds-ddr4-v10.dts b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2lvds-ddr4-v10.dts
+index b26fd1b3d9108..8623a53f1f757 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2lvds-ddr4-v10.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2lvds-ddr4-v10.dts
+@@ -102,6 +102,8 @@
+ 
+ &route_hdmi {
+ 	status = "okay";
++
++	bridge = <&i2c2_rk628>;
+ 	force-bus-format = <MEDIA_BUS_FMT_RGB888_1X24>;
+ 	force-output;
+ 	force_timing{
+diff --git a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2lvds-dual-ddr4-v10.dts b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2lvds-dual-ddr4-v10.dts
+index faaeddaf437cd..f0c391a82ff46 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2lvds-dual-ddr4-v10.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2lvds-dual-ddr4-v10.dts
+@@ -105,6 +105,8 @@
+ 
+ &route_hdmi {
+ 	status = "okay";
++
++	bridge = <&i2c2_rk628>;
+ 	force-bus-format = <MEDIA_BUS_FMT_RGB888_1X24>;
+ 	force-output;
+ 	force_timing{
+diff --git a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2dsi-ddr4-v10.dts b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2dsi-ddr4-v10.dts
+index 8dd6d3e66cc81..93bed18b809e9 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2dsi-ddr4-v10.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2dsi-ddr4-v10.dts
+@@ -373,6 +373,8 @@
+ 
+ &route_rgb {
+ 	status = "okay";
++
++	bridge = <&i2c2_rk628>;
+ };
+ 
+ &rgb_in_vp2 {
+diff --git a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2gvi-ddr4-v10.dts b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2gvi-ddr4-v10.dts
+index cf252d31c5596..42fa4a5ffd91a 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2gvi-ddr4-v10.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2gvi-ddr4-v10.dts
+@@ -114,6 +114,8 @@
+ 
+ &route_rgb {
+ 	status = "okay";
++
++	bridge = <&i2c2_rk628>;
+ };
+ 
+ &rgb_in_vp2 {
+diff --git a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2lvds-ddr4-v10.dts b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2lvds-ddr4-v10.dts
+index 3621fc27a2959..c815b21ac9cf5 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2lvds-ddr4-v10.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2lvds-ddr4-v10.dts
+@@ -103,6 +103,8 @@
+ 
+ &route_rgb {
+ 	status = "okay";
++
++	bridge = <&i2c2_rk628>;
+ };
+ 
+ &rgb_in_vp2 {
+diff --git a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2lvds-dual-ddr4-v10.dts b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2lvds-dual-ddr4-v10.dts
+index ab271dfbea2b9..86644d09fc9ab 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2lvds-dual-ddr4-v10.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2lvds-dual-ddr4-v10.dts
+@@ -107,6 +107,8 @@
+ 
+ &route_rgb {
+ 	status = "okay";
++
++	bridge = <&i2c2_rk628>;
+ };
+ 
+ &rgb_in_vp2 {
+-- 
+2.17.1
+

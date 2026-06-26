@@ -1,0 +1,153 @@
+From 64b70e3695be0033c97131199d8c6400b7173b35 Mon Sep 17 00:00:00 2001
+From: Chen Shunqing <csq@rock-chips.com>
+Date: Wed, 17 May 2023 03:08:29 +0000
+Subject: [PATCH 162/232] TEST-ONLY: media: add hdmirx-cec debug node
+
+Signed-off-by: Chen Shunqing <csq@rock-chips.com>
+Change-Id: I8343c7b3fb183c59e871d07eea93a3059178a3a3
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ ...rk3288-evb-rk628-i2c-hdmi2csi-v4l2-avb.dts |  1 +
+ drivers/media/i2c/rk628/rk628_hdmirx.c        | 78 +++++++++++++++++++
+ 2 files changed, 79 insertions(+)
+
+diff --git a/arch/arm/boot/dts/rk3288-evb-rk628-i2c-hdmi2csi-v4l2-avb.dts b/arch/arm/boot/dts/rk3288-evb-rk628-i2c-hdmi2csi-v4l2-avb.dts
+index 70c4d11335c56a..66495f934b7f0d 100644
+--- a/arch/arm/boot/dts/rk3288-evb-rk628-i2c-hdmi2csi-v4l2-avb.dts
++++ b/arch/arm/boot/dts/rk3288-evb-rk628-i2c-hdmi2csi-v4l2-avb.dts
+@@ -79,6 +79,7 @@
+ 		reset-gpios = <&gpio7 RK_PB4 GPIO_ACTIVE_LOW>;
+ 		plugin-det-gpios = <&gpio0 13 GPIO_ACTIVE_HIGH>;
+ 		power-gpios = <&gpio0 17 GPIO_ACTIVE_HIGH>;
++		cec-enable;
+ 
+ 		rockchip,camera-module-index = <0>;
+ 		rockchip,camera-module-facing = "back";
+diff --git a/drivers/media/i2c/rk628/rk628_hdmirx.c b/drivers/media/i2c/rk628/rk628_hdmirx.c
+index 0bddc1f56f9c9f..ad3dce50cbf53a 100644
+--- a/drivers/media/i2c/rk628/rk628_hdmirx.c
++++ b/drivers/media/i2c/rk628/rk628_hdmirx.c
+@@ -738,6 +738,7 @@ void rk628_hdmirx_cec_irq(struct rk628 *rk628, struct rk628_hdmirx_cec *cec)
+ 	u32 stat, val;
+ 
+ 	rk628_i2c_read(rk628, HDMI_RX_AUD_CEC_ISTS, &stat);
++	printk("xxxx: cec stat = %x\n", stat);
+ 	if (stat == 0)
+ 		return;
+ 
+@@ -762,9 +763,11 @@ void rk628_hdmirx_cec_irq(struct rk628 *rk628, struct rk628_hdmirx_cec *cec)
+ 		if (len > sizeof(cec->rx_msg.msg))
+ 			len = sizeof(cec->rx_msg.msg);
+ 
++		printk("xxxx: [R]: len = %d\n", len);
+ 		for (i = 0; i < len; i++) {
+ 			rk628_i2c_read(rk628, HDMI_RX_CEC_RX_DATA_0 + i * 4, &val);
+ 			cec->rx_msg.msg[i] = val & 0xff;
++			printk("xxxx: [R]: msg[%d] : %02x\n", i, cec->rx_msg.msg[i]);
+ 		}
+ 		rk628_i2c_write(rk628, HDMI_RX_CEC_LOCK, 0);
+ 
+@@ -782,12 +785,71 @@ void rk628_hdmirx_cec_irq(struct rk628 *rk628, struct rk628_hdmirx_cec *cec)
+ 	}
+ }
+ 
++struct rk628_hdmirx_cec *rk628_cec;
++
++static int rk628_hdmirx_cec_transmit_test(struct rk628_hdmirx_cec *cec, u8 *msg, u32 len)
++{
++	struct rk628 *rk628 = cec->rk628;
++	int i, msg_len;
++
++	msg_len = len;
++	if (len > 16)
++		msg_len = 16;
++	if (len < 0)
++		return 0;
++
++	printk("xxxx: [S]: send msg len = %d\n", msg_len);
++	for (i = 0; i < msg_len; i++) {
++		rk628_i2c_write(rk628, HDMI_RX_CEC_TX_DATA_0 + i * 4, msg[i]);
++		printk("xxxx: [S]: msg[%d] : %02x\n", i, msg[i]);
++	}
++
++	rk628_i2c_write(rk628, HDMI_RX_CEC_TX_CNT, msg_len);
++	rk628_i2c_write(rk628, HDMI_RX_CEC_CTRL, 0x7);
++
++	return 0;
++}
++
++static ssize_t rk628_hdmirx_cec_store(struct device *dev,
++				struct device_attribute *attr,
++				const char *buf, size_t count)
++{
++	u32 len;
++	unsigned int msg[16] = {0};
++	u8 data[16] = {0};
++	int i;
++
++	sscanf(buf, "%d %x %x %x %x %x %x %x %x %x %x %x %x %x %x %x %x",
++		&len, &msg[0], &msg[1], &msg[2], &msg[3], &msg[4], &msg[5],&msg[6], &msg[7],
++		&msg[8], &msg[9], &msg[10], &msg[11], &msg[12], &msg[13], &msg[14], &msg[15]);
++
++	if (len > 16)
++		len = 16;
++
++	printk("xxxx: rk628-cec: msg len: %d\n", len);
++	for (i = 0; i < len; i++) {
++		data[i] = msg[i] & 0xff;
++	        printk("xxxx: rk628-cec: msg: %#x\n", data[i]);
++	}
++
++	rk628_hdmirx_cec_transmit_test(rk628_cec, &data[0], len);
++
++	return count;
++}
++
++static struct kobject *rk628_cec_kobj;
++static struct device_attribute rk628_cec_attrs =
++		__ATTR(rk628_cec_dbg, 0200, NULL, rk628_hdmirx_cec_store);
++
+ struct rk628_hdmirx_cec *rk628_hdmirx_cec_register(struct rk628 *rk628)
+ {
+ 	struct rk628_hdmirx_cec *cec;
+ 	int ret;
++	u32 val;
+ 	unsigned int irqs;
++	u32 addresses;
+ 
++	printk("xxxx: rk628_hdmirx_cec_register\n");
+ 	if (!rk628)
+ 		return NULL;
+ 
+@@ -859,12 +921,28 @@ struct rk628_hdmirx_cec *rk628_hdmirx_cec_register(struct rk628 *rk628)
+ 	rk628_i2c_write(rk628, HDMI_RX_AUD_CEC_IEN_SET, irqs);
+ 	rk628_i2c_write(rk628, HDMI_RX_AUD_CEC_ICLR, ~0);
+ 
++	addresses |= BIT(0) | BIT(15);
++	rk628_i2c_write(rk628, HDMI_RX_CEC_ADDR_L, addresses & 0xff);
++	rk628_i2c_write(rk628, HDMI_RX_CEC_ADDR_H, (addresses >> 8) & 0xff);
++
++	rk628_i2c_read(rk628, HDMI_RX_AUD_CEC_IEN, &val);
++	printk("xxxx: CEC_IEN = %x\n", val);
+ 	/*
+ 	 * CEC documentation says we must not call cec_delete_adapter
+ 	 * after a successful call to cec_register_adapter().
+ 	 */
+ 	devm_remove_action(cec->dev, rk628_hdmirx_cec_del, cec);
+ 
++	rk628_cec = cec;
++	rk628_cec_kobj = kobject_create_and_add("rk628_cec", NULL);
++	if (rk628_cec_kobj) {
++	        ret = sysfs_create_file(rk628_cec_kobj, &rk628_cec_attrs.attr);
++	        if (ret)
++	                dev_err(cec->dev, "create hdmirx cec sysfs error\n");
++	}
++
++	printk("xxxx: rk628_hdmirx_cec_register success\n");
++
+ 	return cec;
+ }
+ 
+-- 
+2.17.1
+

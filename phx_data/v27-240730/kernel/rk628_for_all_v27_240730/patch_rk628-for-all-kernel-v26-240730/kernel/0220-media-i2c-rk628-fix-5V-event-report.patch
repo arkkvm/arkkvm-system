@@ -1,0 +1,72 @@
+From e1d4bc9450a66eb3038f732e0e029e9747542a5d Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Thu, 21 Dec 2023 06:03:43 +0000
+Subject: [PATCH 220/232] media: i2c: rk628: fix 5V event report
+
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+Change-Id: I067aa744b6008c4b86b8487ce1765eb4c86df447
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c | 24 ++----------------------
+ 1 file changed, 2 insertions(+), 22 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index 82f78feb8917e8..0699b19d2bb962 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -450,6 +450,7 @@ static void rk628_csi_delayed_work_enable_hotplug(struct work_struct *work)
+ 	rk628_set_bg_enable(csi->rk628, false);
+ 	csi->avi_rcv_rdy = false;
+ 	plugin = tx_5v_power_present(sd);
++	v4l2_ctrl_s_ctrl(csi->detect_tx_5v_ctrl, plugin);
+ 	v4l2_dbg(1, debug, sd, "%s: 5v_det:%d\n", __func__, plugin);
+ 	if (plugin) {
+ 		rk628_csi_enable_interrupts(sd, false);
+@@ -1570,21 +1571,6 @@ static int rk628_csi_enum_mbus_code(struct v4l2_subdev *sd,
+ 	return 0;
+ }
+ 
+-static int rk628_csi_get_ctrl(struct v4l2_ctrl *ctrl)
+-{
+-	int ret = -1;
+-	struct rk628_csi *csi = container_of(ctrl->handler, struct rk628_csi,
+-			hdl);
+-	struct v4l2_subdev *sd = &(csi->sd);
+-
+-	if ( ctrl->id == V4L2_CID_DV_RX_POWER_PRESENT) {
+-		ret = tx_5v_power_present(sd);
+-		*ctrl->p_new.p_s32 = ret;
+-	}
+-
+-	return ret;
+-}
+-
+ static int rk628_csi_enum_frame_sizes(struct v4l2_subdev *sd,
+ 				   struct v4l2_subdev_pad_config *cfg,
+ 				   struct v4l2_subdev_frame_size_enum *fse)
+@@ -1964,10 +1950,6 @@ static long rk628_csi_compat_ioctl32(struct v4l2_subdev *sd,
+ }
+ #endif
+ 
+-static const struct v4l2_ctrl_ops rk628_csi_ctrl_ops = {
+-	.g_volatile_ctrl = rk628_csi_get_ctrl,
+-};
+-
+ static const struct v4l2_subdev_core_ops rk628_csi_core_ops = {
+ 	.interrupt_service_routine = rk628_csi_isr,
+ 	.subscribe_event = rk628_csi_subscribe_event,
+@@ -2331,10 +2313,8 @@ static int rk628_csi_probe(struct i2c_client *client,
+ 			V4L2_CID_PIXEL_RATE, 0, RK628_CSI_PIXEL_RATE_HIGH, 1,
+ 			RK628_CSI_PIXEL_RATE_HIGH);
+ 	csi->detect_tx_5v_ctrl = v4l2_ctrl_new_std(&csi->hdl,
+-			&rk628_csi_ctrl_ops, V4L2_CID_DV_RX_POWER_PRESENT,
++			NULL, V4L2_CID_DV_RX_POWER_PRESENT,
+ 			0, 1, 0, 0);
+-	if (csi->detect_tx_5v_ctrl)
+-		csi->detect_tx_5v_ctrl->flags |= V4L2_CTRL_FLAG_VOLATILE;
+ 
+ 	/* custom controls */
+ 	csi->audio_sampling_rate_ctrl = v4l2_ctrl_new_custom(&csi->hdl,
+-- 
+2.17.1
+

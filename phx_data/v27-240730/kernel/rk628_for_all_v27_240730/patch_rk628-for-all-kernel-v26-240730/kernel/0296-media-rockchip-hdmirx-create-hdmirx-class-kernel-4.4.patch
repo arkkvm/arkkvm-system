@@ -1,0 +1,141 @@
+From b5b72fee13f218d852131271a251bbb7a729129c Mon Sep 17 00:00:00 2001
+From: Guochun Huang <hero.huang@rock-chips.com>
+Date: Thu, 23 May 2024 10:52:14 +0800
+Subject: [PATCH 296/305] media: rockchip: hdmirx: create hdmirx class
+
+There will be many hdmirx devices in Rockchip SOCs
+Here create a hdmirx class for those hdmirx devices
+
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+Change-Id: I5927da72a067e1a26958c97d6993e72995232b95
+---
+ drivers/media/platform/Kconfig                |  1 +
+ drivers/media/platform/Makefile               |  1 +
+ .../media/platform/rockchip/hdmirx/Kconfig    | 12 ++++++
+ .../media/platform/rockchip/hdmirx/Makefile   |  4 ++
+ .../rockchip/hdmirx/rk_hdmirx_class.c         | 37 +++++++++++++++++++
+ include/linux/rk_hdmirx_class.h               | 14 +++++++
+ 6 files changed, 69 insertions(+)
+ create mode 100644 drivers/media/platform/rockchip/hdmirx/Kconfig
+ create mode 100644 drivers/media/platform/rockchip/hdmirx/Makefile
+ create mode 100644 drivers/media/platform/rockchip/hdmirx/rk_hdmirx_class.c
+ create mode 100644 include/linux/rk_hdmirx_class.h
+
+diff --git a/drivers/media/platform/Kconfig b/drivers/media/platform/Kconfig
+index ba30207a0bb2c7..d10f2eafeddbb1 100644
+--- a/drivers/media/platform/Kconfig
++++ b/drivers/media/platform/Kconfig
+@@ -123,6 +123,7 @@ source "drivers/media/platform/am437x/Kconfig"
+ source "drivers/media/platform/xilinx/Kconfig"
+ source "drivers/media/platform/rk-isp10/Kconfig"
+ source "drivers/media/platform/rockchip/cif/Kconfig"
++source "drivers/media/platform/rockchip/hdmirx/Kconfig"
+ source "drivers/media/platform/rockchip/isp1/Kconfig"
+ source "drivers/media/platform/rockchip/coprocessor/Kconfig"
+ 
+diff --git a/drivers/media/platform/Makefile b/drivers/media/platform/Makefile
+index f6d60e60046d16..3fadc4af7aba23 100644
+--- a/drivers/media/platform/Makefile
++++ b/drivers/media/platform/Makefile
+@@ -52,6 +52,7 @@ obj-$(CONFIG_VIDEO_ROCKCHIP_RGA)	+= rockchip/rga/
+ 
+ obj-y	+= omap/
+ obj-$(CONFIG_VIDEO_ROCKCHIP_CIF)	+= rockchip/cif/
++obj-$(CONFIG_VIDEO_ROCKCHIP_HDMIRX_CLASS) += rockchip/hdmirx/
+ obj-$(CONFIG_VIDEO_ROCKCHIP_ISP1)	+= rockchip/isp1/
+ obj-y	+= rockchip/coprocessor/
+ 
+diff --git a/drivers/media/platform/rockchip/hdmirx/Kconfig b/drivers/media/platform/rockchip/hdmirx/Kconfig
+new file mode 100644
+index 00000000000000..8e9db6d0196bd9
+--- /dev/null
++++ b/drivers/media/platform/rockchip/hdmirx/Kconfig
+@@ -0,0 +1,12 @@
++# SPDX-License-Identifier: GPL-2.0
++
++config VIDEO_ROCKCHIP_HDMIRX_CLASS
++	tristate "Rockchip HDMI Receiver Devices Class Support"
++	help
++	  There are many hdmirx devices in Rockchip SOCs, eg.
++	  rkhdmirx rk628 lut6911 it6616
++	  This driver create a class for those hdmirx devices
++	  And hdmirx drivers can add hdmirx properties for those
++	  hdmirx devices
++
++	  To compile this driver as a module, choose M here.
+diff --git a/drivers/media/platform/rockchip/hdmirx/Makefile b/drivers/media/platform/rockchip/hdmirx/Makefile
+new file mode 100644
+index 00000000000000..e659fe0ec97a96
+--- /dev/null
++++ b/drivers/media/platform/rockchip/hdmirx/Makefile
+@@ -0,0 +1,4 @@
++# SPDX-License-Identifier: GPL-2.0
++rockchip-hdmirx-class-objs := rk_hdmirx_class.o
++
++obj-$(CONFIG_VIDEO_ROCKCHIP_HDMIRX_CLASS) += rockchip-hdmirx-class.o
+diff --git a/drivers/media/platform/rockchip/hdmirx/rk_hdmirx_class.c b/drivers/media/platform/rockchip/hdmirx/rk_hdmirx_class.c
+new file mode 100644
+index 00000000000000..1aa66d3c080c98
+--- /dev/null
++++ b/drivers/media/platform/rockchip/hdmirx/rk_hdmirx_class.c
+@@ -0,0 +1,37 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Copyright (c) 2023 Rockchip Electronics Co. Ltd.
++ *
++ * Author: Shunhua Lan <lsh@rock-chips.com>
++ */
++#include <linux/fs.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/platform_device.h>
++#include <linux/rk_hdmirx_class.h>
++
++static struct class *hdmirx_class;
++
++struct class *rk_hdmirx_class(void)
++{
++	return hdmirx_class;
++}
++EXPORT_SYMBOL(rk_hdmirx_class);
++
++static int __init rk_hdmirx_class_init(void)
++{
++	hdmirx_class = class_create(THIS_MODULE, "hdmirx");
++	if (IS_ERR(hdmirx_class))
++		return PTR_ERR(hdmirx_class);
++	return 0;
++}
++subsys_initcall(rk_hdmirx_class_init)
++
++static void __exit rk_hdmirx_class_exit(void)
++{
++	class_destroy(hdmirx_class);
++}
++module_exit(rk_hdmirx_class_exit);
++
++MODULE_DESCRIPTION("Rockchip HDMI Receiver Class Driver");
++MODULE_LICENSE("GPL");
+diff --git a/include/linux/rk_hdmirx_class.h b/include/linux/rk_hdmirx_class.h
+new file mode 100644
+index 00000000000000..22887dda01800e
+--- /dev/null
++++ b/include/linux/rk_hdmirx_class.h
+@@ -0,0 +1,14 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Copyright (c) 2023 Rockchip Electronics Co. Ltd.
++ *
++ * Author: Shunhua Lan <lsh@rock-chips.com>
++ */
++
++#ifndef __RK_HDMIRX_CLASS_H__
++#define __RK_HDMIRX_CLASS_H__
++
++struct class *rk_hdmirx_class(void);
++
++#endif
++
+-- 
+2.17.1
+

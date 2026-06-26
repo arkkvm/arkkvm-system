@@ -1,0 +1,28 @@
+From a75972ffe525bcc7bae3cac5bc99bf43f2514fa5 Mon Sep 17 00:00:00 2001
+From: Chen Shunqing <csq@rock-chips.com>
+Date: Wed, 17 May 2023 08:12:28 +0000
+Subject: [PATCH 160/232] for-all: misc: fix compile warning
+
+Signed-off-by: Chen Shunqing <csq@rock-chips.com>
+Change-Id: I447ffb433a5da3ef6f46fa3a73356b79237a71c2
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/misc/rk628/rk628_hdmirx.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/misc/rk628/rk628_hdmirx.c b/drivers/misc/rk628/rk628_hdmirx.c
+index 0387d586a4bf68..e859b6f3466374 100644
+--- a/drivers/misc/rk628/rk628_hdmirx.c
++++ b/drivers/misc/rk628/rk628_hdmirx.c
+@@ -432,7 +432,7 @@ static void rk628_hdmirx_get_timing(struct rk628 *rk628)
+ 		pixelclock /= 2;
+ 	}
+ 
+-	hdmirx->mode.clock = pixelclock / 1000;
++	hdmirx->mode.clock = div_u64(pixelclock, 1000);
+ 	hdmirx->mode.hdisplay = hact;
+ 	hdmirx->mode.hstart = hdmirx->mode.hdisplay + hfrontporch;
+ 	hdmirx->mode.hend = hdmirx->mode.hstart + hsync;
+-- 
+2.17.1
+

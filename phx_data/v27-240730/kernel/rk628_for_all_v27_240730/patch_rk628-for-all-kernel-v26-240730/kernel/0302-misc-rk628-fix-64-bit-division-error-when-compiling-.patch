@@ -1,0 +1,148 @@
+From 96532a6bc7ad0d46a1cc4aa3c4c1d58f3a391202 Mon Sep 17 00:00:00 2001
+From: Zhibin Huang <zhibin.huang@rock-chips.com>
+Date: Thu, 25 Apr 2024 09:14:54 +0800
+Subject: [PATCH 302/305] misc: rk628: fix 64-bit division error when compiling
+ arm platform
+
+Type: Fix
+Redmine ID: N/A
+Associated modifications: N/A
+Test: N/A
+
+Signed-off-by: Zhibin Huang <zhibin.huang@rock-chips.com>
+Change-Id: I1bf1319de734979735ff3af95bd83f12ffcd3c5c
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/misc/rk628/rk628.c        | 12 +++++-------
+ drivers/misc/rk628/rk628_hdmirx.c | 22 ++++++++++++----------
+ drivers/misc/rk628/rk628_rgb.c    |  3 ++-
+ 3 files changed, 19 insertions(+), 18 deletions(-)
+
+diff --git a/drivers/misc/rk628/rk628.c b/drivers/misc/rk628/rk628.c
+index 4b6e5c93879534..4a697008d9e33d 100644
+--- a/drivers/misc/rk628/rk628.c
++++ b/drivers/misc/rk628/rk628.c
+@@ -922,8 +922,7 @@ static void rk628_show_resolution(struct seq_file *s)
+ 	src_vtotal = src_mode->vtotal;
+ 
+ 	/* get fps */
+-	fps = clk_rx_read * 1000;
+-	do_div(fps, src_htotal * src_vtotal);
++	fps = clk_rx_read * 1000 / (src_htotal * src_vtotal);
+ 
+ 	/* print */
+ 	DEBUG_PRINT("    Display mode: %dx%dp%d,dclk[%u]\n", src_hactive,
+@@ -955,7 +954,8 @@ static void rk628f_show_rgbrx_resolution(struct seq_file *s)
+ 
+ 	imodet_clk = rk628_cru_clk_get_rate(rk628, CGU_CLK_IMODET);
+ 
+-	clk_rx_read = DIV_ROUND_CLOSEST_ULL(imodet_clk * rgb_rx_clkrate, (rgb_rx_eval_time + 1));
++	clk_rx_read = imodet_clk * rgb_rx_clkrate;
++	do_div(clk_rx_read, rgb_rx_eval_time + 1);
+ 	do_div(clk_rx_read, 1000);
+ 
+ 	/* get timing */
+@@ -976,8 +976,7 @@ static void rk628f_show_rgbrx_resolution(struct seq_file *s)
+ 	src_vtotal = val & 0xffff;
+ 
+ 	/* get fps */
+-	fps = clk_rx_read * 1000;
+-	do_div(fps, src_htotal * src_vtotal);
++	fps = DIV_ROUND_CLOSEST_ULL(clk_rx_read * 1000, src_htotal * src_vtotal);
+ 
+ 	/* print */
+ 	DEBUG_PRINT("    Display mode: %dx%dp%d,dclk[%llu]\n", src_hactive,
+@@ -1028,8 +1027,7 @@ static void rk628_show_output_resolution(struct seq_file *s)
+ 	dsp_vact_end = val & 0xfff;
+ 
+ 	/* get fps */
+-	fps = sclk_vop * 1000;
+-	do_div(fps, dsp_vtotal * dsp_htotal);
++	fps = DIV_ROUND_CLOSEST_ULL(sclk_vop * 1000, dsp_vtotal * dsp_htotal);
+ 
+ 	/* print */
+ 	DEBUG_PRINT("    Display mode: %dx%dp%d,dclk[%llu]\n",
+diff --git a/drivers/misc/rk628/rk628_hdmirx.c b/drivers/misc/rk628/rk628_hdmirx.c
+index 0750ff53687bb4..f72604601f789e 100644
+--- a/drivers/misc/rk628/rk628_hdmirx.c
++++ b/drivers/misc/rk628/rk628_hdmirx.c
+@@ -247,7 +247,8 @@ static void rk628_hdmirx_audio_clk_set_rate(struct rk628_hdmirx *hdmirx, u32 rat
+ 
+ static void rk628_hdmirx_audio_clk_ppm_inc(struct rk628_hdmirx *hdmirx, int ppm)
+ {
+-	int delta, rate, inc;
++	u64 delta;
++	int rate, inc;
+ 
+ 	rate = hdmirx->audio_state.hdmirx_aud_clkrate;
+ 	if (ppm < 0) {
+@@ -255,11 +256,12 @@ static void rk628_hdmirx_audio_clk_ppm_inc(struct rk628_hdmirx *hdmirx, int ppm)
+ 		inc = -1;
+ 	} else
+ 		inc = 1;
+-	delta = div_u64(((uint64_t)rate * ppm + 500000), 1000000);
++	delta = (uint64_t)((uint64_t)rate * ppm + 500000);
++	do_div(delta, 1000000);
+ 	delta *= inc;
+-	rate += delta;
++	rate += (int)delta;
+ 	dev_dbg(hdmirx->rk628->dev, "%s: %u to %u(delta:%d)\n",
+-		__func__, hdmirx->audio_state.hdmirx_aud_clkrate, rate, delta);
++		__func__, hdmirx->audio_state.hdmirx_aud_clkrate, rate, (int)delta);
+ 	rk628_cru_clk_set_rate(hdmirx->rk628, CGU_CLK_HDMIRX_AUD, rate);
+ 	hdmirx->audio_state.hdmirx_aud_clkrate = rate;
+ }
+@@ -674,8 +676,8 @@ static void rk628_hdmirx_get_timing(struct rk628 *rk628)
+ 	u32 tmds_clk, tmdsclk_cnt, modetclk_hz;
+ 	u64 tmp_data;
+ 	u32 interlaced;
+-	u32 width, height, hfrontporch, hsync, hbackporch, vfrontporch, vsync, vbackporch;
+-	unsigned long long pixelclock;
++	u32 hfrontporch, hsync, hbackporch, vfrontporch, vsync, vbackporch;
++	unsigned long long pixelclock, clock;
+ 	unsigned long flags = 0;
+ 	struct rk628_hdmirx *hdmirx = rk628->hdmirx;
+ 
+@@ -755,8 +757,6 @@ static void rk628_hdmirx_get_timing(struct rk628 *rk628)
+ 	       " hofs:%d\n", MODETCLK_CNT_NUM, tmdsclk_cnt,
+ 	       modetclk_cnt_hs, modetclk_cnt_vs, hofs_pix);
+ 
+-	width = hact;
+-	height = vact;
+ 	hfrontporch = hfp;
+ 	hsync = hs;
+ 	hbackporch = hbp;
+@@ -770,12 +770,14 @@ static void rk628_hdmirx_get_timing(struct rk628 *rk628)
+ 		pixelclock = htotal * vtotal * fps;
+ 
+ 	if (interlaced == 1) {
+-		height *= 2;
+ 		vsync = vsync + 1;
+ 		pixelclock /= 2;
+ 	}
+ 
+-	hdmirx->mode.clock = div_u64(pixelclock, 1000);
++	clock = pixelclock;
++	do_div(clock, 1000);
++
++	hdmirx->mode.clock = clock;
+ 	hdmirx->mode.hdisplay = hact;
+ 	hdmirx->mode.hstart = hdmirx->mode.hdisplay + hfrontporch;
+ 	hdmirx->mode.hend = hdmirx->mode.hstart + hsync;
+diff --git a/drivers/misc/rk628/rk628_rgb.c b/drivers/misc/rk628/rk628_rgb.c
+index d1c96c2d693303..6c11b4b3d0b4b5 100644
+--- a/drivers/misc/rk628/rk628_rgb.c
++++ b/drivers/misc/rk628/rk628_rgb.c
+@@ -57,7 +57,8 @@ static int rk628_rgb_resolution_show(struct seq_file *s, void *data)
+ 	rgb_rx_clkrate = val & RGB_RX_CLKRATE_MASK;
+ 
+ 	ref_clk = rk628_cru_clk_get_rate(rk628, CGU_CLK_IMODET);
+-	pixel_clk = DIV_ROUND_CLOSEST_ULL(ref_clk * rgb_rx_clkrate, (rgb_rx_eval_time + 1));
++	pixel_clk = ref_clk * rgb_rx_clkrate;
++	do_div(pixel_clk, rgb_rx_eval_time + 1);
+ 
+ 	if (rk628_input_is_rgb(rk628)) {
+ 		rk628_i2c_read(rk628, GRF_RGB_RX_DBG_MEAS4, &val);
+-- 
+2.17.1
+

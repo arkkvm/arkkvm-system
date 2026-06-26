@@ -1,0 +1,76 @@
+From 2a77c79d70b1f6abd557e95e839e049d510ccc83 Mon Sep 17 00:00:00 2001
+From: Chen Shunqing <csq@rock-chips.com>
+Date: Wed, 12 Jan 2022 08:47:38 +0800
+Subject: [PATCH 125/232] misc: rk628-for-all: optimized hdmirx detect time
+
+Signed-off-by: Chen Shunqing <csq@rock-chips.com>
+Change-Id: Icb759a63b09df0eb94b0b7ea3549204999ff5471
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/misc/rk628/rk628.c           | 5 +++--
+ drivers/misc/rk628/rk628_combrxphy.c | 6 ------
+ drivers/misc/rk628/rk628_hdmirx.c    | 3 +++
+ 3 files changed, 6 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/misc/rk628/rk628.c b/drivers/misc/rk628/rk628.c
+index 1a8ebdb4d7bb2a..08a090745a09b2 100644
+--- a/drivers/misc/rk628/rk628.c
++++ b/drivers/misc/rk628/rk628.c
+@@ -636,13 +636,14 @@ rk628_i2c_probe(struct i2c_client *client, const struct i2c_device_id *id)
+ 			}
+ 			/* hdmirx int en */
+ 			rk628_i2c_write(rk628, GRF_INTR0_EN, 0x01000100);
++			rk628_display_enable(rk628);
+ 			queue_delayed_work(rk628->monitor_wq, &rk628->delay_work,
+-					   msecs_to_jiffies(1000));
++					   msecs_to_jiffies(20));
+ 		}
+ 	} else {
+ 		rk628_display_enable(rk628);
+ 		queue_delayed_work(rk628->monitor_wq, &rk628->delay_work,
+-				    msecs_to_jiffies(3000));
++				    msecs_to_jiffies(50));
+ 	}
+ #else
+ 	rk628_display_enable(rk628);
+diff --git a/drivers/misc/rk628/rk628_combrxphy.c b/drivers/misc/rk628/rk628_combrxphy.c
+index 5e081393f77ea1..afde84f75e61f4 100644
+--- a/drivers/misc/rk628/rk628_combrxphy.c
++++ b/drivers/misc/rk628/rk628_combrxphy.c
+@@ -342,7 +342,6 @@ static int rk628_combrxphy_set_hdmi_mode_for_cable(struct rk628 *rk628, int f)
+ 	u32 cdr_mode, cdr_data, pll_man;
+ 	u32 tmds_bitrate_per_lane;
+ 	u32 cdr_data_min, cdr_data_max;
+-	u32 temp = 0;
+ 	u32 state, channel_st;
+ 	bool is_yuv420;
+ 
+@@ -379,11 +378,6 @@ static int rk628_combrxphy_set_hdmi_mode_for_cable(struct rk628 *rk628, int f)
+ 	};
+ 
+ 	for (i = 0; i < CLK_DET_TRY_TIMES; i++) {
+-		rk628_i2c_read(rk628, COMBRX_REG(0x6620), &val);
+-		if (!temp && val) {
+-			temp = val;
+-			msleep(200);
+-		}
+ 		if (rk628_combrxphy_try_clk_detect(rk628) >= 0)
+ 			break;
+ 		mdelay(1);
+diff --git a/drivers/misc/rk628/rk628_hdmirx.c b/drivers/misc/rk628/rk628_hdmirx.c
+index 38014a16e6c7f7..9ed385d3286584 100644
+--- a/drivers/misc/rk628/rk628_hdmirx.c
++++ b/drivers/misc/rk628/rk628_hdmirx.c
+@@ -272,6 +272,9 @@ static int rk628_hdmirx_set_edid(struct rk628 *rk628)
+ 
+ 	rk628_hdmirx_disable_edid(rk628);
+ 
++	if (!rk628->plugin_det_gpio)
++		return 0;
++
+ 	/* edid access by apb when write, i2c slave addr: 0x0 */
+ 	rk628_i2c_update_bits(rk628, GRF_SYSTEM_CON0,
+ 	     SW_ADAPTER_I2CSLADR_MASK |
+-- 
+2.17.1
+

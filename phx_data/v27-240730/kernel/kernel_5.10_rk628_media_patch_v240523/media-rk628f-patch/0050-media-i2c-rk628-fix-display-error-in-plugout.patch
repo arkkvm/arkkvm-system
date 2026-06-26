@@ -1,0 +1,177 @@
+From fb7e8f94dc1f48f8c694be311b903fa9ac2f1c44 Mon Sep 17 00:00:00 2001
+From: Chen Shunqing <csq@rock-chips.com>
+Date: Mon, 22 Jan 2024 06:53:58 +0000
+Subject: [PATCH 50/53] media: i2c: rk628: fix display error in plugout
+
+Type: Fix
+Redmine ID: #461174
+Associated modifications: N/A
+Test: plugin and plugout the HDMI cable.
+
+Change-Id: Ib4c23b2cb98f782cafe0704e9e9ad22a3448dbfa
+Signed-off-by: Chen Shunqing <csq@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628.h             |  1 +
+ drivers/media/i2c/rk628/rk628_bt1120_v4l2.c | 16 ++----------
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c    | 16 ++----------
+ drivers/media/i2c/rk628/rk628_hdmirx.c      | 28 +++++++++++++++++++++
+ drivers/media/i2c/rk628/rk628_hdmirx.h      |  3 +++
+ 5 files changed, 36 insertions(+), 28 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628.h b/drivers/media/i2c/rk628/rk628.h
+index 6ea3ad0d6437..eb9dcc39987d 100644
+--- a/drivers/media/i2c/rk628/rk628.h
++++ b/drivers/media/i2c/rk628/rk628.h
+@@ -294,6 +294,7 @@ struct rk628 {
+ 	struct mutex rst_lock;
+ 	int tx_mode;
+ 	struct dentry *debug_dir;
++	struct gpio_desc *hdmirx_det_gpio;
+ };
+ 
+ int rk628_media_i2c_write(struct rk628 *rk628, u32 reg, u32 val);
+diff --git a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+index ecb334a4c4c4..fcb27aa0674e 100644
+--- a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+@@ -248,22 +248,9 @@ static inline struct rk628_bt1120 *to_bt1120(struct v4l2_subdev *sd)
+ static bool tx_5v_power_present(struct v4l2_subdev *sd)
+ {
+ 	bool ret;
+-	int val, i, cnt;
+ 	struct rk628_bt1120 *bt1120 = to_bt1120(sd);
+ 
+-	/* Direct Mode */
+-	if (!bt1120->plugin_det_gpio)
+-		return true;
+-
+-	cnt = 0;
+-	for (i = 0; i < 5; i++) {
+-		val = gpiod_get_value(bt1120->plugin_det_gpio);
+-		if (val > 0)
+-			cnt++;
+-		usleep_range(500, 600);
+-	}
+-
+-	ret = (cnt >= 3) ? true : false;
++	ret = rk628_hdmirx_tx_5v_power_detect(bt1120->plugin_det_gpio);
+ 	v4l2_dbg(1, debug, sd, "%s: %d\n", __func__, ret);
+ 
+ 	return ret;
+@@ -1736,6 +1723,7 @@ static int rk628_bt1120_probe_of(struct rk628_bt1120 *bt1120)
+ 		ret = PTR_ERR(bt1120->plugin_det_gpio);
+ 		goto clk_put;
+ 	}
++	bt1120->rk628->hdmirx_det_gpio = bt1120->plugin_det_gpio;
+ 
+ 	if (bt1120->enable_gpio) {
+ 		gpiod_set_value(bt1120->enable_gpio, 1);
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index d9225e0eb89b..37e1ab2e8c5c 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -361,22 +361,9 @@ static inline struct rk628_csi *to_csi(struct v4l2_subdev *sd)
+ static bool tx_5v_power_present(struct v4l2_subdev *sd)
+ {
+ 	bool ret;
+-	int val, i, cnt;
+ 	struct rk628_csi *csi = to_csi(sd);
+ 
+-	/* Direct Mode */
+-	if (!csi->plugin_det_gpio)
+-		return true;
+-
+-	cnt = 0;
+-	for (i = 0; i < 5; i++) {
+-		val = gpiod_get_value(csi->plugin_det_gpio);
+-		if (val > 0)
+-			cnt++;
+-		usleep_range(500, 600);
+-	}
+-
+-	ret = (cnt >= 3) ? true : false;
++	ret = rk628_hdmirx_tx_5v_power_detect(csi->plugin_det_gpio);
+ 	v4l2_dbg(1, debug, sd, "%s: %d\n", __func__, ret);
+ 
+ 	return ret;
+@@ -2554,6 +2541,7 @@ static int rk628_csi_probe_of(struct rk628_csi *csi)
+ 		ret = PTR_ERR(csi->plugin_det_gpio);
+ 		goto clk_put;
+ 	}
++	csi->rk628->hdmirx_det_gpio = csi->plugin_det_gpio;
+ 
+ 	if (csi->enable_gpio) {
+ 		gpiod_set_value(csi->enable_gpio, 1);
+diff --git a/drivers/media/i2c/rk628/rk628_hdmirx.c b/drivers/media/i2c/rk628/rk628_hdmirx.c
+index b9daaf5e7628..6617a6dd0b06 100644
+--- a/drivers/media/i2c/rk628/rk628_hdmirx.c
++++ b/drivers/media/i2c/rk628/rk628_hdmirx.c
+@@ -1375,6 +1375,29 @@ static int rk628_hdmirx_read_timing(struct rk628 *rk628,
+ 	return -ENOLCK;
+ }
+ 
++bool rk628_hdmirx_tx_5v_power_detect(struct gpio_desc *det_gpio)
++{
++	bool ret;
++	int val, i, cnt;
++
++	/* Direct Mode */
++	if (!det_gpio)
++		return true;
++
++	cnt = 0;
++	for (i = 0; i < 5; i++) {
++		val = gpiod_get_value(det_gpio);
++		if (val > 0)
++			cnt++;
++		usleep_range(500, 600);
++	}
++
++	ret = (cnt >= 3) ? true : false;
++
++	return ret;
++}
++EXPORT_SYMBOL(rk628_hdmirx_tx_5v_power_detect);
++
+ static int rk628_hdmirx_try_to_get_timing(struct rk628 *rk628,
+ 					  struct v4l2_dv_timings *timings)
+ {
+@@ -1404,6 +1427,11 @@ int rk628_hdmirx_get_timings(struct rk628 *rk628,
+ 	last_fmt = BUS_FMT_RGB;
+ 
+ 	for (i = 0; i < HDMIRX_GET_TIMING_CNT; i++) {
++		if (!rk628_hdmirx_tx_5v_power_detect(rk628->hdmirx_det_gpio)) {
++			dev_info(rk628->dev, "%s: hdmi plug out!\n", __func__);
++			return -EINVAL;
++		}
++
+ 		ret = rk628_hdmirx_try_to_get_timing(rk628, timings);
+ 		if ((last_w == 0) && (last_h == 0)) {
+ 			last_w = bt->width;
+diff --git a/drivers/media/i2c/rk628/rk628_hdmirx.h b/drivers/media/i2c/rk628/rk628_hdmirx.h
+index 43b159e387e0..49bf500541ca 100644
+--- a/drivers/media/i2c/rk628/rk628_hdmirx.h
++++ b/drivers/media/i2c/rk628/rk628_hdmirx.h
+@@ -8,9 +8,11 @@
+ #ifndef __RK628_HDMIRX_H
+ #define __RK628_HDMIRX_H
+ 
++#include <linux/gpio/consumer.h>
+ #include <media/cec.h>
+ #include <media/cec-notifier.h>
+ #include <media/v4l2-dv-timings.h>
++
+ #include "rk628.h"
+ 
+ /* --------- EDID and HDCP KEY ------- */
+@@ -509,6 +511,7 @@ void rk628_hdmirx_phy_prepclk_cfg(struct rk628 *rk628);
+ int rk628_hdmirx_verisyno_phy_init(struct rk628 *rk628);
+ u8 rk628_hdmirx_get_format(struct rk628 *rk628);
+ void rk628_set_bg_enable(struct rk628 *rk628, bool en);
++bool rk628_hdmirx_tx_5v_power_detect(struct gpio_desc *det_gpio);
+ u32 rk628_hdmirx_get_tmdsclk_cnt(struct rk628 *rk628);
+ int rk628_hdmirx_get_timings(struct rk628 *rk628,
+ 			     struct v4l2_dv_timings *timings);
+-- 
+2.17.1
+

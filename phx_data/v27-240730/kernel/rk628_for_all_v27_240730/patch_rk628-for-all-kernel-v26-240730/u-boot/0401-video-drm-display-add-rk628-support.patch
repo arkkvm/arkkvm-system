@@ -1,0 +1,42 @@
+From 117c05248334be5c3d200d4d6cc4eb6b95fcdb78 Mon Sep 17 00:00:00 2001
+From: Guochun Huang <hero.huang@rock-chips.com>
+Date: Tue, 16 Jul 2024 15:07:50 +0800
+Subject: [PATCH] video/drm: display: add rk628 support
+
+Change-Id: Id4e23a7692c8291184bfae162f889dc0cf0b0def
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/video/drm/rockchip_display.c | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/drivers/video/drm/rockchip_display.c b/drivers/video/drm/rockchip_display.c
+index a40d36c2252..492c98d285d 100644
+--- a/drivers/video/drm/rockchip_display.c
++++ b/drivers/video/drm/rockchip_display.c
+@@ -918,6 +918,23 @@ static int display_enable(struct display_state *state)
+ 	if (state->enabled_at_spl == false)
+ 		rockchip_connector_enable(state);
+ 
++#ifdef CONFIG_DRM_ROCKCHIP_RK628
++	/*
++	 * trigger .probe helper of U_BOOT_DRIVER(rk628) in ./rk628/rk628.c
++	 */
++	struct udevice * dev;
++	int phandle, ret;
++
++	phandle = ofnode_read_u32_default(state->node, "bridge", -1);
++	if (phandle < 0)
++		printf("%s failed to find bridge phandle\n", ofnode_get_name(state->node));
++
++	ret = uclass_get_device_by_phandle_id(UCLASS_I2C_GENERIC, phandle, &dev);
++	if (ret && ret != -ENOENT)
++		printf("%s:%d failed to get rk628 device ret:%d\n", __func__, __LINE__, ret);
++
++#endif
++
+ 	if (crtc_state->soft_te)
+ 		crtc_funcs->apply_soft_te(state);
+ 
+-- 
+2.17.1
+

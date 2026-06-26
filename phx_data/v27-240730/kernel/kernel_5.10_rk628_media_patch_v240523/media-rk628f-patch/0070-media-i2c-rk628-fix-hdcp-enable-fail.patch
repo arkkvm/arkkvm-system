@@ -1,0 +1,47 @@
+From 3920b2f9e0e26197fbadd78e12463bccf9c1d81b Mon Sep 17 00:00:00 2001
+From: Chen Shunqing <csq@rock-chips.com>
+Date: Wed, 17 Apr 2024 20:45:30 +0800
+Subject: [PATCH 70/82] media: i2c: rk628: fix hdcp enable fail
+
+Change-Id: I5f95c32e616c0e83a120dfba739cb9b6cd20f327
+Signed-off-by: Chen Shunqing <csq@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_bt1120_v4l2.c | 2 +-
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c    | 1 -
+ 2 files changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+index 95156a4cb190..632c080b4575 100644
+--- a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+@@ -480,6 +480,7 @@ static void rk628_delayed_work_res_change(struct work_struct *work)
+ 				enable_stream(sd, false);
+ 				cancel_delayed_work(&bt1120->delayed_work_res_change);
+ 				rk628_hdmirx_audio_cancel_work_audio(bt1120->audio_info, true);
++				rk628_hdmirx_set_hdcp(bt1120->rk628, &bt1120->hdcp, bt1120->hdcp.enable);
+ 				rk628_hdmirx_controller_setup(bt1120->rk628);
+ 				rk628_hdmirx_hpd_ctrl(sd, false);
+ 				rk628_hdmirx_inno_phy_power_off(sd);
+@@ -872,7 +873,6 @@ static void rk628_bt1120_initial(struct v4l2_subdev *sd)
+ 	def_edid.blocks = 2;
+ 	def_edid.edid = edid_init_data;
+ 	rk628_bt1120_s_edid(sd, &def_edid);
+-	rk628_hdmirx_set_hdcp(bt1120->rk628, &bt1120->hdcp, false);
+ }
+ 
+ static void rk628_bt1120_initial_setup(struct v4l2_subdev *sd)
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index e83f01123236..275ace7f3c0b 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -1354,7 +1354,6 @@ static void rk628_csi_initial(struct v4l2_subdev *sd)
+ 	else
+ 		def_edid.edid = edid_init_data;
+ 	rk628_csi_s_edid(sd, &def_edid);
+-	rk628_hdmirx_set_hdcp(csi->rk628, &csi->hdcp, false);
+ }
+ 
+ static void rk628_csi_initial_setup(struct v4l2_subdev *sd)
+-- 
+2.17.1
+

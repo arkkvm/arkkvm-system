@@ -1,0 +1,36 @@
+From 00a5c418abe8d3057481e97ae6182753e704574a Mon Sep 17 00:00:00 2001
+From: Luo Wei <lw@rock-chips.com>
+Date: Fri, 5 Nov 2021 10:58:54 +0800
+Subject: [PATCH 120/232] misc: fix one build error
+
+Signed-off-by: Luo Wei <lw@rock-chips.com>
+Change-Id: I11edcbf276e3dee2e8fb2279da0c1b5be3551119
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/misc/rk628/rk628.c | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/misc/rk628/rk628.c b/drivers/misc/rk628/rk628.c
+index b50c2935b4c991..1a8ebdb4d7bb2a 100644
+--- a/drivers/misc/rk628/rk628.c
++++ b/drivers/misc/rk628/rk628.c
+@@ -385,12 +385,14 @@ static void rk628_display_disable(struct rk628 *rk628)
+ 
+ static void rk628_display_enable(struct rk628 *rk628)
+ {
++#ifdef RK628_HDMI_IN
++	u8 ret = 0;
++#endif
++
+ 	if (rk628->display_enabled)
+ 		return;
+ 
+ #ifdef RK628_HDMI_IN
+-	u8 ret = 0;
+-
+ 	ret = rk628_hdmirx_enable(rk628);
+ 	if ((ret == HDMIRX_PLUGOUT) || (ret & HDMIRX_NOSIGNAL)) {
+ 		rk628_display_disable(rk628);
+-- 
+2.17.1
+

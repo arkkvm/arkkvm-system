@@ -1,0 +1,85 @@
+From 5c1afa10137b0350e6387088950e3708c79d3ae2 Mon Sep 17 00:00:00 2001
+From: Chen Shunqing <csq@rock-chips.com>
+Date: Sun, 24 Apr 2022 06:54:03 +0000
+Subject: [PATCH 147/232] for-all: misc: remove supported_modes
+
+Signed-off-by: Chen Shunqing <csq@rock-chips.com>
+Change-Id: Ifc39481bf23431827fda05e051c5e6ba44d9d7bb
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/misc/rk628/rk628_hdmirx.c | 37 ++-----------------------------
+ 1 file changed, 2 insertions(+), 35 deletions(-)
+
+diff --git a/drivers/misc/rk628/rk628_hdmirx.c b/drivers/misc/rk628/rk628_hdmirx.c
+index 07ffc1dee240ca..db8b24b1fea046 100644
+--- a/drivers/misc/rk628/rk628_hdmirx.c
++++ b/drivers/misc/rk628/rk628_hdmirx.c
+@@ -80,15 +80,6 @@ struct rk628_hdmirx {
+ 	bool phy_lock;
+ };
+ 
+-const static struct rk628_hdmi_mode supported_modes[] = {
+-	{.hdisplay = 3840, .vdisplay = 2160,},
+-	{.hdisplay = 1920, .vdisplay = 1080,},
+-	{.hdisplay = 1280, .vdisplay = 720,},
+-	{.hdisplay = 540,  .vdisplay = 2560,},
+-	{.hdisplay = 720,  .vdisplay = 576,},
+-	{.hdisplay = 720,  .vdisplay = 480,},
+-};
+-
+ static void rk628_hdmirx_ctrl_enable(struct rk628 *rk628)
+ {
+ 
+@@ -314,27 +305,6 @@ static int rk628_hdmirx_set_edid(struct rk628 *rk628)
+ 	return 0;
+ }
+ 
+-static bool rk628_rcv_supported_res(struct rk628 *rk628,
+-				    u32 width, u32 height,
+-				    u32 *index)
+-{
+-	u32 i;
+-
+-	for (i = 0; i < ARRAY_SIZE(supported_modes); i++) {
+-		if ((supported_modes[i].hdisplay == width) &&
+-		    (supported_modes[i].vdisplay == height)) {
+-			break;
+-		}
+-	}
+-	if (i == ARRAY_SIZE(supported_modes)) {
+-		printk("do not support res wxh: %dx%d\n", width, height);
+-		return false;
+-	} else {
+-		*index = i;
+-		return true;
+-	}
+-}
+-
+ static int rk628_hdmirx_phy_power_on(struct rk628 *rk628, int f)
+ {
+ 	int ret;
+@@ -487,7 +457,6 @@ static int rk628_hdmirx_phy_setup(struct rk628 *rk628)
+ {
+ 	u32 i, cnt, val;
+ 	u32 width, height, frame_width, frame_height, status;
+-	u32 index;
+ 	struct rk628_display_mode *src_mode;
+ 	struct rk628_hdmirx *hdmirx = rk628->hdmirx;
+ 	int f;
+@@ -540,11 +509,9 @@ static int rk628_hdmirx_phy_setup(struct rk628 *rk628)
+ 
+ 			if (cnt >= 15)
+ 				break;
+-		}while(((status & 0xfff) != 0xf00) ||
+-			(!rk628_rcv_supported_res(rk628, width, height, &index)));
++		} while((status & 0xfff) != 0xf00);
+ 
+-		if (((status & 0xfff) != 0xf00) ||
+-		    (!rk628_rcv_supported_res(rk628, width, height, &index))) {
++		if ((status & 0xfff) != 0xf00) {
+ 			printk("%s hdmi rxphy lock failed, retry:%d\n",
+ 			       __func__, i);
+ 			continue;
+-- 
+2.17.1
+

@@ -1,0 +1,61 @@
+From ed69376f0a629128246c38ef12f4524eff8426dc Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Mon, 13 May 2024 10:44:50 +0800
+Subject: [PATCH 277/305] media: i2c: rk628: add txdata and txbytehs reset when
+ soft reset
+
+Type: Fix
+Redmine ID: N/A
+Associated modifications: N/A
+Test: test method
+
+Change-Id: I24c738e91107de252cf41270f7aafd3caa51fff6
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c | 22 ++++++++++++++++------
+ 1 file changed, 16 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index 371ccbb7bcc233..bbde2c09c1e446 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -655,19 +655,29 @@ static void rk628_csi1_cru_reset(struct v4l2_subdev *sd)
+ 	rk628_control_deassert(csi->rk628, RGU_CSI1);
+ }
+ 
+-static void rk628_csi_soft_reset(struct v4l2_subdev *sd)
++static void rk628_mipi_txdata_reset(struct v4l2_subdev *sd)
+ {
+ 	struct rk628_csi *csi = to_csi(sd);
+ 
+-	rk628_i2c_write(csi->rk628, CSITX_SYS_CTRL0_IMD, 0x1);
++	rk628_control_assert(csi->rk628, RGU_TXDATA);
++	rk628_control_assert(csi->rk628, RGU_TXBYTEHS);
+ 	usleep_range(1000, 1100);
+-	rk628_i2c_write(csi->rk628, CSITX_SYS_CTRL0_IMD, 0x0);
++	rk628_control_deassert(csi->rk628, RGU_TXDATA);
++	rk628_control_deassert(csi->rk628, RGU_TXBYTEHS);
++}
+ 
+-	if (csi->rk628->version >= RK628F_VERSION) {
++static void rk628_csi_soft_reset(struct v4l2_subdev *sd)
++{
++	struct rk628_csi *csi = to_csi(sd);
++
++	rk628_i2c_write(csi->rk628, CSITX_SYS_CTRL0_IMD, 0x1);
++	if (csi->rk628->version >= RK628F_VERSION)
+ 		rk628_i2c_write(csi->rk628, CSITX1_SYS_CTRL0_IMD, 0x1);
+-		usleep_range(1000, 1100);
++
++	rk628_mipi_txdata_reset(sd);
++	rk628_i2c_write(csi->rk628, CSITX_SYS_CTRL0_IMD, 0x0);
++	if (csi->rk628->version >= RK628F_VERSION)
+ 		rk628_i2c_write(csi->rk628, CSITX1_SYS_CTRL0_IMD, 0x0);
+-	}
+ }
+ 
+ static void enable_csitx(struct v4l2_subdev *sd)
+-- 
+2.17.1
+

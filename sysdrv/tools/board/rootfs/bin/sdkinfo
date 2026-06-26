@@ -1,0 +1,3 @@
+#!/bin/sh
+echo Build Time:  2025-10-10-13:24:46
+echo SDK Version: Luckfox Pico Sdk V1.4

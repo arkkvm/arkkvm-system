@@ -1,0 +1,32 @@
+From fe76506e3605fddf7d2491895474c01052fdc3fc Mon Sep 17 00:00:00 2001
+From: Guochun Huang <hero.huang@rock-chips.com>
+Date: Wed, 3 Jan 2024 09:50:54 +0000
+Subject: [PATCH 236/237] misc: rk628: fix version info
+
+Type: Fix
+Redmine ID: no
+Associated modifications: no
+Test: pass
+
+Change-Id: Ic1d2c522371bec271b5c5e005c0c82748bd26fe6
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/misc/rk628/rk628.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/misc/rk628/rk628.c b/drivers/misc/rk628/rk628.c
+index 74ab5e4b434d49..f8ce1f32b336ff 100644
+--- a/drivers/misc/rk628/rk628.c
++++ b/drivers/misc/rk628/rk628.c
+@@ -1231,7 +1231,7 @@ static int rk628_version_info(struct rk628 *rk628)
+ 		version = "D/E";
+ 		break;
+ 	case RK628F_VERSION:
+-		version = "F/B/G";
++		version = "F/H";
+ 		break;
+ 	default:
+ 		version = "unknown";
+-- 
+2.17.1
+

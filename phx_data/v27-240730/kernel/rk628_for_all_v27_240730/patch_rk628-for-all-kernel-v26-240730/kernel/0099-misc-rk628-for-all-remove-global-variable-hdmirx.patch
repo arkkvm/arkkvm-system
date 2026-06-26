@@ -1,0 +1,293 @@
+From f93e3f51b7bbabb3a50c0194cfaf60328dfea81e Mon Sep 17 00:00:00 2001
+From: Shunqing Chen <csq@rock-chips.com>
+Date: Sat, 18 Sep 2021 10:21:04 +0800
+Subject: [PATCH 099/232] misc: rk628-for-all: remove global variable hdmirx
+
+Signed-off-by: Shunqing Chen <csq@rock-chips.com>
+Change-Id: Ic2c9334c680ff7366e008417885d4c148fac9620
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/misc/rk628/rk628.h        |   1 +
+ drivers/misc/rk628/rk628_hdmirx.c | 120 ++++++++++++++++++------------
+ 2 files changed, 73 insertions(+), 48 deletions(-)
+ mode change 100755 => 100644 drivers/misc/rk628/rk628.h
+
+diff --git a/drivers/misc/rk628/rk628.h b/drivers/misc/rk628/rk628.h
+old mode 100755
+new mode 100644
+index ed2e40fd7c721a..e85dae0242e61d
+--- a/drivers/misc/rk628/rk628.h
++++ b/drivers/misc/rk628/rk628.h
+@@ -263,6 +263,7 @@ struct rk628 {
+ 	struct workqueue_struct *monitor_wq;
+ 	struct delayed_work delay_work;
+ 	struct panel_simple *panel;
++	void *hdmirx;
+ };
+ 
+ static inline int rk628_i2c_write(struct rk628 *rk628, u32 reg, u32 val)
+diff --git a/drivers/misc/rk628/rk628_hdmirx.c b/drivers/misc/rk628/rk628_hdmirx.c
+index 05359a850b9601..0f5e04185b9b63 100644
+--- a/drivers/misc/rk628/rk628_hdmirx.c
++++ b/drivers/misc/rk628/rk628_hdmirx.c
+@@ -71,11 +71,8 @@ struct rk628_hdmirx {
+ 	u32 input_format;
+ 	u32 fs_audio;
+ 	bool audio_present;
+-	u8 init;
+ };
+ 
+-struct rk628_hdmirx hdmirx;
+-
+ const static struct rk628_hdmi_mode supported_modes[] = {
+ 	{.hdisplay = 3840, .vdisplay = 2160,},
+ 	{.hdisplay = 1920, .vdisplay = 1080,},
+@@ -264,6 +261,7 @@ static void rk628_hdmirx_get_timing(struct rk628 *rk628)
+ 	u32 width, height, hfrontporch, hsync, hbackporch, vfrontporch, vsync, vbackporch;
+ 	unsigned long long pixelclock;
+ 	unsigned long flags = 0;
++	struct rk628_hdmirx *hdmirx = rk628->hdmirx;
+ 
+ 	rk628_i2c_read(rk628, HDMI_RX_SCDC_REGS1, &val);
+ 	status = val;
+@@ -348,17 +346,17 @@ static void rk628_hdmirx_get_timing(struct rk628 *rk628)
+ 		pixelclock /= 2;
+ 	}
+ 
+-	hdmirx.mode.clock = tmds_clk / 1000;
+-	hdmirx.mode.hdisplay = hact;
+-	hdmirx.mode.hstart = hdmirx.mode.hdisplay + hfrontporch;
+-	hdmirx.mode.hend = hdmirx.mode.hstart + hsync;
+-	hdmirx.mode.htotal = hdmirx.mode.hend + hbackporch;
++	hdmirx->mode.clock = tmds_clk / 1000;
++	hdmirx->mode.hdisplay = hact;
++	hdmirx->mode.hstart = hdmirx->mode.hdisplay + hfrontporch;
++	hdmirx->mode.hend = hdmirx->mode.hstart + hsync;
++	hdmirx->mode.htotal = hdmirx->mode.hend + hbackporch;
+ 
+-	hdmirx.mode.vdisplay = vact;
+-	hdmirx.mode.vstart = hdmirx.mode.vdisplay + vfrontporch;
+-	hdmirx.mode.vend = hdmirx.mode.vstart + vsync;
+-	hdmirx.mode.vtotal = hdmirx.mode.vend + vbackporch;
+-	hdmirx.mode.flags = flags;
++	hdmirx->mode.vdisplay = vact;
++	hdmirx->mode.vstart = hdmirx->mode.vdisplay + vfrontporch;
++	hdmirx->mode.vend = hdmirx->mode.vstart + vsync;
++	hdmirx->mode.vtotal = hdmirx->mode.vend + vbackporch;
++	hdmirx->mode.flags = flags;
+ 
+ 	printk("SCDC_REGS1:%#x, act:%dx%d, total:%dx%d, fps:%d,"
+ 	       " pixclk:%llu\n", status, hact, vact, htotal, vtotal,
+@@ -375,6 +373,7 @@ static int rk628_hdmirx_phy_setup(struct rk628 *rk628)
+ 	u32 width, height, frame_width, frame_height, status;
+ 	u32 index;
+ 	struct drm_display_mode *src_mode;
++	struct rk628_hdmirx *hdmirx = rk628->hdmirx;
+ 
+ 	for ( i = 0; i < RXPHY_CFG_MAX_TIMES; i++) {
+ 		rk628_hdmirx_phy_power_on(rk628);
+@@ -414,17 +413,17 @@ static int rk628_hdmirx_phy_setup(struct rk628 *rk628)
+ 			rk628_hdmirx_get_timing(rk628);
+ 
+ 			src_mode = rk628_display_get_src_mode();
+-			src_mode->clock = hdmirx.mode.clock;
+-			src_mode->hdisplay = hdmirx.mode.hdisplay;
+-			src_mode->hsync_start = hdmirx.mode.hstart;
+-			src_mode->hsync_end = hdmirx.mode.hend;
+-			src_mode->htotal = hdmirx.mode.htotal;
+-
+-			src_mode->vdisplay = hdmirx.mode.vdisplay;
+-			src_mode->vsync_start = hdmirx.mode.vstart;
+-			src_mode->vsync_end = hdmirx.mode.vend;
+-			src_mode->vtotal = hdmirx.mode.vtotal;
+-			src_mode->flags = hdmirx.mode.flags;
++			src_mode->clock = hdmirx->mode.clock;
++			src_mode->hdisplay = hdmirx->mode.hdisplay;
++			src_mode->hsync_start = hdmirx->mode.hstart;
++			src_mode->hsync_end = hdmirx->mode.hend;
++			src_mode->htotal = hdmirx->mode.htotal;
++
++			src_mode->vdisplay = hdmirx->mode.vdisplay;
++			src_mode->vsync_start = hdmirx->mode.vstart;
++			src_mode->vsync_end = hdmirx->mode.vend;
++			src_mode->vtotal = hdmirx->mode.vtotal;
++			src_mode->flags = hdmirx->mode.flags;
+ 
+ 			break;
+ 		}
+@@ -439,6 +438,7 @@ static int rk628_hdmirx_phy_setup(struct rk628 *rk628)
+ static u32 rk628_hdmirx_get_input_format(struct rk628 *rk628)
+ {
+ 	u32 val, format;
++	struct rk628_hdmirx *hdmirx = rk628->hdmirx;
+ 
+ 	rk628_i2c_read(rk628, HDMI_RX_PDEC_ISTS, &val);
+ 	if (val & AVI_RCV_ISTS) {
+@@ -446,22 +446,22 @@ static u32 rk628_hdmirx_get_input_format(struct rk628 *rk628)
+ 		format  = (format & VIDEO_FORMAT) >> 5;
+ 		switch (format) {
+ 		case 0:
+-			hdmirx.input_format = BUS_FMT_RGB;
++			hdmirx->input_format = BUS_FMT_RGB;
+ 			break;
+ 		case 1:
+-			hdmirx.input_format = BUS_FMT_YUV422;
++			hdmirx->input_format = BUS_FMT_YUV422;
+ 			break;
+ 		case 2:
+-			hdmirx.input_format = BUS_FMT_YUV444;
++			hdmirx->input_format = BUS_FMT_YUV444;
+ 			break;
+ 		default:
+-			hdmirx.input_format = BUS_FMT_RGB;
++			hdmirx->input_format = BUS_FMT_RGB;
+ 			break;
+ 		}
+ 		rk628_i2c_write(rk628, HDMI_RX_PDEC_ICLR, AVI_RCV_ISTS);
+ 	}
+ 
+-	return hdmirx.input_format;
++	return hdmirx->input_format;
+ }
+ 
+ static int rk628_check_signal(struct rk628 *rk628)
+@@ -484,26 +484,34 @@ static int rk628_check_signal(struct rk628 *rk628)
+ static bool rk628_hdmirx_status_change(struct rk628 *rk628)
+ {
+ 	u32 hact, vact, val;
++	struct rk628_hdmirx *hdmirx = rk628->hdmirx;
+ 
+ 	rk628_i2c_read(rk628, HDMI_RX_MD_HACT_PX, &val);
+ 	hact = val & 0xffff;
+ 	rk628_i2c_read(rk628, HDMI_RX_MD_VAL, &val);
+ 	vact = val & 0xffff;
+-	if (hact != hdmirx.mode.hdisplay || vact != hdmirx.mode.vdisplay) {
++	if (hact != hdmirx->mode.hdisplay || vact != hdmirx->mode.vdisplay) {
+ 		printk("new: hdisplay=%d, vdisplay=%d\n", hact, vact);
+-		printk("old: hdisplay=%d, vdisplay=%d\n", hdmirx.mode.hdisplay, hdmirx.mode.vdisplay);
++		printk("old: hdisplay=%d, vdisplay=%d\n", hdmirx->mode.hdisplay, hdmirx->mode.vdisplay);
+ 		return true;
+ 	}
+ 
+ 	rk628_hdmirx_get_input_format(rk628);
+-	if (hdmirx.input_format != rk628_get_input_bus_format())
++	if (hdmirx->input_format != rk628_get_input_bus_format())
+ 		return true;
+ 
+ 	return false;
+ }
+ 
+-static void rk628_hdmirx_init(struct rk628 *rk628)
++static int rk628_hdmirx_init(struct rk628 *rk628)
+ {
++	struct rk628_hdmirx *hdmirx;
++
++	hdmirx = devm_kzalloc(rk628->dev, sizeof(*hdmirx), GFP_KERNEL);
++	if (!hdmirx)
++		return -ENOMEM;
++	rk628->hdmirx = hdmirx;
++
+ 	/* HDMIRX IOMUX */
+ 	rk628_i2c_write(rk628, GRF_GPIO1AB_SEL_CON, HIWORD_UPDATE(0x7, 10, 8));
+ 	//i2s pinctrl
+@@ -517,24 +525,31 @@ static void rk628_hdmirx_init(struct rk628 *rk628)
+ 	rk628_i2c_write(rk628, HDMI_RX_PDEC_ICLR, AVI_RCV_ISTS);
+ 
+ 	printk("hdmirx driver version: %s\n", DRIVER_VERSION);
++
++	return 0;
+ }
+ 
+ int rk628_hdmirx_enable(struct rk628 *rk628)
+ {
+-	if (!hdmirx.init) {
+-		rk628_hdmirx_init(rk628);
+-		hdmirx.init = 1;
++	int ret;
++	struct rk628_hdmirx *hdmirx;
++
++	if (!rk628->hdmirx) {
++		ret = rk628_hdmirx_init(rk628);
++		if (ret < 0)
++			return HDMIRX_PLUGOUT;
+ 	}
+ 
++	hdmirx = rk628->hdmirx;
+ 	if (tx_5v_power_present()) {
+-		hdmirx.plugin = true;
++		hdmirx->plugin = true;
+ 		rk628_hdmirx_enable_edid(rk628);
+ 		rk628_hdmirx_ctrl_enable(rk628);
+ 		rk628_hdmirx_phy_setup(rk628);
+ 		rk628_hdmirx_get_input_format(rk628);
+-		rk628_set_input_bus_format(hdmirx.input_format);
++		rk628_set_input_bus_format(hdmirx->input_format);
+ 		printk("hdmirx plug in\n");
+-		printk("input: %d, output: %d\n", hdmirx.input_format, rk628_get_output_bus_format());
++		printk("input: %d, output: %d\n", hdmirx->input_format, rk628_get_output_bus_format());
+ 		if (!rk628_check_signal(rk628)) {
+ 			return HDMIRX_PLUGIN | HDMIRX_NOSIGNAL;
+ 		} else {
+@@ -543,7 +558,7 @@ int rk628_hdmirx_enable(struct rk628 *rk628)
+ 		}
+ 	}
+ 
+-	hdmirx.plugin = false;
++	hdmirx->plugin = false;
+ 	rk628_hdmirx_disable_edid(rk628);
+ 	rk628_i2c_update_bits(rk628, GRF_SYSTEM_CON0, SW_I2S_DATA_OEN_MASK, SW_I2S_DATA_OEN(1));
+ 
+@@ -552,13 +567,18 @@ int rk628_hdmirx_enable(struct rk628 *rk628)
+ 
+ void rk628_hdmirx_disable(struct rk628 *rk628)
+ {
+-	if (!hdmirx.init) {
+-		rk628_hdmirx_init(rk628);
+-		hdmirx.init = 1;
++	int ret;
++	struct rk628_hdmirx *hdmirx;
++
++	if (!rk628->hdmirx) {
++		ret = rk628_hdmirx_init(rk628);
++		if (ret < 0)
++			return;
+ 	}
+ 
++	hdmirx = rk628->hdmirx;
+ 	if (!tx_5v_power_present()) {
+-		hdmirx.plugin = false;
++		hdmirx->plugin = false;
+ 		rk628_hdmirx_disable_edid(rk628);
+ 		rk628_i2c_update_bits(rk628, GRF_SYSTEM_CON0, SW_I2S_DATA_OEN_MASK, SW_I2S_DATA_OEN(1));
+ 		printk("hdmirx plug out\n");
+@@ -568,19 +588,23 @@ void rk628_hdmirx_disable(struct rk628 *rk628)
+ int rk628_hdmirx_detect(struct rk628 *rk628)
+ {
+ 	u32 ret = 0;
++	struct rk628_hdmirx *hdmirx = rk628->hdmirx;
++
++	if (!hdmirx)
++		return HDMIRX_PLUGOUT;
+ 
+ 	if (tx_5v_power_present()) {
+ 		ret |= HDMIRX_PLUGIN;
+-		if (!hdmirx.plugin)
++		if (!hdmirx->plugin)
+ 			ret |= HDMIRX_CHANGED;
+ 		if (rk628_hdmirx_status_change(rk628))
+ 			ret |= HDMIRX_CHANGED;
+-		hdmirx.plugin = true;
++		hdmirx->plugin = true;
+ 	} else {
+ 		ret |= HDMIRX_PLUGOUT;
+-		if (hdmirx.plugin)
++		if (hdmirx->plugin)
+ 			ret |= HDMIRX_CHANGED;
+-		hdmirx.plugin = false;
++		hdmirx->plugin = false;
+ 	}
+ 
+ 	return ret;
+-- 
+2.17.1
+

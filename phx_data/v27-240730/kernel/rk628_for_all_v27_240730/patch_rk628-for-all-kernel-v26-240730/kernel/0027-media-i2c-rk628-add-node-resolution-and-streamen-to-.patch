@@ -1,0 +1,171 @@
+From 015cc36e338b3f050a93f6cad62e2bd2f4a9fd63 Mon Sep 17 00:00:00 2001
+From: Dingxian Wen <shawn.wen@rock-chips.com>
+Date: Sat, 24 Jul 2021 16:11:56 +0800
+Subject: [PATCH 027/232] media: i2c: rk628: add node resolution and streamen
+ to adapt camerahal1
+
+Signed-off-by: Dingxian Wen <shawn.wen@rock-chips.com>
+Change-Id: I84e3c397cdeb948d3ede1a270ee37f861d6ccd30
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_csi.c | 116 ++++++++++++++++++++++++++++
+ 1 file changed, 116 insertions(+)
+
+diff --git a/drivers/media/i2c/rk628/rk628_csi.c b/drivers/media/i2c/rk628/rk628_csi.c
+index e89d1d9a7f4730..2536c57fa70688 100644
+--- a/drivers/media/i2c/rk628/rk628_csi.c
++++ b/drivers/media/i2c/rk628/rk628_csi.c
+@@ -63,6 +63,7 @@ MODULE_PARM_DESC(debug, "debug level (0-1)");
+ struct rk628_csi {
+ 	struct device *dev;
+ 	struct rk628 *parent;
++	struct class *rk628_class;
+ 	struct i2c_client *i2c_client;
+ 	struct v4l2_dv_timings timings;
+ 	struct gpio_desc *enable_gpio;
+@@ -214,6 +215,82 @@ static void rk628_hdmirx_audio_setup(struct rk628_csi *csi);
+ static void rk628_hdmirx_vid_enable(struct rk628_csi *csi, bool en);
+ static void rk628_csi_set_csi(struct rk628_csi *csi);
+ static void rk628_hdmirx_hpd_ctrl(struct rk628_csi *csi, bool en);
++static bool tx_5v_power_present(struct rk628_csi *csi);
++
++static struct rk628_csi *g_csi;
++
++static ssize_t rk628_resolution_read(struct class *class,
++		struct class_attribute *attr, char *buf)
++{
++	struct rk628_csi *csi = g_csi;
++	u32 width, height, fps, fs_audio;
++	static u8 cnt;
++
++	if (csi->nosignal && tx_5v_power_present(csi)) {
++		if (cnt++ >= 6) {
++			cnt = 0;
++			dev_info(csi->dev, "no signal but 5v_det, recfg hdmirx!\n");
++			schedule_delayed_work(&csi->delayed_work_enable_hotplug,
++					HZ / 20);
++		}
++	} else {
++		cnt = 0;
++	}
++
++	width = csi->timings.bt.width;
++	height = csi->timings.bt.height;
++	fps = csi->fps;
++	fs_audio = csi->fs_audio;
++
++	/* update resolution for userspace only if signal is stable */
++	if (csi->nosignal) {
++		dev_dbg(csi->dev, "%s: nosignal\n", __func__);
++		return sprintf(buf, "unsupported\n");
++	}
++
++	dev_dbg(csi->dev, "%s %dx%dP%d@%d\n", __func__, width, height, fps,
++			fs_audio);
++	return sprintf(buf, "%dx%dP%d@%d\n", width, height, fps, fs_audio);
++}
++
++static ssize_t rk628_stream_state_read(struct class *class,
++		struct class_attribute *attr, char *buf)
++{
++	struct rk628_csi *csi = g_csi;
++
++	dev_dbg(csi->dev, "%s: state: %d\n", __func__, csi->stream_state);
++	return sprintf(buf, "%d\n", csi->stream_state);
++}
++
++static ssize_t rk628_stream_state_write(struct class *class,
++		struct class_attribute *attr, const char *buf, size_t count)
++{
++	struct rk628_csi *csi = g_csi;
++	u32 state = 0;
++	int ret;
++
++	if (csi->nosignal) {
++		dev_dbg(csi->dev, "%s: nosignal, no need to set stream!\n", __func__);
++		return count;
++	}
++
++	ret = kstrtouint(buf, 2, &state);
++	if (!ret) {
++		dev_dbg(csi->dev, "%s: state: %d\n", __func__, state);
++		csi->stream_state = state;
++		if (csi->stream_state == 0)
++			enable_stream(csi, false);
++		else
++			enable_stream(csi, true);
++	} else {
++		dev_err(csi->dev, "%s: write stream state failed!!!\n", __func__);
++	}
++
++	return count;
++}
++
++static CLASS_ATTR(resolution, 0444, rk628_resolution_read, NULL);
++static CLASS_ATTR(streamen, 0664, rk628_stream_state_read, rk628_stream_state_write);
+ 
+ static bool tx_5v_power_present(struct rk628_csi *csi)
+ {
+@@ -1681,6 +1758,38 @@ static int rk628_csi_probe_of(struct rk628_csi *csi)
+ 	return ret;
+ }
+ 
++static int rk628_create_class_attr(struct rk628_csi *csi)
++{
++	int ret = -1;
++
++	csi->rk628_class = class_create(THIS_MODULE, "rk628csi");
++	if (IS_ERR(csi->rk628_class)) {
++		ret = -ENOMEM;
++		dev_err(csi->dev, "failed to create rk628csi class!\n");
++		return ret;
++	}
++
++	ret = class_create_file(csi->rk628_class, &class_attr_resolution);
++	if (ret) {
++		dev_err(csi->dev, "failed to create attr resolution\n");
++		goto err_res;
++	}
++
++	ret = class_create_file(csi->rk628_class, &class_attr_streamen);
++	if (ret) {
++		dev_err(csi->dev, "failed to create attr streamen\n");
++		goto err_stream;
++	}
++
++	return ret;
++
++err_stream:
++	class_remove_file(csi->rk628_class, &class_attr_resolution);
++err_res:
++	class_destroy(csi->rk628_class);
++	return ret;
++}
++
+ static int rk628_csi_probe(struct i2c_client *client,
+ 			  const struct i2c_device_id *id)
+ {
+@@ -1726,6 +1835,12 @@ static int rk628_csi_probe(struct i2c_client *client,
+ 
+ 	mutex_init(&csi->confctl_mutex);
+ 
++	err = rk628_create_class_attr(csi);
++	if (err) {
++		dev_err(csi->dev, "create class attr failed! err:%d\n", err);
++		return -ENODEV;
++	}
++
+ 	INIT_DELAYED_WORK(&csi->delayed_work_enable_hotplug,
+ 			rk628_csi_delayed_work_enable_hotplug);
+ 	INIT_DELAYED_WORK(&csi->delayed_work_res_change,
+@@ -1776,6 +1891,7 @@ static int rk628_csi_probe(struct i2c_client *client,
+ 
+ 	dev_info(csi->dev, "%s found @ 0x%x (%s)\n", client->name,
+ 		  client->addr << 1, client->adapter->name);
++	g_csi = csi;
+ 
+ 	return 0;
+ 
+-- 
+2.17.1
+

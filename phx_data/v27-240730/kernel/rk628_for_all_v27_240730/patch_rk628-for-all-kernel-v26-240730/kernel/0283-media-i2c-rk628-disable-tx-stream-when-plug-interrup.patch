@@ -1,0 +1,92 @@
+From f6998b41f54ebf25084cfc7873e4a9f8f9fb261d Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Mon, 13 May 2024 14:28:32 +0800
+Subject: [PATCH 283/305] media: i2c: rk628: disable tx stream when plug
+ interrupt
+
+Type: Function
+Redmine ID: N/A
+Associated modifications: N/A
+Test: N/A
+
+Change-Id: Ib014617ebd53e34a731420d5ebda0479e824017d
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c | 14 ++++++++++----
+ 1 file changed, 10 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index 44d395ead7e66f..7ca750f580e991 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -721,6 +721,7 @@ static void enable_csitx(struct v4l2_subdev *sd)
+ 		rk628_i2c_write(csi->rk628, CSITX1_ERR_INTR_CLR_IMD, 0xffffffff);
+ 		rk628_i2c_write(csi->rk628, CSITX1_CONFIG_DONE, CONFIG_DONE_IMD);
+ 	}
++	csi->is_streaming = true;
+ }
+ 
+ static void rk628_dsi_set_scs(struct rk628_csi *csi)
+@@ -831,6 +832,7 @@ static void rk628_csi_disable_stream(struct v4l2_subdev *sd)
+ 	}
+ 	mipi_dphy_power_off(csi);
+ 	csi->txphy_pwron = false;
++	csi->is_streaming = false;
+ }
+ 
+ static void enable_stream(struct v4l2_subdev *sd, bool en)
+@@ -854,7 +856,6 @@ static void enable_stream(struct v4l2_subdev *sd, bool en)
+ 			rk628_csi_enable_csi_interrupts(sd, true);
+ 		}
+ 		rk628_hdmirx_vid_enable(sd, true);
+-		csi->is_streaming = true;
+ 	} else {
+ 		if (csi->plat_data->tx_mode == CSI_MODE) {
+ 			rk628_csi_enable_csi_interrupts(sd, false);
+@@ -864,7 +865,6 @@ static void enable_stream(struct v4l2_subdev *sd, bool en)
+ 		} else {
+ 			rk628_disable_dsitx(sd);
+ 		}
+-		csi->is_streaming = false;
+ 	}
+ }
+ 
+@@ -2279,11 +2279,12 @@ static void rk628_csi_reset_streaming(struct v4l2_subdev *sd, int on)
+ 					DPHY_EN_MASK | CSITX_EN_MASK, DPHY_EN(1) | CSITX_EN(1));
+ 				rk628_i2c_write(csi->rk628, CSITX1_CONFIG_DONE, CONFIG_DONE_IMD);
+ 			}
++			rk628_csi_enable_csi_interrupts(sd, true);
++			csi->is_streaming = true;
+ 		} else {
+ 			enable_dsitx(sd);
+ 		}
+ 		rk628_hdmirx_vid_enable(sd, true);
+-		csi->is_streaming = true;
+ 	} else {
+ 		rk628_hdmirx_vid_enable(sd, false);
+ 		if (csi->plat_data->tx_mode == CSI_MODE) {
+@@ -2293,7 +2294,6 @@ static void rk628_csi_reset_streaming(struct v4l2_subdev *sd, int on)
+ 		} else {
+ 			rk628_disable_dsitx(sd);
+ 		}
+-		csi->is_streaming = false;
+ 	}
+ }
+ 
+@@ -2541,6 +2541,12 @@ static irqreturn_t plugin_detect_irq(int irq, void *dev_id)
+ 	struct v4l2_subdev *sd = &csi->sd;
+ 	bool plugin;
+ 
++	if (csi->plat_data->tx_mode == DSI_MODE)
++		rk628_dsi_disable(sd);
++	if (csi->plat_data->tx_mode == CSI_MODE) {
++		rk628_csi_enable_csi_interrupts(sd, false);
++		rk628_csi_disable_stream(sd);
++	}
+ 	/* control hpd after 50ms */
+ 	schedule_delayed_work(&csi->delayed_work_enable_hotplug, HZ / 20);
+ 	plugin = tx_5v_power_present(sd);
+-- 
+2.17.1
+

@@ -1,0 +1,46 @@
+From 81c8b33680d721038bea6142b8eef1d568d081bd Mon Sep 17 00:00:00 2001
+From: Zhibin Huang <zhibin.huang@rock-chips.com>
+Date: Thu, 14 Dec 2023 08:01:02 +0000
+Subject: [PATCH 203/232] misc: rk628: fix the problem of finding child nodes
+
+Signed-off-by: Zhibin Huang <zhibin.huang@rock-chips.com>
+Change-Id: Ic7f58324415b0db7bc3953d09fddb8b3bcc95e99
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/misc/rk628/rk628.c | 11 +++++------
+ 1 file changed, 5 insertions(+), 6 deletions(-)
+
+diff --git a/drivers/misc/rk628/rk628.c b/drivers/misc/rk628/rk628.c
+index d80633b9fff7b5..396b9f69f28095 100644
+--- a/drivers/misc/rk628/rk628.c
++++ b/drivers/misc/rk628/rk628.c
+@@ -697,21 +697,20 @@ static int rk628_display_route_info_parse(struct rk628 *rk628)
+ 	else
+ 		rk628->input_mode = BIT(INPUT_MODE_RGB);
+ 
+-	if (of_find_node_by_name(rk628->dev->of_node, "rk628-gvi")) {
+-		np = of_find_node_by_name(rk628->dev->of_node, "rk628-gvi");
++	if ((np = of_get_child_by_name(rk628->dev->of_node, "rk628-gvi"))) {
+ 		rk628->output_mode |= BIT(OUTPUT_MODE_GVI);
+ 		ret = rk628_gvi_parse(rk628, np);
+-	} else if (of_find_node_by_name(rk628->dev->of_node, "rk628-lvds")) {
+-		np = of_find_node_by_name(rk628->dev->of_node, "rk628-lvds");
++	} else if ((np = of_get_child_by_name(rk628->dev->of_node, "rk628-lvds"))) {
+ 		rk628->output_mode |= BIT(OUTPUT_MODE_LVDS);
+ 		ret = rk628_lvds_parse(rk628, np);
+-	} else if (of_find_node_by_name(rk628->dev->of_node, "rk628-dsi")) {
+-		np = of_find_node_by_name(rk628->dev->of_node, "rk628-dsi");
++	} else if ((np = of_get_child_by_name(rk628->dev->of_node, "rk628-dsi"))) {
+ 		rk628->output_mode |= BIT(OUTPUT_MODE_DSI);
+ 		ret = rk628_dsi_parse(rk628, np);
+ 	} else if (of_property_read_bool(rk628->dev->of_node, "rk628,csi-out")) {
+ 		rk628->output_mode |= BIT(OUTPUT_MODE_CSI);
+ 	}
++	if (np)
++		of_node_put(np);
+ 
+ 	if (of_property_read_bool(rk628->dev->of_node, "rk628,hdmi-out"))
+ 		rk628->output_mode |= BIT(OUTPUT_MODE_HDMI);
+-- 
+2.17.1
+

@@ -1,0 +1,78 @@
+From 3942057632e41dd90b325505143c97d7ddffb5c3 Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Sat, 11 May 2024 21:53:28 +0800
+Subject: [PATCH 270/305] media: i2c: rk628: enable CSI/DSI before enable HDMI
+ video
+
+Type: Fix
+Redmine ID: N/A
+Associated modifications: N/A
+Test: test method
+
+Change-Id: I86f57202811a5616d774be5e67538adb34fdb5e2
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c | 15 ++++++++++++---
+ 1 file changed, 12 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index bc051874519b5b..5f2546eefdb518 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -844,7 +844,6 @@ static void enable_stream(struct v4l2_subdev *sd, bool en)
+ 			return;
+ 		}
+ 
+-		rk628_hdmirx_vid_enable(sd, true);
+ 		if (csi->plat_data->tx_mode == DSI_MODE) {
+ 			enable_dsitx(sd);
+ 		} else {
+@@ -852,6 +851,7 @@ static void enable_stream(struct v4l2_subdev *sd, bool en)
+ 			/* csitx int en */
+ 			rk628_csi_enable_csi_interrupts(sd, true);
+ 		}
++		rk628_hdmirx_vid_enable(sd, true);
+ 		csi->is_streaming = true;
+ 	} else {
+ 		if (csi->plat_data->tx_mode == CSI_MODE) {
+@@ -1496,6 +1496,7 @@ static void rk628_csi_error_process(struct v4l2_subdev *sd)
+ 	if (csi->is_streaming) {
+ 		v4l2_info(sd,
+ 			"%s: csitx is streaming, reset csitx and restart cstitx!\n", __func__);
++		rk628_hdmirx_vid_enable(sd, false);
+ 		rk628_csi_enable_csi_interrupts(sd, false);
+ 		rk628_i2c_update_bits(csi->rk628, CSITX_CSITX_EN, CSITX_EN_MASK, CSITX_EN(0));
+ 		if (csi->rk628->version >= RK628F_VERSION)
+@@ -1519,6 +1520,7 @@ static void rk628_csi_error_process(struct v4l2_subdev *sd)
+ 		//clr int status
+ 		rk628_csi_clear_csi_interrupts(sd);
+ 		rk628_csi_enable_csi_interrupts(sd, true);
++		rk628_hdmirx_vid_enable(sd, true);
+ 	} else {
+ 		v4l2_info(sd,
+ 			"%s: csitx is not streaming\n", __func__);
+@@ -2270,11 +2272,18 @@ static void rk628_csi_reset_streaming(struct v4l2_subdev *sd, int on)
+ 		} else {
+ 			enable_dsitx(sd);
+ 		}
++		rk628_hdmirx_vid_enable(sd, true);
++		csi->is_streaming = true;
+ 	} else {
+-		if (csi->plat_data->tx_mode == CSI_MODE)
++		rk628_hdmirx_vid_enable(sd, false);
++		if (csi->plat_data->tx_mode == CSI_MODE) {
++			rk628_csi_enable_csi_interrupts(sd, false);
++			msleep(20);
+ 			rk628_csi_disable_stream(sd);
+-		else
++		} else {
+ 			rk628_dsi_enable_stream(sd, false);
++		}
++		csi->is_streaming = false;
+ 	}
+ }
+ 
+-- 
+2.17.1
+

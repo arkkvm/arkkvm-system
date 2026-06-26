@@ -1,0 +1,29 @@
+From 0fb78eacb668d3f4b48b61e7a1526bddc02e8233 Mon Sep 17 00:00:00 2001
+From: Shunqing Chen <csq@rock-chips.com>
+Date: Wed, 20 Oct 2021 10:50:27 +0800
+Subject: [PATCH 113/232] media: rk628-for-all: resolve compilation error of
+ do_dvi
+
+Signed-off-by: Shunqing Chen <csq@rock-chips.com>
+Change-Id: Ib06184196b1598b2ed0bfbff7283c1debc970bb4
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_dsi.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_dsi.c b/drivers/media/i2c/rk628/rk628_dsi.c
+index 6d95ec98629abe..261fa5e96883e6 100644
+--- a/drivers/media/i2c/rk628/rk628_dsi.c
++++ b/drivers/media/i2c/rk628/rk628_dsi.c
+@@ -150,7 +150,7 @@ void rk628_dsi_pre_enable(struct rk628_dsi *dsi)
+ void rk628_dsi_set_vid_mode(struct rk628_dsi *dsi)
+ {
+ 	unsigned int lanebyteclk = (dsi->lane_mbps * 1000L) >> 3;
+-	unsigned int dpipclk;
++	u64 dpipclk;
+ 	u32 hline, hsa, hbp, hline_time, hsa_time, hbp_time;
+ 	u32 vactive, vsa, vfp, vbp;
+ 	u32 val;
+-- 
+2.17.1
+

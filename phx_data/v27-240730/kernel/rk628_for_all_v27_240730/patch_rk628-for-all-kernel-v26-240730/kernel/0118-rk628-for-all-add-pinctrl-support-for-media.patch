@@ -1,0 +1,1023 @@
+From a009180ea04f21c56081c5d8137c9327e152812a Mon Sep 17 00:00:00 2001
+From: Luo Wei <lw@rock-chips.com>
+Date: Wed, 27 Oct 2021 12:17:37 +0800
+Subject: [PATCH 118/232] rk628-for-all: add pinctrl support for media
+
+Signed-off-by: Luo Wei <lw@rock-chips.com>
+Change-Id: I62175f64c84edd1cf22987415a3a1abe6abf36d1
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/Makefile        |   3 +-
+ drivers/media/i2c/rk628/rk628.c         |  75 ++++++
+ drivers/media/i2c/rk628/rk628.h         |   3 +
+ drivers/media/i2c/rk628/rk628_gpio.h    | 237 +++++++++++++++++
+ drivers/media/i2c/rk628/rk628_grf.h     | 263 +++++++++++++++++++
+ drivers/media/i2c/rk628/rk628_pinctrl.c | 334 ++++++++++++++++++++++++
+ drivers/media/i2c/rk628/rk628_pinctrl.h |  21 ++
+ 7 files changed, 935 insertions(+), 1 deletion(-)
+ create mode 100644 drivers/media/i2c/rk628/rk628_gpio.h
+ create mode 100644 drivers/media/i2c/rk628/rk628_grf.h
+ create mode 100644 drivers/media/i2c/rk628/rk628_pinctrl.c
+ create mode 100644 drivers/media/i2c/rk628/rk628_pinctrl.h
+
+diff --git a/drivers/media/i2c/rk628/Makefile b/drivers/media/i2c/rk628/Makefile
+index efbd7c254440a1..b379af53bc4c39 100644
+--- a/drivers/media/i2c/rk628/Makefile
++++ b/drivers/media/i2c/rk628/Makefile
+@@ -9,7 +9,8 @@ obj-y				+= rk628.o \
+ 				   rk628_csi.o \
+ 				   rk628_dsi.o \
+ 				   rk628_combrxphy.o \
+-				   rk628_combtxphy.o
++				   rk628_combtxphy.o \
++				   rk628_pinctrl.o
+ 
+ obj-$(CONFIG_V4L2_FWNODE)	+= rk628_csi_v4l2.o \
+ 				   rk628_bt1120_v4l2.o
+diff --git a/drivers/media/i2c/rk628/rk628.c b/drivers/media/i2c/rk628/rk628.c
+index cc0820c06b78f3..ae52f7c755cf31 100644
+--- a/drivers/media/i2c/rk628/rk628.c
++++ b/drivers/media/i2c/rk628/rk628.c
+@@ -231,6 +231,41 @@ static const struct regmap_access_table rk628_dsi1_readable_table = {
+ 	.n_yes_ranges   = ARRAY_SIZE(rk628_dsi1_readable_ranges),
+ };
+ 
++static const struct regmap_range rk628_gpio0_readable_ranges[] = {
++	regmap_reg_range(RK628_GPIO0_BASE, RK628_GPIO0_BASE + GPIO_VER_ID),
++};
++
++static const struct regmap_access_table rk628_gpio0_readable_table = {
++	.yes_ranges     = rk628_gpio0_readable_ranges,
++	.n_yes_ranges   = ARRAY_SIZE(rk628_gpio0_readable_ranges),
++};
++
++static const struct regmap_range rk628_gpio1_readable_ranges[] = {
++	regmap_reg_range(RK628_GPIO1_BASE, RK628_GPIO1_BASE + GPIO_VER_ID),
++};
++
++static const struct regmap_access_table rk628_gpio1_readable_table = {
++	.yes_ranges     = rk628_gpio1_readable_ranges,
++	.n_yes_ranges   = ARRAY_SIZE(rk628_gpio1_readable_ranges),
++};
++
++static const struct regmap_range rk628_gpio2_readable_ranges[] = {
++	regmap_reg_range(RK628_GPIO2_BASE, RK628_GPIO2_BASE + GPIO_VER_ID),
++};
++
++static const struct regmap_access_table rk628_gpio2_readable_table = {
++	.yes_ranges     = rk628_gpio2_readable_ranges,
++	.n_yes_ranges   = ARRAY_SIZE(rk628_gpio2_readable_ranges),
++};
++
++static const struct regmap_range rk628_gpio3_readable_ranges[] = {
++	regmap_reg_range(RK628_GPIO3_BASE, RK628_GPIO3_BASE + GPIO_VER_ID),
++};
++
++static const struct regmap_access_table rk628_gpio3_readable_table = {
++	.yes_ranges     = rk628_gpio3_readable_ranges,
++	.n_yes_ranges   = ARRAY_SIZE(rk628_gpio3_readable_ranges),
++};
+ 
+ static const struct regmap_config rk628_regmap_config[RK628_DEV_MAX] = {
+ 	[RK628_DEV_GRF] = {
+@@ -322,6 +357,46 @@ static const struct regmap_config rk628_regmap_config[RK628_DEV_MAX] = {
+ 		.val_format_endian = REGMAP_ENDIAN_NATIVE,
+ 		.rd_table = &rk628_csi_readable_table,
+ 	},
++	[RK628_DEV_GPIO0] = {
++		.name = "gpio0",
++		.reg_bits = 32,
++		.val_bits = 32,
++		.reg_stride = 4,
++		.max_register = RK628_GPIO0_BASE + GPIO_VER_ID,
++		.reg_format_endian = REGMAP_ENDIAN_NATIVE,
++		.val_format_endian = REGMAP_ENDIAN_NATIVE,
++		.rd_table = &rk628_gpio0_readable_table,
++	},
++	[RK628_DEV_GPIO1] = {
++		.name = "gpio1",
++		.reg_bits = 32,
++		.val_bits = 32,
++		.reg_stride = 4,
++		.max_register = RK628_GPIO1_BASE + GPIO_VER_ID,
++		.reg_format_endian = REGMAP_ENDIAN_NATIVE,
++		.val_format_endian = REGMAP_ENDIAN_NATIVE,
++		.rd_table = &rk628_gpio1_readable_table,
++	},
++	[RK628_DEV_GPIO2] = {
++		.name = "gpio2",
++		.reg_bits = 32,
++		.val_bits = 32,
++		.reg_stride = 4,
++		.max_register = RK628_GPIO2_BASE + GPIO_VER_ID,
++		.reg_format_endian = REGMAP_ENDIAN_NATIVE,
++		.val_format_endian = REGMAP_ENDIAN_NATIVE,
++		.rd_table = &rk628_gpio2_readable_table,
++	},
++	[RK628_DEV_GPIO3] = {
++		.name = "gpio3",
++		.reg_bits = 32,
++		.val_bits = 32,
++		.reg_stride = 4,
++		.max_register = RK628_GPIO3_BASE + GPIO_VER_ID,
++		.reg_format_endian = REGMAP_ENDIAN_NATIVE,
++		.val_format_endian = REGMAP_ENDIAN_NATIVE,
++		.rd_table = &rk628_gpio3_readable_table,
++	},
+ };
+ 
+ struct rk628 *rk628_i2c_register(struct i2c_client *client)
+diff --git a/drivers/media/i2c/rk628/rk628.h b/drivers/media/i2c/rk628/rk628.h
+index 81a0890ddcf80b..90f61c02ea3a92 100644
+--- a/drivers/media/i2c/rk628/rk628.h
++++ b/drivers/media/i2c/rk628/rk628.h
+@@ -294,4 +294,7 @@ void rk628_post_process_en(struct rk628 *rk628,
+ 			   struct videomode *dst,
+ 			   u64 *dst_pclk);
+ 
++#include "rk628_grf.h"
++#include "rk628_gpio.h"
++#include "rk628_pinctrl.h"
+ #endif
+diff --git a/drivers/media/i2c/rk628/rk628_gpio.h b/drivers/media/i2c/rk628/rk628_gpio.h
+new file mode 100644
+index 00000000000000..17ec1873fd0c7b
+--- /dev/null
++++ b/drivers/media/i2c/rk628/rk628_gpio.h
+@@ -0,0 +1,237 @@
++/* SPDX-License-Identifier: BSD-3-Clause
++ *  *
++ *   *
++ *    * Copyright (c) 2021 Fuzhou Rockchip Electronics Co., Ltd\
++ */
++
++#ifndef RK628_GPIO_H
++#define RK628_GPIO_H
++
++#define RK628_GPIO0_BASE      0x000D0000
++#define RK628_GPIO1_BASE      0x000E0000
++#define RK628_GPIO2_BASE      0x000F0000
++#define RK628_GPIO3_BASE      0x00100000
++#define RK628_GPIO_MAX_REGISTER       (RK628_GPIO3_BASE + GPIO_VER_ID)
++
++/* GPIO control registers */
++#define GPIO_SWPORT_DR_L        0x00
++#define GPIO_SWPORT_DR_H        0x04
++#define GPIO_SWPORT_DDR_L       0x08
++#define GPIO_SWPORT_DDR_H       0x0c
++#define GPIO_INTEN_L            0x10
++#define GPIO_INTEN_H            0x14
++#define GPIO_INTMASK_L          0x18
++#define GPIO_INTMASK_H          0x1c
++#define GPIO_INTTYPE_L          0x20
++#define GPIO_INTTYPE_H          0x24
++#define GPIO_INT_POLARITY_L     0x28
++#define GPIO_INT_POLARITY_H     0x2c
++#define GPIO_INT_BOTHEDGE_L     0x30
++#define GPIO_INT_BOTHEDGE_H     0x34
++#define GPIO_DEBOUNCE_L         0x38
++#define GPIO_DEBOUNCE_H         0x3c
++#define GPIO_DBCLK_DIV_EN_L     0x40
++#define GPIO_DBCLK_DIV_EN_H     0x44
++#define GPIO_INT_STATUS         0x50
++#define GPIO_INT_RAWSTATUS      0x58
++#define GPIO_PORTS_EOI_L        0x60
++#define GPIO_PORTS_EOI_H        0x64
++#define GPIO_EXT_PORT           0x70
++#define GPIO_VER_ID             0x78
++
++#define GPIO_REG_LOW            0x0
++#define GPIO_REG_HIGH           0x1
++
++/* GPIO control registers */
++#define GPIO_INTMASK            0x34
++#define GPIO_PORTS_EOI          0x4c
++
++#define BANK_OFFSET 32
++
++#define GPIO_DIRECTION_OUT 1
++#define GPIO_DIRECTION_IN 0
++
++
++enum {
++	GPIO_HIGH_Z,
++	GPIO_PULL_UP,
++	GPIO_PULL_DOWN,
++};
++
++enum {
++	GPIO_BANK0 = 0,
++	GPIO_BANK1,
++	GPIO_BANK2,
++	GPIO_BANK3,
++	GPIO_BANKX = 9,
++};
++
++
++enum {
++	GPIO0_A0 = BANK_OFFSET * 0,
++	GPIO0_A1,
++	GPIO0_A2,
++	GPIO0_A3,
++	GPIO0_A4,
++	GPIO0_A5,
++	GPIO0_A6,
++	GPIO0_A7,
++	GPIO0_B0,
++	GPIO0_B1,
++	GPIO0_B2,
++	GPIO0_B3,
++	GPIO1_A0 = BANK_OFFSET * 1,
++	GPIO1_A1,
++	GPIO1_A2,
++	GPIO1_A3,
++	GPIO1_A4,
++	GPIO1_A5,
++	GPIO1_A6,
++	GPIO1_A7,
++	GPIO1_B0,
++	GPIO1_B1,
++	GPIO1_B2,
++	GPIO1_B3,
++	GPIO1_B4,
++	GPIO1_B5,
++	GPIO2_A0 = BANK_OFFSET * 2,
++	GPIO2_A1,
++	GPIO2_A2,
++	GPIO2_A3,
++	GPIO2_A4,
++	GPIO2_A5,
++	GPIO2_A6,
++	GPIO2_A7,
++	GPIO2_B0,
++	GPIO2_B1,
++	GPIO2_B2,
++	GPIO2_B3,
++	GPIO2_B4,
++	GPIO2_B5,
++	GPIO2_B6,
++	GPIO2_B7,
++	GPIO2_C0,
++	GPIO2_C1,
++	GPIO2_C2,
++	GPIO2_C3,
++	GPIO2_C4,
++	GPIO2_C5,
++	GPIO2_C6,
++	GPIO2_C7,
++	GPIO3_A0 = BANK_OFFSET * 3,
++	GPIO3_A1,
++	GPIO3_A2,
++	GPIO3_A3,
++	GPIO3_A4,
++	GPIO3_A5,
++	GPIO3_A6,
++	GPIO3_A7,
++	GPIO3_B0,
++	GPIO3_B1,
++	GPIO3_B2,
++	GPIO3_B3,
++	GPIO3_B4,
++	PIN_I2SM_SCK = BANK_OFFSET * 4 + 2,
++	PIN_I2SM_D,
++	PIN_I2SM_LR,
++	PIN_RXDDC_SCL,
++	PIN_RXDDC_SDA,
++	PIN_HDMIRX_CE,
++	PIN_JTAG_EN,
++	PIN_UART_SEL,
++	PIN_UART_RTS_EN,
++	PIN_UART_CTS_EN,
++	PIN_MUX,
++};
++
++struct rk628_pin_iomux_group {
++	unsigned pins;
++	int bank;
++	int mux;
++	int iomux_base;
++	int gpio_base;
++	int pull_reg;
++};
++
++
++#define PINCTRL_GROUP(a, b, c, d, e, f) \
++	{.pins = a, .bank = b, .mux = c, .iomux_base = d, .gpio_base = e, .pull_reg = f}
++
++
++static const struct rk628_pin_iomux_group rk628_pin_iomux_groups[] = {
++	PINCTRL_GROUP(GPIO0_A0, GPIO_BANK0, 1, GRF_GPIO0AB_SEL_CON, RK628_GPIO0_BASE, GRF_GPIO0A_P_CON),
++	PINCTRL_GROUP(GPIO0_A1, GPIO_BANK0, 1, GRF_GPIO0AB_SEL_CON, RK628_GPIO0_BASE, GRF_GPIO0A_P_CON),
++	PINCTRL_GROUP(GPIO0_A2, GPIO_BANK0, 1, GRF_GPIO0AB_SEL_CON, RK628_GPIO0_BASE, 0),
++	PINCTRL_GROUP(GPIO0_A3, GPIO_BANK0, 1, GRF_GPIO0AB_SEL_CON, RK628_GPIO0_BASE, GRF_GPIO0A_P_CON),
++	PINCTRL_GROUP(GPIO0_A4, GPIO_BANK0, 1, GRF_GPIO0AB_SEL_CON, RK628_GPIO0_BASE, GRF_GPIO0A_P_CON),
++	PINCTRL_GROUP(GPIO0_A5, GPIO_BANK0, 1, GRF_GPIO0AB_SEL_CON, RK628_GPIO0_BASE, GRF_GPIO0A_P_CON),
++	PINCTRL_GROUP(GPIO0_A6, GPIO_BANK0, 1, GRF_GPIO0AB_SEL_CON, RK628_GPIO0_BASE, GRF_GPIO0A_P_CON),
++	PINCTRL_GROUP(GPIO0_A7, GPIO_BANK0, 1, GRF_GPIO0AB_SEL_CON, RK628_GPIO0_BASE, GRF_GPIO0A_P_CON),
++	PINCTRL_GROUP(GPIO0_B0, GPIO_BANK0, 1, GRF_GPIO0AB_SEL_CON, RK628_GPIO0_BASE, 0),
++	PINCTRL_GROUP(GPIO0_B1, GPIO_BANK0, 1, GRF_GPIO0AB_SEL_CON, RK628_GPIO0_BASE, 0),
++	PINCTRL_GROUP(GPIO0_B2, GPIO_BANK0, 1, GRF_GPIO0AB_SEL_CON, RK628_GPIO0_BASE, 0),
++	PINCTRL_GROUP(GPIO0_B3, GPIO_BANK0, 1, GRF_GPIO0AB_SEL_CON, RK628_GPIO0_BASE, 0),
++	PINCTRL_GROUP(GPIO1_A0, GPIO_BANK1, 1, GRF_GPIO1AB_SEL_CON, RK628_GPIO1_BASE, GRF_GPIO1A_P_CON),
++	PINCTRL_GROUP(GPIO1_A1, GPIO_BANK1, 1, GRF_GPIO1AB_SEL_CON, RK628_GPIO1_BASE, GRF_GPIO1A_P_CON),
++	PINCTRL_GROUP(GPIO1_A2, GPIO_BANK1, 1, GRF_GPIO1AB_SEL_CON, RK628_GPIO1_BASE, GRF_GPIO1A_P_CON),
++	PINCTRL_GROUP(GPIO1_A3, GPIO_BANK1, 1, GRF_GPIO1AB_SEL_CON, RK628_GPIO1_BASE, GRF_GPIO1A_P_CON),
++	PINCTRL_GROUP(GPIO1_A4, GPIO_BANK1, 1, GRF_GPIO1AB_SEL_CON, RK628_GPIO1_BASE, GRF_GPIO1A_P_CON),
++	PINCTRL_GROUP(GPIO1_A5, GPIO_BANK1, 1, GRF_GPIO1AB_SEL_CON, RK628_GPIO1_BASE, GRF_GPIO1A_P_CON),
++	PINCTRL_GROUP(GPIO1_A6, GPIO_BANK1, 1, GRF_GPIO1AB_SEL_CON, RK628_GPIO1_BASE, GRF_GPIO1A_P_CON),
++	PINCTRL_GROUP(GPIO1_A7, GPIO_BANK1, 1, GRF_GPIO1AB_SEL_CON, RK628_GPIO1_BASE, GRF_GPIO1A_P_CON),
++	PINCTRL_GROUP(GPIO1_B0, GPIO_BANK1, 1, GRF_GPIO1AB_SEL_CON, RK628_GPIO1_BASE, 0),
++	PINCTRL_GROUP(GPIO1_B1, GPIO_BANK1, 1, GRF_GPIO1AB_SEL_CON, RK628_GPIO1_BASE, 0),
++	PINCTRL_GROUP(GPIO1_B2, GPIO_BANK1, 1, GRF_GPIO1AB_SEL_CON, RK628_GPIO1_BASE, 0),
++	PINCTRL_GROUP(GPIO1_B3, GPIO_BANK1, 1, GRF_GPIO1AB_SEL_CON, RK628_GPIO1_BASE, 0),
++	PINCTRL_GROUP(GPIO1_B4, GPIO_BANK1, 1, GRF_GPIO1AB_SEL_CON, RK628_GPIO1_BASE, 0),
++	PINCTRL_GROUP(GPIO1_B5, GPIO_BANK1, 1, GRF_GPIO1AB_SEL_CON, RK628_GPIO1_BASE, 0),
++	PINCTRL_GROUP(GPIO2_A0, GPIO_BANK2, 1, GRF_GPIO2AB_SEL_CON, RK628_GPIO2_BASE, GRF_GPIO2A_P_CON),
++	PINCTRL_GROUP(GPIO2_A1, GPIO_BANK2, 1, GRF_GPIO2AB_SEL_CON, RK628_GPIO2_BASE, GRF_GPIO2A_P_CON),
++	PINCTRL_GROUP(GPIO2_A2, GPIO_BANK2, 1, GRF_GPIO2AB_SEL_CON, RK628_GPIO2_BASE, GRF_GPIO2A_P_CON),
++	PINCTRL_GROUP(GPIO2_A3, GPIO_BANK2, 1, GRF_GPIO2AB_SEL_CON, RK628_GPIO2_BASE, GRF_GPIO2A_P_CON),
++	PINCTRL_GROUP(GPIO2_A4, GPIO_BANK2, 1, GRF_GPIO2AB_SEL_CON, RK628_GPIO2_BASE, GRF_GPIO2A_P_CON),
++	PINCTRL_GROUP(GPIO2_A5, GPIO_BANK2, 1, GRF_GPIO2AB_SEL_CON, RK628_GPIO2_BASE, GRF_GPIO2A_P_CON),
++	PINCTRL_GROUP(GPIO2_A6, GPIO_BANK2, 1, GRF_GPIO2AB_SEL_CON, RK628_GPIO2_BASE, GRF_GPIO2A_P_CON),
++	PINCTRL_GROUP(GPIO2_A7, GPIO_BANK2, 1, GRF_GPIO2AB_SEL_CON, RK628_GPIO2_BASE, GRF_GPIO2A_P_CON),
++	PINCTRL_GROUP(GPIO2_B0, GPIO_BANK2, 1, GRF_GPIO2AB_SEL_CON, RK628_GPIO2_BASE, GRF_GPIO2B_P_CON),
++	PINCTRL_GROUP(GPIO2_B1, GPIO_BANK2, 1, GRF_GPIO2AB_SEL_CON, RK628_GPIO2_BASE, GRF_GPIO2B_P_CON),
++	PINCTRL_GROUP(GPIO2_B2, GPIO_BANK2, 1, GRF_GPIO2AB_SEL_CON, RK628_GPIO2_BASE, GRF_GPIO2B_P_CON),
++	PINCTRL_GROUP(GPIO2_B3, GPIO_BANK2, 1, GRF_GPIO2AB_SEL_CON, RK628_GPIO2_BASE, GRF_GPIO2B_P_CON),
++	PINCTRL_GROUP(GPIO2_B4, GPIO_BANK2, 1, GRF_GPIO2AB_SEL_CON, RK628_GPIO2_BASE, GRF_GPIO2B_P_CON),
++	PINCTRL_GROUP(GPIO2_B5, GPIO_BANK2, 1, GRF_GPIO2AB_SEL_CON, RK628_GPIO2_BASE, GRF_GPIO2B_P_CON),
++	PINCTRL_GROUP(GPIO2_B6, GPIO_BANK2, 1, GRF_GPIO2AB_SEL_CON, RK628_GPIO2_BASE, GRF_GPIO2B_P_CON),
++	PINCTRL_GROUP(GPIO2_B7, GPIO_BANK2, 1, GRF_GPIO2AB_SEL_CON, RK628_GPIO2_BASE, GRF_GPIO2B_P_CON),
++	PINCTRL_GROUP(GPIO2_C0, GPIO_BANK2, 1, GRF_GPIO2C_SEL_CON, RK628_GPIO2_BASE, GRF_GPIO2C_P_CON),
++	PINCTRL_GROUP(GPIO2_C1, GPIO_BANK2, 1, GRF_GPIO2C_SEL_CON, RK628_GPIO2_BASE, GRF_GPIO2C_P_CON),
++	PINCTRL_GROUP(GPIO2_C2, GPIO_BANK2, 1, GRF_GPIO2C_SEL_CON, RK628_GPIO2_BASE, GRF_GPIO2C_P_CON),
++	PINCTRL_GROUP(GPIO2_C3, GPIO_BANK2, 1, GRF_GPIO2C_SEL_CON, RK628_GPIO2_BASE, GRF_GPIO2C_P_CON),
++	PINCTRL_GROUP(GPIO2_C4, GPIO_BANK2, 1, GRF_GPIO2C_SEL_CON, RK628_GPIO2_BASE, GRF_GPIO2C_P_CON),
++	PINCTRL_GROUP(GPIO2_C5, GPIO_BANK2, 1, GRF_GPIO2C_SEL_CON, RK628_GPIO2_BASE, GRF_GPIO2C_P_CON),
++	PINCTRL_GROUP(GPIO2_C6, GPIO_BANK2, 1, GRF_GPIO2C_SEL_CON, RK628_GPIO2_BASE, GRF_GPIO2C_P_CON),
++	PINCTRL_GROUP(GPIO2_C7, GPIO_BANK2, 1, GRF_GPIO2C_SEL_CON, RK628_GPIO2_BASE, GRF_GPIO2C_P_CON),
++	PINCTRL_GROUP(GPIO3_A0, GPIO_BANK3, 1, GRF_GPIO3AB_SEL_CON, RK628_GPIO3_BASE, GRF_GPIO3A_P_CON),
++	PINCTRL_GROUP(GPIO3_A1, GPIO_BANK3, 1, GRF_GPIO3AB_SEL_CON, RK628_GPIO3_BASE, GRF_GPIO3A_P_CON),
++	PINCTRL_GROUP(GPIO3_A2, GPIO_BANK3, 1, GRF_GPIO3AB_SEL_CON, RK628_GPIO3_BASE, GRF_GPIO3A_P_CON),
++	PINCTRL_GROUP(GPIO3_A3, GPIO_BANK3, 1, GRF_GPIO3AB_SEL_CON, RK628_GPIO3_BASE, GRF_GPIO3A_P_CON),
++	PINCTRL_GROUP(GPIO3_A4, GPIO_BANK3, 1, GRF_GPIO3AB_SEL_CON, RK628_GPIO3_BASE, 0),
++	PINCTRL_GROUP(GPIO3_A5, GPIO_BANK3, 1, GRF_GPIO3AB_SEL_CON, RK628_GPIO3_BASE, 0),
++	PINCTRL_GROUP(GPIO3_A6, GPIO_BANK3, 1, GRF_GPIO3AB_SEL_CON, RK628_GPIO3_BASE, 0),
++	PINCTRL_GROUP(GPIO3_A7, GPIO_BANK3, 1, GRF_GPIO3AB_SEL_CON, RK628_GPIO3_BASE, 0),
++	PINCTRL_GROUP(GPIO3_B0, GPIO_BANK3, 1, GRF_GPIO3AB_SEL_CON, RK628_GPIO3_BASE, GRF_GPIO3B_P_CON),
++	PINCTRL_GROUP(GPIO3_B1, GPIO_BANK3, 1, GRF_GPIO3AB_SEL_CON, RK628_GPIO3_BASE, GRF_GPIO3B_P_CON),
++	PINCTRL_GROUP(GPIO3_B2, GPIO_BANK3, 1, GRF_GPIO3AB_SEL_CON, RK628_GPIO3_BASE, GRF_GPIO3B_P_CON),
++	PINCTRL_GROUP(GPIO3_B3, GPIO_BANK3, 1, GRF_GPIO3AB_SEL_CON, RK628_GPIO3_BASE, GRF_GPIO3B_P_CON),
++	PINCTRL_GROUP(GPIO3_B4, GPIO_BANK3, 1, GRF_GPIO3AB_SEL_CON, RK628_GPIO3_BASE, GRF_GPIO3B_P_CON),
++	PINCTRL_GROUP(PIN_I2SM_SCK, GPIO_BANKX, 1, GRF_SYSTEM_CON3, 0, 0),
++	PINCTRL_GROUP(PIN_I2SM_D, GPIO_BANKX, 1, GRF_SYSTEM_CON3, 0, 0),
++	PINCTRL_GROUP(PIN_I2SM_LR, GPIO_BANKX, 1, GRF_SYSTEM_CON3, 0, 0),
++	PINCTRL_GROUP(PIN_RXDDC_SCL, GPIO_BANKX, 1, GRF_SYSTEM_CON3, 0, 0),
++	PINCTRL_GROUP(PIN_RXDDC_SDA, GPIO_BANKX, 1, GRF_SYSTEM_CON3, 0, 0),
++	PINCTRL_GROUP(PIN_HDMIRX_CE, GPIO_BANKX, 1, GRF_SYSTEM_CON3, 0, 0),
++	PINCTRL_GROUP(PIN_JTAG_EN, GPIO_BANKX, 1, GRF_SYSTEM_CON3, 0, 0),
++	PINCTRL_GROUP(PIN_UART_SEL, GPIO_BANKX, 1, GRF_SYSTEM_CON3, 0, 0),
++	PINCTRL_GROUP(PIN_UART_RTS_EN, GPIO_BANKX, 1, GRF_SYSTEM_CON3, 0, 0),
++	PINCTRL_GROUP(PIN_UART_CTS_EN, GPIO_BANKX, 1, GRF_SYSTEM_CON3, 0, 0),
++};
++
++#endif
+diff --git a/drivers/media/i2c/rk628/rk628_grf.h b/drivers/media/i2c/rk628/rk628_grf.h
+new file mode 100644
+index 00000000000000..d48d758626ce95
+--- /dev/null
++++ b/drivers/media/i2c/rk628/rk628_grf.h
+@@ -0,0 +1,263 @@
++/* SPDX-License-Identifier: BSD-3-Clause
++ *  *
++ *   *
++ *    * Copyright (c) 2021 Fuzhou Rockchip Electronics Co., Ltd\
++ */
++
++#ifndef RK628_GRF_H
++#define RK628_GRF_H
++
++#define GPIO_FUNC 0
++#define MUX_FUNC1 1
++#define MUX_FUNC2 2
++#define MUX_FUNC3 3
++
++/* GRF_SYSTEM_CON3 */
++#define UART_CTS_DISABLE 0xB0
++#define UART_CTS_ENABLE 0xB1
++
++#define UART_RTS_DISABLE 0xA0
++#define UART_RTS_ENABLE 0xA1
++
++#define UART_IOMUX_DISABLE 0x90
++#define UART_IOMUX_ENABLE 0x91
++
++#define JTAG_DISABLE 0x80
++#define JTAG_ENABLE 0x81
++
++#define HDMIRX_CEC0 0x70
++#define HDMIRX_CEC1 0x71
++
++#define SELECT_RXDDC_SDA0 0x60
++#define SELECT_RXDDC_SDA1 0x61
++
++#define SELECT_RXDDC_SCL0 0x50
++#define SELECT_RXDDC_SCL1 0x51
++
++#define SELECT_I2S_LRM0 0x40
++#define SELECT_I2S_LRM1 0x41
++
++#define SELECT_I2S_DM0 0x30
++#define SELECT_I2S_DM1 0x31
++
++#define SELECT_I2S_SCKM0 0x20
++#define SELECT_I2S_SCKM1 0x21
++
++
++/* GPIO0_A */
++#define GPIO_0A2 0x0a20
++#define I2S_SCKM0 0x0a21
++
++#define GPIO0A3 0x0a30
++#define I2SLR_M0 0x0a31
++
++#define GPIO0A4 0x0a40
++#define I2SM0D0 0x0a41
++#define UART_TXM1 0x0a42
++
++#define GPIO0A5 0x0a50
++#define I2SM0D1 0x0a51
++#define UART_RXM1 0x0a52
++
++#define GPIO0A6 0x0a60
++#define I2SM0D2 0x0a61
++#define UART_CTSNM1 0x0a62
++
++#define GPIO0A7 0x0a70
++#define I2SM0D3 0x0a71
++#define UART_RTSNM1 0x0a72
++
++
++/* GPIO0_B */
++#define GPIO0B0 0x0b00
++#define HPDIN 0x0b01
++
++#define GPIO0B1 0x0b10
++#define DDCSDATX 0x0b11
++
++#define GPIO0B2 0x0b20
++#define DDCSCLTX 0x0b21
++
++#define GPIO0B3 0x0b30
++#define CECTX 0x0b31
++
++
++/* GPIO1_A */
++#define GPIO1A0 0x1a00
++#define TESTCLKOUT 0x1a01
++
++#define GPIO1A1 0x1a10
++#define XIPSFC_SCLK 0x1a11
++
++#define GPIO1A2 0x1a20
++#define I2SSCKM1 0x1a21
++
++#define GPIO1A3 0x1a30
++#define I2SM1LR 0x1a31
++
++#define GPIO1A4 0x1a40
++#define I2SM1D0 0x1a41
++
++#define GPIO1A5 0x1a50
++#define I2SM1D1 0x1a51
++
++#define GPIO1A6 0x1a60
++#define I2SM1D2 0x1a61
++
++#define GPIO1A7 0x1a70
++#define I2SM1D3 0x1a71
++
++
++/* GPIO1_B */
++#define GPIO1B0 0x1b00
++#define HPDM0OUT 0x1b01
++
++#define GPIO1B1 0x1b10
++#define DDCM0SDARX 0x1b11
++
++#define GPIO1B2 0x1b20
++#define DDCM0SCLRX 0x1b21
++
++#define GPIO1B3 0x1b30
++#define CECM0RX 0x1b31
++
++#define GPIO1B4 0x1b40
++#define I2CS_SCL 0x1b41
++#define I2CM_SCL 0x1b42
++
++#define GPIO1B5 0x1b50
++#define I2CS_SDA 0x1b51
++#define I2CM_SDA 0x1b52
++
++
++/* GPIO2_A */
++#define GPIO2A0 0x2a00
++#define VOPD0 0x2a01
++
++#define GPIO2A1 0x2a10
++#define VOPD1 0x2a11
++
++#define GPIO2A2 0x2a20
++#define VOPD2 0x2a21
++
++#define GPIO2A3 0x2a30
++#define VOPD3 0x2a31
++
++#define GPIO2A4 0x2a40
++#define VOPD4 0x2a41
++
++#define GPIO2A5 0x2a50
++#define VOPD5 0x2a51
++
++#define GPIO2A6 0x2a60
++#define VOPD6 0x2a61
++
++#define GPIO2A7 0x2a70
++#define VOPD7 0x2a71
++
++
++/* GPIO2_B */
++#define GPIO2B0 0x2b00
++#define VOPD8 0x2b01
++
++#define GPIO2B1 0x2b10
++#define VOPD9 0x2b11
++
++#define GPIO2B2 0x2b20
++#define VOPD10 0x2b21
++
++#define GPIO2B3 0x2b30
++#define VOPD11 0x2b31
++
++#define GPIO2B4 0x2b40
++#define VOPD12 0x2b41
++
++#define GPIO2B5 0x2b50
++#define VOPD13 0x2b51
++
++#define GPIO2B6 0x2b60
++#define VOPD14 0x2b61
++
++#define GPIO2B7 0x2b70
++#define VOPD15 0x2b71
++
++
++/* GPIO2_C */
++#define GPIO2C0 0x2c00
++#define VOPD16 0x2c01
++#define XIPSFC_CSN 0x2c02
++
++#define GPIO2C1 0x2c10
++#define VOPD17 0x2c11
++#define XIPSFC_MISO 0x2c12
++
++#define GPIO2C2 0x2c20
++#define VOPD18 0x2c21
++#define XIPSFC_MOSI 0x2c22
++
++#define GPIO2C3 0x2c30
++#define VOPD19 0x2c31
++#define RISVJTAG_TDO 0x2c32
++#define UART_TXM0 0x2c33
++
++#define GPIO2C4 0x2c40
++#define VOPD20 0x2c41
++#define RISVJTAG_TDI 0x2c42
++#define UART_RXM0 0x2c43
++
++#define GPIO2C5 0x2c50
++#define VOPD21 0x2c51
++#define RISVJTAG_TMS 0x2c52
++#define UART_CTSNM0 0x2c53
++
++#define GPIO2C6 0x2c60
++#define VOPD22 0x2c61
++#define RISVJTAG_TCK 0x2c62
++#define UART_RTSNM0 0x2c63
++
++#define GPIO2C7 0x2c70
++#define VOPD23 0x2c71
++#define RISVJTAG_TRSTN 0x2c72
++
++
++/* GPIO3_A */
++#define GPIO3A0 0x3a00
++#define VOPDEN 0x3a01
++
++#define GPIO3A1 0x3a10
++#define VOPHSYNC 0x3a11
++
++#define GPIO3A3 0x3a30
++#define VOPVSYNC 0x3a31
++
++#define GPIO3A4 0x3a40
++#define HPDM1OUT 0x3a41
++
++#define GPIO3A5 0x3a50
++#define DDCM1SDARX 0x3a51
++
++#define GPIO3A6 0x3a60
++#define DDCM1SCLRX 0x3a61
++
++#define GPIO3A7 0x3a70
++#define CECM1RX 0x3a71
++
++
++/* GPIO3_B */
++#define GPIO3B0 0x3b00
++#define VOPDCLK 0x3b01
++
++#define GPIO3B1 0x3b10
++#define GVIHPD 0x3b11
++
++#define GPIO3B2 0x3b20
++#define GVILOCK 0x3b21
++
++#define GPIO3B4 0x3b40
++#define SPIBOOT 0x3b41
++#define INT 0x3b42
++
++
++#endif
++
++
+diff --git a/drivers/media/i2c/rk628/rk628_pinctrl.c b/drivers/media/i2c/rk628/rk628_pinctrl.c
+new file mode 100644
+index 00000000000000..fa3d0e8fa463aa
+--- /dev/null
++++ b/drivers/media/i2c/rk628/rk628_pinctrl.c
+@@ -0,0 +1,334 @@
++/* SPDX-License-Identifier: BSD-3-Clause
++ *
++ *
++ * Copyright (c) 2021 Fuzhou Rockchip Electronics Co., Ltd\
++ */
++
++#include "rk628.h"
++
++
++static int rk628_calc_mux_offset(struct rk628 *rk628, int mux, int reg, int offset)
++{
++	int val = 0, orig;
++
++	switch (reg) {
++	case GRF_SYSTEM_CON3:
++		rk628_i2c_read(rk628, reg, &orig);
++		if (mux)
++			val = BIT(offset) | orig;
++		else
++			val = ~BIT(offset) & orig;
++		break;
++	case GRF_GPIO0AB_SEL_CON:
++		if (offset >= 4 && offset < 8) {
++			offset += offset - 4;
++			val = 0x3 << (offset + 16) | (mux << offset);
++		} else if (offset > 7) {
++			offset += 4;
++			val = BIT(offset + 16) | (mux << offset);
++		} else {
++			val = BIT(offset + 16) | (mux << offset);
++		}
++		break;
++	case GRF_GPIO1AB_SEL_CON:
++		if (offset == 13)
++			offset++;
++		if (offset > 11)
++			val = 0x3 << (offset + 16) | (mux << offset);
++		else
++			val = BIT(offset + 16) | (mux << offset);
++		break;
++	case GRF_GPIO2AB_SEL_CON:
++		val = BIT(offset + 16) | (mux << offset);
++		break;
++	case GRF_GPIO2C_SEL_CON:
++		offset -= 16;
++		val = 0x3 << ((offset*2) + 16) | (mux << (offset*2));
++		break;
++	case GRF_GPIO3AB_SEL_CON:
++		if (offset > 11)
++			val = 0x3 << (offset + 16) | (mux << offset);
++		else
++			val = BIT(offset + 16) | (mux << offset);
++		break;
++	default:
++		break;
++	}
++
++	return val;
++}
++
++int rk628_pinctrl_set_mux(struct rk628 *rk628, int gpio, int mux)
++{
++	int i, iomux_base, offset, val;
++
++	mux &= 0x3;
++
++	for (i = 0; i < ARRAY_SIZE(rk628_pin_iomux_groups); i++) {
++		if (rk628_pin_iomux_groups[i].pins == gpio) {
++			iomux_base = rk628_pin_iomux_groups[i].iomux_base;
++			offset = rk628_pin_iomux_groups[i].pins % BANK_OFFSET;
++			break;
++		}
++	}
++
++	if ((i == ARRAY_SIZE(rk628_pin_iomux_groups)) || (!iomux_base)) {
++		pr_info("rk628_pinctrl_set_mux invalid gpio or iomux_base\n");
++		return -1;
++	}
++
++	val = rk628_calc_mux_offset(rk628, mux, iomux_base, offset);
++
++	rk628_i2c_write(rk628, iomux_base, val);
++
++	return 0;
++
++}
++
++
++/* generic gpio chip */
++int rk628_gpio_get_value(struct rk628 *rk628, int gpio)
++{
++	int i, data_reg, offset, val;
++
++	for (i = 0; i < ARRAY_SIZE(rk628_pin_iomux_groups); i++) {
++		if (rk628_pin_iomux_groups[i].pins == gpio) {
++			data_reg = rk628_pin_iomux_groups[i].gpio_base + GPIO_EXT_PORT;
++			offset = rk628_pin_iomux_groups[i].pins % BANK_OFFSET;
++			break;
++		}
++	}
++
++	if ((i == ARRAY_SIZE(rk628_pin_iomux_groups)) || (!data_reg)) {
++		pr_info("rk628_gpio_get_value invalid gpio or data_reg\n");
++		return -1;
++	}
++
++	rk628_i2c_read(rk628, data_reg, &val);
++
++	val >>= offset;
++	val &= 1;
++
++	return val;
++}
++
++int rk628_gpio_set_value(struct rk628 *rk628, int gpio, int value)
++{
++	int i, data_reg, offset, val;
++
++	for (i = 0; i < ARRAY_SIZE(rk628_pin_iomux_groups); i++) {
++		if (rk628_pin_iomux_groups[i].pins == gpio) {
++			offset = rk628_pin_iomux_groups[i].pins % BANK_OFFSET;
++			if (offset / 16) {
++				data_reg = rk628_pin_iomux_groups[i].gpio_base + GPIO_SWPORT_DR_H;
++				offset -= 16;
++			} else {
++				data_reg = rk628_pin_iomux_groups[i].gpio_base + GPIO_SWPORT_DR_L;
++			}
++			break;
++		}
++	}
++
++	if ((i == ARRAY_SIZE(rk628_pin_iomux_groups)) || (!data_reg)) {
++		pr_info("rk628_gpio_set_value invalid gpio or data_reg\n");
++		return -1;
++	}
++
++	if (value)
++		val = BIT(offset + 16) | BIT(offset);
++	else
++		val = BIT(offset + 16) | (0xffff & ~BIT(offset));
++
++	rk628_i2c_write(rk628, data_reg, val);
++
++	return 0;
++}
++
++
++
++int rk628_gpio_set_direction(struct rk628 *rk628, int gpio, int direction)
++{
++	int i, dir_reg, offset, val;
++
++	for (i = 0; i < ARRAY_SIZE(rk628_pin_iomux_groups); i++) {
++		if (rk628_pin_iomux_groups[i].pins == gpio) {
++			offset = rk628_pin_iomux_groups[i].pins % BANK_OFFSET;
++			if (offset / 16) {
++				dir_reg = rk628_pin_iomux_groups[i].gpio_base + GPIO_SWPORT_DDR_H;
++				offset -= 16;
++			} else {
++				dir_reg = rk628_pin_iomux_groups[i].gpio_base + GPIO_SWPORT_DDR_L;
++			}
++			break;
++		}
++	}
++
++	if ((i == ARRAY_SIZE(rk628_pin_iomux_groups)) || (!dir_reg)) {
++		pr_info("rk628_gpio_set_direction invalid gpio or dir_reg\n");
++		return -1;
++	}
++
++	if (!direction)
++		val = BIT(offset + 16) | (0xffff & ~BIT(offset));
++	else
++		val = BIT(offset + 16) | BIT(offset);
++
++	rk628_i2c_write(rk628, dir_reg, val);
++
++	return 0;
++}
++
++
++int rk628_iomux_init(struct rk628 *rk628)
++{
++	int i, iomux_base, offset, val, mux;
++
++	for (i = 0; i < ARRAY_SIZE(rk628_pin_iomux_groups); i++) {
++		mux = rk628_pin_iomux_groups[i].mux;
++		iomux_base = rk628_pin_iomux_groups[i].iomux_base;
++		offset = rk628_pin_iomux_groups[i].pins % BANK_OFFSET;
++		if (iomux_base) {
++			val = rk628_calc_mux_offset(rk628, mux, iomux_base, offset);
++			rk628_i2c_write(rk628, iomux_base, val);
++		}
++	}
++
++	return 0;
++}
++
++
++int rk628_gpio_direction_input(struct rk628 *rk628, int gpio)
++{
++	rk628_pinctrl_set_mux(rk628, gpio, GPIO_FUNC);
++
++	rk628_gpio_set_direction(rk628, gpio, GPIO_DIRECTION_IN);
++
++	return 0;
++}
++
++
++int rk628_gpio_direction_output(struct rk628 *rk628, int gpio, int value)
++{
++
++	rk628_pinctrl_set_mux(rk628, gpio, GPIO_FUNC);
++	rk628_gpio_set_value(rk628, gpio, value);
++	rk628_gpio_set_direction(rk628, gpio, GPIO_DIRECTION_OUT);
++	return 0;
++}
++
++
++int rk628_gpio_set_pull_highz_up_down(struct rk628 *rk628, int gpio, int pull)
++{
++	int i, bank, pull_reg = 0, offset, val = 0;
++	int valid_pinnum[] = { 8, 8, 24, 13 };
++
++	for (i = 0; i < ARRAY_SIZE(rk628_pin_iomux_groups); i++) {
++		if (rk628_pin_iomux_groups[i].pins == gpio) {
++			bank = rk628_pin_iomux_groups[i].bank;
++			pull_reg = rk628_pin_iomux_groups[i].pull_reg;
++			offset = rk628_pin_iomux_groups[i].pins % BANK_OFFSET;
++			break;
++		}
++	}
++
++	if ((i == ARRAY_SIZE(rk628_pin_iomux_groups))  || (!pull_reg)) {
++		pr_info("rk628_gpio_pull_highz_up_down invalid gpio or pull_reg\n");
++		return -1;
++	}
++
++	switch (bank) {
++	case GPIO_BANK0:
++		if (pull == GPIO_PULL_UP) {
++			return -1;
++		}
++
++		if (offset == 2) {
++			return -1;
++		}
++
++		if (offset < valid_pinnum[bank]) {
++			val = 0x3 << (2 * offset + 16) | pull << (2 * offset);
++		}
++		break;
++	case GPIO_BANK1:
++		if (pull == GPIO_PULL_UP) {
++			return -1;
++		}
++
++		if (offset == 2) {
++			return -1;
++		}
++
++		if (offset < valid_pinnum[bank]) {
++			val = 0x3 << (2 * offset + 16) | pull << (2 * offset);
++		}
++		break;
++	case GPIO_BANK2:
++		if (pull == GPIO_PULL_UP)
++			pull = GPIO_PULL_DOWN;
++		else if (pull == GPIO_PULL_DOWN)
++			pull = GPIO_PULL_UP;
++
++		if (offset < valid_pinnum[bank]) {
++			offset = offset % 8;
++			val = 0x3 << (2 * offset + 16) | pull << (2 * offset);
++		}
++		break;
++	case GPIO_BANK3:
++		if (pull == GPIO_PULL_UP && (offset == 2 || offset == 11 || offset == 12)) {
++			return -1;
++		} else if (pull == GPIO_PULL_DOWN && (offset == 9 || offset == 10)) {
++			return -1;
++		}
++
++		if (offset == 0 || offset == 1 || offset == 3 || offset == 8) {
++			if (pull == GPIO_PULL_UP)
++				pull = GPIO_PULL_DOWN;
++			else if (pull == GPIO_PULL_DOWN)
++				pull = GPIO_PULL_UP;
++		}
++
++		if ((offset > 7 && offset < valid_pinnum[bank]) || offset < 4) {
++			offset = offset % 8;
++			val = 0x3 << (2 * offset + 16) | pull << (2 * offset);
++		}
++		break;
++	default:
++		break;
++	}
++
++	rk628_i2c_write(rk628, pull_reg, val);
++
++	return 0;
++}
++
++
++
++int rk628_gpio_test_all(struct rk628 *rk628)
++{
++	int i;
++
++	for (i = 0; i < ARRAY_SIZE(rk628_pin_iomux_groups); i++) {
++		if (rk628_pin_iomux_groups[i].pins && (rk628_pin_iomux_groups[i].pins != GPIO1_A1)
++			&& (rk628_pin_iomux_groups[i].pins != GPIO2_C0)
++			&& (rk628_pin_iomux_groups[i].pins != GPIO2_C1)
++			&& (rk628_pin_iomux_groups[i].pins != GPIO2_C2)
++			&& (rk628_pin_iomux_groups[i].pins != GPIO2_C3)
++			&& (rk628_pin_iomux_groups[i].pins != GPIO2_C4))
++		rk628_gpio_direction_output(rk628, rk628_pin_iomux_groups[i].pins, 1);
++	}
++
++
++	for (i = 0; i < ARRAY_SIZE(rk628_pin_iomux_groups); i++) {
++		if (rk628_pin_iomux_groups[i].pins && (rk628_pin_iomux_groups[i].pins != GPIO1_A1)
++			&& (rk628_pin_iomux_groups[i].pins != GPIO2_C0)
++			&& (rk628_pin_iomux_groups[i].pins != GPIO2_C1)
++			&& (rk628_pin_iomux_groups[i].pins != GPIO2_C2)
++			&& (rk628_pin_iomux_groups[i].pins != GPIO2_C3)
++			&& (rk628_pin_iomux_groups[i].pins != GPIO2_C4))
++		rk628_gpio_direction_output(rk628, rk628_pin_iomux_groups[i].pins, 0);
++	}
++
++	return 0;
++}
++
+diff --git a/drivers/media/i2c/rk628/rk628_pinctrl.h b/drivers/media/i2c/rk628/rk628_pinctrl.h
+new file mode 100644
+index 00000000000000..68e75bfd9c2788
+--- /dev/null
++++ b/drivers/media/i2c/rk628/rk628_pinctrl.h
+@@ -0,0 +1,21 @@
++/* SPDX-License-Identifier: BSD-3-Clause
++ *  *
++ *   *
++ *    * Copyright (c) 2020 Fuzhou Rockchip Electronics Co., Ltd\
++ *
++ */
++
++#ifndef RK628_PINCTRL_H
++#define RK628_PINCTRL_H
++
++int rk628_pinctrl_set_mux(struct rk628 *rk628, int gpio, int mux);
++int rk628_gpio_get_value(struct rk628 *rk628, int gpio);
++int rk628_gpio_set_value(struct rk628 *rk628, int gpio, int value);
++int rk628_gpio_set_direction(struct rk628 *rk628, int gpio, int direction);
++int rk628_iomux_init(struct rk628 *rk628);
++int rk628_gpio_direction_input(struct rk628 *rk628, int gpio);
++int rk628_gpio_direction_output(struct rk628 *rk628, int gpio, int value);
++int rk628_gpio_test_all(struct rk628 *rk628);
++int rk628_gpio_set_pull_highz_up_down(struct rk628 *rk628, int gpio, int pull);
++
++#endif
+-- 
+2.17.1
+

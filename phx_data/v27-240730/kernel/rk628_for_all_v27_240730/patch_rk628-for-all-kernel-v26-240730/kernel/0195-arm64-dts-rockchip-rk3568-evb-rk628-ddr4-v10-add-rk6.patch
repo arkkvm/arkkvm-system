@@ -1,0 +1,50 @@
+From 5a6d2388919e7a4afc83e943db4ddc44765a0953 Mon Sep 17 00:00:00 2001
+From: Shunhua Lan <lsh@rock-chips.com>
+Date: Tue, 7 Nov 2023 16:34:34 +0800
+Subject: [PATCH 195/232] arm64: dts: rockchip: rk3568-evb-rk628-ddr4-v10: add
+ rk628 hdmitx sound card
+
+Signed-off-by: Shunhua Lan <lsh@rock-chips.com>
+Change-Id: Ic88fedf5c4ab9cf4c0118fa2b3e856f05020fbca
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ .../dts/rockchip/rk3568-evb-rk628-ddr4-v10.dtsi  | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-ddr4-v10.dtsi b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-ddr4-v10.dtsi
+index b83ecd38bd8a94..eb859d9aeaba75 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-ddr4-v10.dtsi
++++ b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-ddr4-v10.dtsi
+@@ -14,6 +14,21 @@
+ / {
+ 	model = "Rockchip RK3568 EVB RK628 DDR4 V10 Board";
+ 	compatible = "rockchip,rk3568-evb-rk628-ddr4-v10", "rockchip,rk3568";
++
++	rk628_sound: rk628-sound {
++		compatible = "simple-audio-card";
++		simple-audio-card,format = "i2s";
++		simple-audio-card,mclk-fs = <128>;
++		simple-audio-card,name = "rockchip,hdmi-rk628";
++		status = "disabled";
++
++		simple-audio-card,cpu {
++				sound-dai = <&i2s2_2ch>;
++		};
++		simple-audio-card,codec {
++				sound-dai = <&i2c2_rk628>;
++		};
++	};
+ };
+ 
+ &i2c2 {
+@@ -27,6 +42,7 @@
+ 		interrupts = <20 IRQ_TYPE_LEVEL_HIGH>;
+ 		enable-gpios = <&gpio0 RK_PC1 GPIO_ACTIVE_HIGH>;
+ 		reset-gpios = <&gpio2 RK_PA2 GPIO_ACTIVE_LOW>;
++		#sound-dai-cells = <0>;
+ 		pinctrl-names = "default";
+ 		pinctrl-0 = <&rk628_reset>;
+ 		status = "okay";
+-- 
+2.17.1
+

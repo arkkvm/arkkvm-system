@@ -1,0 +1,415 @@
+From dba3b553609341bb4e9ed9ef2097a265bfb25377 Mon Sep 17 00:00:00 2001
+From: Shunqing Chen <csq@rock-chips.com>
+Date: Fri, 6 Aug 2021 15:11:23 +0800
+Subject: [PATCH 052/232] media: rk628-for-all: support for kernel 4.19
+
+Signed-off-by: Shunqing Chen <csq@rock-chips.com>
+Change-Id: I49fd79561e1da0c9d49a07a0c7ecc5b048ff61f1
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628.c             |  1 -
+ drivers/media/i2c/rk628/rk628.h             |  5 ++
+ drivers/media/i2c/rk628/rk628_bt1120_v4l2.c | 80 +++++++++++++++++++++
+ drivers/media/i2c/rk628/rk628_csi.c         | 20 ++++++
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c    | 52 ++++++++++++++
+ 5 files changed, 157 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628.c b/drivers/media/i2c/rk628/rk628.c
+index dbdf66d91dd437..36f7cef9f93f70 100644
+--- a/drivers/media/i2c/rk628/rk628.c
++++ b/drivers/media/i2c/rk628/rk628.c
+@@ -5,7 +5,6 @@
+  * Author: Shunqing Chen <csq@rock-chips.com>
+  */
+ 
+-#include <asm-generic/uaccess.h>
+ #include <linux/debugfs.h>
+ #include <linux/i2c.h>
+ #include <linux/module.h>
+diff --git a/drivers/media/i2c/rk628/rk628.h b/drivers/media/i2c/rk628/rk628.h
+index 06d32a9d29e0e4..d8a03618916447 100644
+--- a/drivers/media/i2c/rk628/rk628.h
++++ b/drivers/media/i2c/rk628/rk628.h
+@@ -11,6 +11,7 @@
+ #include <linux/module.h>
+ #include <linux/i2c.h>
+ #include <linux/regmap.h>
++#include <linux/version.h>
+ 
+ #define RK628_REGMAP
+ 
+@@ -193,6 +194,10 @@
+ #define GRF_SOC_VERSION			0x0150
+ #define GRF_MAX_REGISTER		GRF_SOC_VERSION
+ 
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0))
++#define KERNEL_VERSION_4_19
++#endif
++
+ enum {
+ 	COMBTXPHY_MODULEA_EN = BIT(0),
+ 	COMBTXPHY_MODULEB_EN = BIT(1),
+diff --git a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+index 31031d4380562e..11bd6d36df28a2 100644
+--- a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+@@ -1203,7 +1203,11 @@ static void rk628_bt1120_format_change(struct v4l2_subdev *sd)
+ 	};
+ 
+ 	rk628_bt1120_get_detected_timings(sd, &timings);
++#ifdef KERNEL_VERSION_4_19
++	if (!v4l2_match_dv_timings(&bt1120->timings, &timings, 0, false)) {
++#else
+ 	if (!v4l2_match_dv_timings(&bt1120->timings, &timings, 0)) {
++#endif
+ 		/* automaticly set timing rather than set by userspace */
+ 		rk628_bt1120_s_dv_timings(sd, &timings);
+ 		v4l2_print_dv_timings(sd->name,
+@@ -1313,6 +1317,15 @@ static irqreturn_t rk628_bt1120_irq_handler(int irq, void *dev_id)
+ 	return handled ? IRQ_HANDLED : IRQ_NONE;
+ }
+ 
++#ifdef KERNEL_VERSION_4_19
++static void rk628_bt1120_irq_poll_timer(struct timer_list *t)
++{
++	struct rk628_bt1120 *bt1120 = from_timer(bt1120, t, timer);
++
++	schedule_work(&bt1120->work_i2c_poll);
++	mod_timer(&bt1120->timer, jiffies + msecs_to_jiffies(POLL_INTERVAL_MS));
++}
++#else
+ static void rk628_bt1120_irq_poll_timer(unsigned long arg)
+ {
+ 	struct rk628_bt1120 *bt1120 = (struct rk628_bt1120 *)arg;
+@@ -1320,6 +1333,7 @@ static void rk628_bt1120_irq_poll_timer(unsigned long arg)
+ 	schedule_work(&bt1120->work_i2c_poll);
+ 	mod_timer(&bt1120->timer, jiffies + msecs_to_jiffies(POLL_INTERVAL_MS));
+ }
++#endif
+ 
+ static void rk628_bt1120_work_i2c_poll(struct work_struct *work)
+ {
+@@ -1379,7 +1393,11 @@ static int rk628_bt1120_s_dv_timings(struct v4l2_subdev *sd,
+ 		v4l2_print_dv_timings(sd->name, "rk628_bt1120_s_dv_timings: ",
+ 				timings, false);
+ 
++#ifdef KERNEL_VERSION_4_19
++	if (v4l2_match_dv_timings(&bt1120->timings, timings, 0, false)) {
++#else
+ 	if (v4l2_match_dv_timings(&bt1120->timings, timings, 0)) {
++#endif
+ 		v4l2_dbg(1, debug, sd, "%s: no change\n", __func__);
+ 		return 0;
+ 	}
+@@ -1751,6 +1769,15 @@ static int rk628_bt1120_g_frame_interval(struct v4l2_subdev *sd,
+ 	return 0;
+ }
+ 
++#ifdef KERNEL_VERSION_4_19
++static int rk628_bt1120_querystd(struct v4l2_subdev *sd, v4l2_std_id *std)
++{
++	*std = V4L2_STD_ATSC;
++
++	return 0;
++}
++#endif
++
+ static void rk628_bt1120_get_module_inf(struct rk628_bt1120 *rk628_bt1120,
+ 				  struct rkmodule_inf *inf)
+ {
+@@ -1812,6 +1839,36 @@ static long rk628_bt1120_compat_ioctl32(struct v4l2_subdev *sd,
+ }
+ #endif
+ 
++#ifdef KERNEL_VERSION_4_19
++#ifdef CONFIG_VIDEO_V4L2_SUBDEV_API
++static int bt1120_open(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
++{
++	struct rk628_bt1120 *bt1120 = to_bt1120(sd);
++	struct v4l2_bt_timings *bt = &(bt1120->timings.bt);
++	struct v4l2_mbus_framefmt *try_fmt =
++				v4l2_subdev_get_try_format(sd, fh->pad, 0);
++	const struct rk628_bt1120_mode *def_mode = &supported_modes[0];
++
++	mutex_lock(&bt1120->confctl_mutex);
++	/* Initialize try_fmt */
++	try_fmt->width = def_mode->width;
++	try_fmt->height = def_mode->height;
++	try_fmt->code = MEDIA_BUS_FMT_UYVY8_2X8;
++	if (bt->interlaced == V4L2_DV_INTERLACED)
++		try_fmt->field = V4L2_FIELD_INTERLACED;
++	else
++		try_fmt->field = V4L2_FIELD_NONE;
++	mutex_unlock(&bt1120->confctl_mutex);
++
++	return 0;
++}
++
++static const struct v4l2_subdev_internal_ops bt1120_subdev_internal_ops = {
++	.open = bt1120_open,
++};
++#endif
++#endif
++
+ static const struct v4l2_ctrl_ops rk628_bt1120_ctrl_ops = {
+ 	.g_volatile_ctrl = rk628_bt1120_get_ctrl,
+ };
+@@ -1834,6 +1891,10 @@ static const struct v4l2_subdev_video_ops rk628_bt1120_video_ops = {
+ 	.g_mbus_config = rk628_bt1120_g_mbus_config,
+ 	.s_stream = rk628_bt1120_s_stream,
+ 	.g_frame_interval = rk628_bt1120_g_frame_interval,
++#ifdef KERNEL_VERSION_4_19
++	.querystd = rk628_bt1120_querystd,
++#endif
++
+ };
+ 
+ static const struct v4l2_subdev_pad_ops rk628_bt1120_pad_ops = {
+@@ -2030,7 +2091,14 @@ static int rk628_bt1120_probe(struct i2c_client *client,
+ 
+ 	rk628_cru_initialize(rk628);
+ 
++#ifdef KERNEL_VERSION_4_19
++#ifdef CONFIG_VIDEO_V4L2_SUBDEV_API
++	v4l2_i2c_subdev_init(sd, client, &rk628_bt1120_ops);
++	sd->internal_ops = &bt1120_subdev_internal_ops;
++#endif
++#else
+ 	v4l2_subdev_init(sd, &rk628_bt1120_ops);
++#endif
+ 	sd->flags |= V4L2_SUBDEV_FL_HAS_DEVNODE | V4L2_SUBDEV_FL_HAS_EVENTS;
+ 
+ 	mutex_init(&bt1120->confctl_mutex);
+@@ -2070,8 +2138,16 @@ static int rk628_bt1120_probe(struct i2c_client *client,
+ 	}
+ 
+ 	bt1120->pad.flags = MEDIA_PAD_FL_SOURCE;
++#ifdef KERNEL_VERSION_4_19
++#if defined(CONFIG_MEDIA_CONTROLLER)
++	bt1120->pad.flags = MEDIA_PAD_FL_SOURCE;
++	sd->entity.function = MEDIA_ENT_F_CAM_SENSOR;
++	err = media_entity_pads_init(&sd->entity, 1, &bt1120->pad);
++#endif
++#else
+ 	sd->entity.type = MEDIA_ENT_T_V4L2_SUBDEV_SENSOR;
+ 	err = media_entity_init(&sd->entity, 1, &bt1120->pad, 0);
++#endif
+ 	if (err < 0) {
+ 		v4l2_err(sd, "media entity init failed! err:%d\n", err);
+ 		goto err_hdl;
+@@ -2116,8 +2192,12 @@ static int rk628_bt1120_probe(struct i2c_client *client,
+ 		v4l2_dbg(1, debug, sd, "no irq, cfg poll!\n");
+ 		INIT_WORK(&bt1120->work_i2c_poll,
+ 			  rk628_bt1120_work_i2c_poll);
++#ifdef KERNEL_VERSION_4_19
++		timer_setup(&bt1120->timer, rk628_bt1120_irq_poll_timer, 0);
++#else
+ 		bt1120->timer.data = (unsigned long)bt1120;
+ 		bt1120->timer.function = rk628_bt1120_irq_poll_timer;
++#endif
+ 		bt1120->timer.expires = jiffies +
+ 				       msecs_to_jiffies(POLL_INTERVAL_MS);
+ 		add_timer(&bt1120->timer);
+diff --git a/drivers/media/i2c/rk628/rk628_csi.c b/drivers/media/i2c/rk628/rk628_csi.c
+index 7f10a366eb575a..d4330d14815a76 100644
+--- a/drivers/media/i2c/rk628/rk628_csi.c
++++ b/drivers/media/i2c/rk628/rk628_csi.c
+@@ -217,6 +217,7 @@ static bool tx_5v_power_present(struct rk628_csi *csi);
+ 
+ static struct rk628_csi *g_csi;
+ 
++#ifndef KERNEL_VERSION_4_19
+ static ssize_t rk628_resolution_read(struct class *class,
+ 		struct class_attribute *attr, char *buf)
+ {
+@@ -289,6 +290,7 @@ static ssize_t rk628_stream_state_write(struct class *class,
+ 
+ static CLASS_ATTR(resolution, 0444, rk628_resolution_read, NULL);
+ static CLASS_ATTR(streamen, 0664, rk628_stream_state_read, rk628_stream_state_write);
++#endif
+ 
+ static bool tx_5v_power_present(struct rk628_csi *csi)
+ {
+@@ -1379,7 +1381,15 @@ static irqreturn_t rk628_csi_irq_handler(int irq, void *dev_id)
+ 
+ 	return handled ? IRQ_HANDLED : IRQ_NONE;
+ }
++#ifdef KERNEL_VERSION_4_19
++static void rk628_csi_irq_poll_timer(struct timer_list *t)
++{
++	struct rk628_csi *csi = from_timer(csi, t, timer);
+ 
++	schedule_work(&csi->work_i2c_poll);
++	mod_timer(&csi->timer, jiffies + msecs_to_jiffies(POLL_INTERVAL_MS));
++}
++#else
+ static void rk628_csi_irq_poll_timer(unsigned long arg)
+ {
+ 	struct rk628_csi *csi = (struct rk628_csi *)arg;
+@@ -1387,6 +1397,7 @@ static void rk628_csi_irq_poll_timer(unsigned long arg)
+ 	schedule_work(&csi->work_i2c_poll);
+ 	mod_timer(&csi->timer, jiffies + msecs_to_jiffies(POLL_INTERVAL_MS));
+ }
++#endif
+ 
+ static void rk628_csi_work_i2c_poll(struct work_struct *work)
+ {
+@@ -1802,6 +1813,7 @@ static int rk628_csi_probe_of(struct rk628_csi *csi)
+ 	return ret;
+ }
+ 
++#ifndef KERNEL_VERSION_4_19
+ static int rk628_create_class_attr(struct rk628_csi *csi)
+ {
+ 	int ret = -1;
+@@ -1833,6 +1845,8 @@ err_res:
+ 	class_destroy(csi->rk628_class);
+ 	return ret;
+ }
++#endif
++
+ 
+ static int rk628_csi_probe(struct i2c_client *client,
+ 			  const struct i2c_device_id *id)
+@@ -1883,11 +1897,13 @@ static int rk628_csi_probe(struct i2c_client *client,
+ 
+ 	mutex_init(&csi->confctl_mutex);
+ 
++#ifndef KERNEL_VERSION_4_19
+ 	err = rk628_create_class_attr(csi);
+ 	if (err) {
+ 		dev_err(csi->dev, "create class attr failed! err:%d\n", err);
+ 		return -ENODEV;
+ 	}
++#endif
+ 
+ 	INIT_DELAYED_WORK(&csi->delayed_work_enable_hotplug,
+ 			rk628_csi_delayed_work_enable_hotplug);
+@@ -1911,8 +1927,12 @@ static int rk628_csi_probe(struct i2c_client *client,
+ 		dev_dbg(csi->dev, "no irq, cfg poll!\n");
+ 		INIT_WORK(&csi->work_i2c_poll,
+ 			  rk628_csi_work_i2c_poll);
++#ifdef KERNEL_VERSION_4_19
++		timer_setup(&csi->timer, rk628_csi_irq_poll_timer, 0);
++#else
+ 		csi->timer.data = (unsigned long)csi;
+ 		csi->timer.function = rk628_csi_irq_poll_timer;
++#endif
+ 		csi->timer.expires = jiffies +
+ 			msecs_to_jiffies(POLL_INTERVAL_MS);
+ 		add_timer(&csi->timer);
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index 5c842e34dbda4e..84c33c202e4fa7 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -1462,7 +1462,11 @@ static void rk628_csi_format_change(struct v4l2_subdev *sd)
+ 	};
+ 
+ 	rk628_csi_get_detected_timings(sd, &timings);
++#ifdef KERNEL_VERSION_4_19
++	if (!v4l2_match_dv_timings(&csi->timings, &timings, 0, false)) {
++#else
+ 	if (!v4l2_match_dv_timings(&csi->timings, &timings, 0)) {
++#endif
+ 		/* automaticly set timing rather than set by userspace */
+ 		rk628_csi_s_dv_timings(sd, &timings);
+ 		v4l2_print_dv_timings(sd->name,
+@@ -1627,6 +1631,15 @@ static irqreturn_t rk628_csi_irq_handler(int irq, void *dev_id)
+ 	return handled ? IRQ_HANDLED : IRQ_NONE;
+ }
+ 
++#ifdef KERNEL_VERSION_4_19
++static void rk628_csi_irq_poll_timer(struct timer_list *t)
++{
++	struct rk628_csi *csi = from_timer(csi, t, timer);
++
++	schedule_work(&csi->work_i2c_poll);
++	mod_timer(&csi->timer, jiffies + msecs_to_jiffies(POLL_INTERVAL_MS));
++}
++#else
+ static void rk628_csi_irq_poll_timer(unsigned long arg)
+ {
+ 	struct rk628_csi *csi = (struct rk628_csi *)arg;
+@@ -1634,6 +1647,7 @@ static void rk628_csi_irq_poll_timer(unsigned long arg)
+ 	schedule_work(&csi->work_i2c_poll);
+ 	mod_timer(&csi->timer, jiffies + msecs_to_jiffies(POLL_INTERVAL_MS));
+ }
++#endif
+ 
+ static void rk628_csi_work_i2c_poll(struct work_struct *work)
+ {
+@@ -1693,7 +1707,12 @@ static int rk628_csi_s_dv_timings(struct v4l2_subdev *sd,
+ 		v4l2_print_dv_timings(sd->name, "rk628_csi_s_dv_timings: ",
+ 				timings, false);
+ 
++#ifdef KERNEL_VERSION_4_19
++	if (v4l2_match_dv_timings(&csi->timings, timings, 0, false)) {
++#else
+ 	if (v4l2_match_dv_timings(&csi->timings, timings, 0)) {
++#endif
++
+ 		v4l2_dbg(1, debug, sd, "%s: no change\n", __func__);
+ 		return 0;
+ 	}
+@@ -2441,7 +2460,31 @@ static const struct v4l2_subdev_ops rk628_csi_ops = {
+ 	.pad = &rk628_csi_pad_ops,
+ };
+ 
++#ifdef KERNEL_VERSION_4_19
++static int rk628_csi_get_custom_ctrl(struct v4l2_ctrl *ctrl)
++{
++	int ret = -EINVAL;
++	struct rk628_csi *csi = container_of(ctrl->handler, struct rk628_csi,
++			hdl);
++	struct v4l2_subdev *sd = &csi->sd;
++
++	if (ctrl->id == RK_V4L2_CID_AUDIO_SAMPLING_RATE) {
++		ret = get_audio_sampling_rate(sd);
++		*ctrl->p_new.p_s32 = ret;
++	}
++
++	return ret;
++}
++
++static const struct v4l2_ctrl_ops rk628_csi_custom_ctrl_ops = {
++	.g_volatile_ctrl = rk628_csi_get_custom_ctrl,
++};
++#endif
++
+ static const struct v4l2_ctrl_config rk628_csi_ctrl_audio_sampling_rate = {
++#ifdef KERNEL_VERSION_4_19
++	.ops = &rk628_csi_custom_ctrl_ops,
++#endif
+ 	.id = RK_V4L2_CID_AUDIO_SAMPLING_RATE,
+ 	.name = "Audio sampling rate",
+ 	.type = V4L2_CTRL_TYPE_INTEGER,
+@@ -2672,8 +2715,13 @@ static int rk628_csi_probe(struct i2c_client *client,
+ 	}
+ 
+ 	csi->pad.flags = MEDIA_PAD_FL_SOURCE;
++#ifdef KERNEL_VERSION_4_19
++	sd->entity.function = MEDIA_ENT_F_CAM_SENSOR;
++	err = media_entity_pads_init(&sd->entity, 1, &csi->pad);
++#else
+ 	sd->entity.type = MEDIA_ENT_T_V4L2_SUBDEV_SENSOR;
+ 	err = media_entity_init(&sd->entity, 1, &csi->pad, 0);
++#endif
+ 	if (err < 0) {
+ 		v4l2_err(sd, "media entity init failed! err:%d\n", err);
+ 		goto err_hdl;
+@@ -2720,8 +2768,12 @@ static int rk628_csi_probe(struct i2c_client *client,
+ 		v4l2_dbg(1, debug, sd, "no irq, cfg poll!\n");
+ 		INIT_WORK(&csi->work_i2c_poll,
+ 			  rk628_csi_work_i2c_poll);
++#ifdef KERNEL_VERSION_4_19
++		timer_setup(&csi->timer, rk628_csi_irq_poll_timer, 0);
++#else
+ 		csi->timer.data = (unsigned long)csi;
+ 		csi->timer.function = rk628_csi_irq_poll_timer;
++#endif
+ 		csi->timer.expires = jiffies +
+ 				       msecs_to_jiffies(POLL_INTERVAL_MS);
+ 		add_timer(&csi->timer);
+-- 
+2.17.1
+

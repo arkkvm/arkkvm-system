@@ -1,0 +1,151 @@
+From 8a88d8f0c4df29792e225233cfa50397ef74ad3d Mon Sep 17 00:00:00 2001
+From: Chen Shunqing <csq@rock-chips.com>
+Date: Fri, 20 May 2022 06:26:57 +0000
+Subject: [PATCH 149/232] for-all: misc: add kernel5.10 support
+
+Signed-off-by: Chen Shunqing <csq@rock-chips.com>
+Change-Id: I94e7b9d407560a8e3223c2c011234d912181aff4
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/misc/rk628/rk628.h        |  3 +++
+ drivers/misc/rk628/rk628_hdmitx.c | 44 ++++++++++++++++++++++++++++---
+ 2 files changed, 43 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/misc/rk628/rk628.h b/drivers/misc/rk628/rk628.h
+index bd0f9442f0f97c..f70156055efab8 100644
+--- a/drivers/misc/rk628/rk628.h
++++ b/drivers/misc/rk628/rk628.h
+@@ -317,6 +317,9 @@ enum rk628_mode_sync_pol {
+ 	MODE_FLAG_PSYNC,
+ };
+ 
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0))
++#define KERNEL_VERSION_5_10
++#endif
+ #if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 19, 0))
+ #define KERNEL_VERSION_4_19
+ #endif
+diff --git a/drivers/misc/rk628/rk628_hdmitx.c b/drivers/misc/rk628/rk628_hdmitx.c
+index 486da4bc7c644b..9ad2376fe29ba6 100644
+--- a/drivers/misc/rk628/rk628_hdmitx.c
++++ b/drivers/misc/rk628/rk628_hdmitx.c
+@@ -5,10 +5,15 @@
+  * Author: Chen Shunqing <csq@rock-chips.com>
+  */
+ 
++#include "rk628.h"
+ #include <linux/irq.h>
+ #include <linux/clk.h>
+ #include <linux/delay.h>
+ #include <linux/err.h>
++#ifdef KERNEL_VERSION_5_10
++#include <linux/extcon.h>
++#include <linux/extcon-provider.h>
++#endif
+ #include <linux/hdmi.h>
+ #include <linux/mfd/syscon.h>
+ #include <linux/module.h>
+@@ -18,16 +23,18 @@
+ #ifdef CONFIG_SWITCH
+ #include <linux/switch.h>
+ #endif
+-
++#include <drm/drm_atomic_helper.h>
+ #include <drm/drm_of.h>
++#ifdef KERNEL_VERSION_5_10
++#include <drm/drm_probe_helper.h>
++#else
+ #include <drm/drmP.h>
+-#include <drm/drm_atomic_helper.h>
+ #include <drm/drm_crtc_helper.h>
++#endif
+ #include <drm/drm_edid.h>
+ #include <sound/hdmi-codec.h>
+ 
+ #include "../../gpu/drm/rockchip/rockchip_drm_drv.h"
+-#include "rk628.h"
+ #include "rk628_config.h"
+ #include "rk628_hdmitx.h"
+ #include "rk628_post_process.h"
+@@ -353,8 +360,12 @@ static int rk628_hdmi_config_video_avi(struct rk628_hdmi *hdmi,
+ {
+ 	union hdmi_infoframe frame;
+ 	int rc;
+-
++#ifdef KERNEL_VERSION_5_10
++	rc = drm_hdmi_avi_infoframe_from_display_mode(&frame.avi,
++						      &hdmi->connector, mode);
++#else
+ 	rc = drm_hdmi_avi_infoframe_from_display_mode(&frame.avi, mode, false);
++#endif
+ 
+ 	if (hdmi->hdmi_data.enc_out_format == HDMI_COLORSPACE_YUV444)
+ 		frame.avi.colorspace = HDMI_COLORSPACE_YUV444;
+@@ -696,8 +707,13 @@ rk628_hdmi_connector_helper_funcs = {
+ };
+ 
+ static void rk628_hdmi_bridge_mode_set(struct drm_bridge *bridge,
++#ifdef KERNEL_VERSION_5_10
++				       const struct drm_display_mode *mode,
++				       const struct drm_display_mode *adj_mode)
++#else
+ 				       struct drm_display_mode *mode,
+ 				       struct drm_display_mode *adj_mode)
++#endif
+ {
+ 	struct rk628_hdmi *hdmi = bridge_to_hdmi(bridge);
+ 	struct rk628 *rk628 = hdmi->rk628;
+@@ -755,7 +771,12 @@ static void rk628_hdmi_bridge_disable(struct drm_bridge *bridge)
+ 	rk628_hdmi_set_pwr_mode(hdmi, LOWER_PWR);
+ }
+ 
++#ifdef KERNEL_VERSION_5_10
++static int rk628_hdmi_bridge_attach(struct drm_bridge *bridge,
++				    enum drm_bridge_attach_flags flags)
++#else
+ static int rk628_hdmi_bridge_attach(struct drm_bridge *bridge)
++#endif
+ {
+ 	struct rk628_hdmi *hdmi = bridge_to_hdmi(bridge);
+ #ifndef KERNEL_VERSION_4_19
+@@ -765,6 +786,11 @@ static int rk628_hdmi_bridge_attach(struct drm_bridge *bridge)
+ 	struct drm_device *drm = bridge->dev;
+ 	int ret;
+ 
++#ifdef KERNEL_VERSION_5_10
++	if (flags & DRM_BRIDGE_ATTACH_NO_CONNECTOR)
++		return 0;
++#endif
++
+ 	connector->polled = DRM_CONNECTOR_POLL_HPD;
+ #ifndef KERNEL_VERSION_4_19
+ 	connector->port = dev->of_node;
+@@ -916,7 +942,12 @@ static void rk628_hdmi_audio_shutdown(struct device *dev, void *d)
+ 	/* do nothing */
+ }
+ 
++#ifdef KERNEL_VERSION_5_10
++static int rk628_hdmi_audio_mute(struct device *dev, void *d, bool mute,
++				 int direction)
++#else
+ static int rk628_hdmi_audio_digital_mute(struct device *dev, void *d, bool mute)
++#endif
+ {
+ 	struct rk628_hdmi *hdmi = dev_get_drvdata(dev);
+ 
+@@ -961,7 +992,12 @@ static int rk628_hdmi_audio_get_eld(struct device *dev, void *d,
+ static const struct hdmi_codec_ops audio_codec_ops = {
+ 	.hw_params = rk628_hdmi_audio_hw_params,
+ 	.audio_shutdown = rk628_hdmi_audio_shutdown,
++#ifdef KERNEL_VERSION_5_10
++	.mute_stream = rk628_hdmi_audio_mute,
++	.no_capture_mute = 1,
++#else
+ 	.digital_mute = rk628_hdmi_audio_digital_mute,
++#endif
+ 	.get_eld = rk628_hdmi_audio_get_eld,
+ };
+ 
+-- 
+2.17.1
+

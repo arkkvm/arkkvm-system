@@ -1,0 +1,31 @@
+From 8e4a5fef5b5d1d71b16989e779ab71dfb4b1b82b Mon Sep 17 00:00:00 2001
+From: Shawn Lin <shawn.lin@rock-chips.com>
+Date: Mon, 30 Jan 2023 09:41:32 +0800
+Subject: [PATCH] arm64: dts: rockchip: rk3568: Rename sdhci compatible
+ property
+
+Since we modify the sdhci driver to match upstream, so the compatible
+property should be adjust to match it.
+
+Signed-off-by: Shawn Lin <shawn.lin@rock-chips.com>
+Change-Id: Ia768d530047db95c29d5740ed5b039e7d92428cc
+---
+ arch/arm64/boot/dts/rockchip/rk3568.dtsi | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/arch/arm64/boot/dts/rockchip/rk3568.dtsi b/arch/arm64/boot/dts/rockchip/rk3568.dtsi
+index e44833f9bc04..2f9174d1fad9 100644
+--- a/arch/arm64/boot/dts/rockchip/rk3568.dtsi
++++ b/arch/arm64/boot/dts/rockchip/rk3568.dtsi
+@@ -2605,7 +2605,7 @@ sfc: spi@fe300000 {
+ 	};
+ 
+ 	sdhci: sdhci@fe310000 {
+-		compatible = "rockchip,dwcmshc-sdhci", "snps,dwcmshc-sdhci";
++		compatible = "rockchip,rk3568-dwcmshc", "rockchip,dwcmshc-sdhci";
+ 		reg = <0x0 0xfe310000 0x0 0x10000>;
+ 		interrupts = <GIC_SPI 19 IRQ_TYPE_LEVEL_HIGH>;
+ 		assigned-clocks = <&cru BCLK_EMMC>, <&cru TCLK_EMMC>,
+-- 
+2.34.1
+

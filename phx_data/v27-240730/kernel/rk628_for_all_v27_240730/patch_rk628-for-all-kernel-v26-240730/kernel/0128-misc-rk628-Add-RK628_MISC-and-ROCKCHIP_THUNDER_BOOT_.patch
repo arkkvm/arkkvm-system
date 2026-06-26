@@ -1,0 +1,61 @@
+From a9419a54879f7948655c555e30aefe126530bf6a Mon Sep 17 00:00:00 2001
+From: Guochun Huang <hero.huang@rock-chips.com>
+Date: Tue, 4 Jan 2022 11:48:15 +0800
+Subject: [PATCH 128/232] misc: rk628:: Add RK628_MISC and
+ ROCKCHIP_THUNDER_BOOT_RK628 config
+
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+Change-Id: I19eb10915722a35034678d6403dfc7ccc6ed3f1f
+---
+ drivers/misc/Kconfig        |  1 +
+ drivers/misc/rk628/Kconfig  | 16 ++++++++++++++++
+ drivers/misc/rk628/Makefile |  2 +-
+ 3 files changed, 18 insertions(+), 1 deletion(-)
+ create mode 100644 drivers/misc/rk628/Kconfig
+
+diff --git a/drivers/misc/Kconfig b/drivers/misc/Kconfig
+index 77fa126eb1f2ad..59ef4bd98f5872 100644
+--- a/drivers/misc/Kconfig
++++ b/drivers/misc/Kconfig
+@@ -576,4 +576,5 @@ source "drivers/misc/mic/Kconfig"
+ source "drivers/misc/genwqe/Kconfig"
+ source "drivers/misc/echo/Kconfig"
+ source "drivers/misc/cxl/Kconfig"
++source "drivers/misc/rk628/Kconfig"
+ endmenu
+diff --git a/drivers/misc/rk628/Kconfig b/drivers/misc/rk628/Kconfig
+new file mode 100644
+index 00000000000000..d064f41d8465c8
+--- /dev/null
++++ b/drivers/misc/rk628/Kconfig
+@@ -0,0 +1,16 @@
++menu "RK628 misc driver"
++config RK628_MISC
++	bool "rk628 misc driver"
++	default y
++	help
++	  Say y here to enable Rockchip rk628 thunder boot support.
++          This option is used to support rgb/hdmi/bt1120 input and dsi/lvds/gvi/hdmi output
++
++config ROCKCHIP_THUNDER_BOOT_RK628
++	bool "Rockchip RK628 Thunder Boot support"
++	default y
++	help
++	  Say y here to enable Rockchip rk628 thunder boot support.
++	  This option make the kernel boot faster.
++
++endmenu
+diff --git a/drivers/misc/rk628/Makefile b/drivers/misc/rk628/Makefile
+index 84c45f41e8a896..20e0b05ef45d23 100644
+--- a/drivers/misc/rk628/Makefile
++++ b/drivers/misc/rk628/Makefile
+@@ -1,5 +1,5 @@
+ # SPDX-License-Identifier: GPL-2.0
+ 
+-obj-y += rk628.o rk628_cru.o rk628_config.o rk628_post_process.o rk628_combrxphy.o rk628_hdmirx.o rk628_combtxphy.o rk628_dsi.o panel.o rk628_lvds.o rk628_rgb.o rk628_gvi.o rk628_pinctrl.o \
++obj-$(CONFIG_RK628_MISC) += rk628.o rk628_cru.o rk628_config.o rk628_post_process.o rk628_combrxphy.o rk628_hdmirx.o rk628_combtxphy.o rk628_dsi.o panel.o rk628_lvds.o rk628_rgb.o rk628_gvi.o rk628_pinctrl.o \
+ 	 rk628_csi.o
+ obj-$(CONFIG_DRM) += rk628_hdmitx.o
+-- 
+2.17.1
+

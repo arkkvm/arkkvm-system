@@ -1,0 +1,28 @@
+From 24054ddbff734d398c884ccb8935fe2a0a18f7bb Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Thu, 7 Dec 2023 11:47:19 +0000
+Subject: [PATCH 17/30] media: i2c: rk628: fix regmap range error
+
+Fixes: 4dac6bfde590 ("media: i2c: rk628: add csi1 support and dual mipi mode for rk628f")
+Change-Id: I101216a1e744d4b8e34f333e6c09e9946e605c9f
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628.c b/drivers/media/i2c/rk628/rk628.c
+index d9b6f141ada00..f38d946774b86 100644
+--- a/drivers/media/i2c/rk628/rk628.c
++++ b/drivers/media/i2c/rk628/rk628.c
+@@ -128,7 +128,7 @@ static const struct regmap_range rk628_csi1_readable_ranges[] = {
+ 	regmap_reg_range(CSITX1_CONFIG_DONE, CSITX1_CSITX_VERSION),
+ 	regmap_reg_range(CSITX1_SYS_CTRL0_IMD, CSITX1_TIMING_HPW_PADDING_NUM),
+ 	regmap_reg_range(CSITX1_VOP_PATH_CTRL, CSITX1_VOP_PATH_CTRL),
+-	regmap_reg_range(CSITX_VOP_FILTER_CTRL, CSITX_VOP_FILTER_CTRL),
++	regmap_reg_range(CSITX1_VOP_FILTER_CTRL, CSITX1_VOP_FILTER_CTRL),
+ 	regmap_reg_range(CSITX1_VOP_PATH_PKT_CTRL, CSITX1_VOP_PATH_PKT_CTRL),
+ 	regmap_reg_range(CSITX1_CSITX_STATUS0, CSITX1_LPDT_DATA_IMD),
+ 	regmap_reg_range(CSITX1_DPHY_CTRL, CSITX1_DPHY_CTRL),
+-- 
+2.25.1
+

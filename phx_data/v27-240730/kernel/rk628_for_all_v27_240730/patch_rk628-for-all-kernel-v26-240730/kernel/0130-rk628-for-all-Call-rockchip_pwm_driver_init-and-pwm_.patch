@@ -1,0 +1,69 @@
+From d2d505488ab9d1ad341b2b98e33f73cee79b00fa Mon Sep 17 00:00:00 2001
+From: Guochun Huang <hero.huang@rock-chips.com>
+Date: Fri, 14 Jan 2022 14:29:04 +0800
+Subject: [PATCH 130/232] rk628-for-all: Call rockchip_pwm_driver_init() and
+ pwm_backlight_driver_init() early when CONFIG_ROCKCHIP_THUNDER_BOOT_RK628=y
+
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+Change-Id: I9b218955977edec83eef05635cb5c19f82b78ee7
+---
+ drivers/pwm/pwm-rockchip.c       | 15 +++++++++++++++
+ drivers/video/backlight/pwm_bl.c | 14 ++++++++++++++
+ 2 files changed, 29 insertions(+)
+
+diff --git a/drivers/pwm/pwm-rockchip.c b/drivers/pwm/pwm-rockchip.c
+index 75c6e250580967..e0af8baf6ae058 100644
+--- a/drivers/pwm/pwm-rockchip.c
++++ b/drivers/pwm/pwm-rockchip.c
+@@ -463,7 +463,22 @@ static struct platform_driver rockchip_pwm_driver = {
+ 	.probe = rockchip_pwm_probe,
+ 	.remove = rockchip_pwm_remove,
+ };
++
++#ifdef CONFIG_ROCKCHIP_THUNDER_BOOT_RK628
++static int __init rockchip_pwm_driver_init(void)
++{
++	return platform_driver_register(&rockchip_pwm_driver);
++}
++subsys_initcall(rockchip_pwm_driver_init);
++
++static void __exit rockchip_pwm_driver_exit(void)
++{
++	platform_driver_unregister(&rockchip_pwm_driver);
++}
++module_exit(rockchip_pwm_driver_exit);
++#else
+ module_platform_driver(rockchip_pwm_driver);
++#endif
+ 
+ MODULE_AUTHOR("Beniamino Galvani <b.galvani@gmail.com>");
+ MODULE_DESCRIPTION("Rockchip SoC PWM driver");
+diff --git a/drivers/video/backlight/pwm_bl.c b/drivers/video/backlight/pwm_bl.c
+index e6c38dbcea41ab..5c3e325dcc3396 100644
+--- a/drivers/video/backlight/pwm_bl.c
++++ b/drivers/video/backlight/pwm_bl.c
+@@ -428,7 +428,21 @@ static struct platform_driver pwm_backlight_driver = {
+ 	.shutdown	= pwm_backlight_shutdown,
+ };
+ 
++#ifdef CONFIG_ROCKCHIP_THUNDER_BOOT_RK628
++static int __init pwm_backlight_driver_init(void)
++{
++	return platform_driver_register(&pwm_backlight_driver);
++}
++subsys_initcall(pwm_backlight_driver_init);
++
++static void __exit pwm_backlight_driver_exit(void)
++{
++	platform_driver_unregister(&pwm_backlight_driver);
++}
++module_exit(pwm_backlight_driver_exit);
++#else
+ module_platform_driver(pwm_backlight_driver);
++#endif
+ 
+ MODULE_DESCRIPTION("PWM based Backlight Driver");
+ MODULE_LICENSE("GPL");
+-- 
+2.17.1
+

@@ -1,0 +1,48 @@
+From 334c7192e6a968d1d6272fec5c956ae35a02a3db Mon Sep 17 00:00:00 2001
+From: Guochun Huang <hero.huang@rock-chips.com>
+Date: Fri, 10 Nov 2023 06:17:37 +0000
+Subject: [PATCH] drm/rockchip: drv: display logo when specify force output
+ mode
+
+resolve the following error when displaying the boot logo.
+
+ rockchip-drm display-subsystem: bound fe0a0000.hdmi (ops dw_hdmi_rockchip_ops)
+ rockchip-drm display-subsystem: connector[HDMI-A-1] can't found any match mode
+ [drm] HDMI-A-1 support modes:
+
+ [drm] "1280x720": 60 74250 1280 1390 1430 1650 720 725 730 750 0x8 0x5
+ [drm] "4096x2160": 60 556744 4096 4104 4136 4176 2160 2208 2216 2222 0x40 0x9
+ [drm] "4096x2160": 60 556188 4096 4104 4136 4176 2160 2208 2216 2222 0x40 0x9
+ [drm] "2560x1600": 60 348500 2560 2752 3032 3504 1600 1603 1609 1658 0x40 0x6
+ [drm] "2560x1600": 60 268500 2560 2608 2640 2720 1600 1603 1609 1646 0x40 0x9
+ [drm] "1920x1440": 60 234000 1920 2048 2256 2600 1440 1441 1444 1500 0x40 0x6
+ [drm] "1856x1392": 60 218250 1856 1952 2176 2528 1392 1393 1396 1439 0x40 0x6
+...
+[drm] "640x480": 60 25175 640 656 752 800 480 490 492 525 0x40 0xa
+ [drm] uboot set mode: h/v display[1080,1920] h/v sync_end[1180,1940] vfresh[57], flags[0x5], aspect_ratio[0]
+ rockchip-vop2 fe040000.vop: [drm:vop2_crtc_atomic_disable] Crtc atomic disable vp0
+ rockchip-drm display-subsystem: can't not find any logo display
+
+Change-Id: Ia32189311d87f5d5ab5f7fdc5c14d5e2ddf24d8d
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/gpu/drm/rockchip/rockchip_drm_logo.c | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+
+diff --git a/drivers/gpu/drm/rockchip/rockchip_drm_logo.c b/drivers/gpu/drm/rockchip/rockchip_drm_logo.c
+index af228f40c404..30d84942829b 100644
+--- a/drivers/gpu/drm/rockchip/rockchip_drm_logo.c
++++ b/drivers/gpu/drm/rockchip/rockchip_drm_logo.c
+@@ -630,8 +630,7 @@ static int rockchip_drm_fill_connector_modes(struct drm_connector *connector,
+ 		goto prune;
+ 	}
+ 
+-	if (!force_output)
+-		count = (*connector_funcs->get_modes)(connector);
++	count = (*connector_funcs->get_modes)(connector);
+ 
+ 	if (count == 0 && connector->status == connector_status_connected)
+ 		count = drm_add_modes_noedid(connector, 4096, 4096);
+-- 
+2.17.1
+

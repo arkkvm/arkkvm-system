@@ -1,0 +1,58 @@
+From 06ae40a9e8d5a250658acc5d7dcd358298beec30 Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Mon, 18 Dec 2023 07:01:32 +0000
+Subject: [PATCH 58/82] media: i2c: rk628: add RKMODULE_GET_DSI_MODE ioctl for
+ dsi mode
+
+Change-Id: I47e642c5535469c6df0d0a2252613b6585bc124d
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index 0a1b02786065..de84320c6815 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -2323,6 +2323,9 @@ static long rk628_csi_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
+ 	case RK_HDMIRX_CMD_GET_COLOR_SPACE:
+ 		*(int *)arg = rk628_hdmirx_get_color_space(csi->rk628);
+ 		break;
++	case RKMODULE_GET_DSI_MODE:
++		*(int *)arg = csi->dsi.vid_mode;
++		break;
+ 	default:
+ 		ret = -ENOIOCTLCMD;
+ 		break;
+@@ -2615,6 +2618,7 @@ static long rk628_csi_compat_ioctl32(struct v4l2_subdev *sd,
+ 		}
+ 		kfree(seq);
+ 		break;
++
+ 	case RK_HDMIRX_CMD_GET_COLOR_SPACE:
+ 		seq = kzalloc(sizeof(*seq), GFP_KERNEL);
+ 		if (!seq) {
+@@ -2629,6 +2633,20 @@ static long rk628_csi_compat_ioctl32(struct v4l2_subdev *sd,
+ 		}
+ 		kfree(seq);
+ 		break;
++	case RKMODULE_GET_DSI_MODE:
++		seq = kzalloc(sizeof(*seq), GFP_KERNEL);
++		if (!seq) {
++			ret = -ENOMEM;
++			return ret;
++		}
++		ret = rk628_csi_ioctl(sd, cmd, seq);
++		if (!ret) {
++			ret = copy_to_user(up, seq, sizeof(*seq));
++			if (ret)
++				ret = -EFAULT;
++		}
++		kfree(seq);
++		break;
+ 	default:
+ 		ret = -ENOIOCTLCMD;
+ 		break;
+-- 
+2.17.1
+

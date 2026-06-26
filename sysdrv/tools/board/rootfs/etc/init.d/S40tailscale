@@ -1,0 +1,265 @@
+#!/bin/sh
+#
+# tailscale        Starts tailscale.
+#
+
+ERROR_CODE_APP_NOT_FOUND=1
+ERROR_CODE_DISABLE=2
+
+APP_PATH=/oem/usr/bin/tailscale/tailscaled
+CLI_PATH=/oem/usr/bin/tailscale/tailscale
+DATA_PATH=/userdata/arkkvm/tailscale
+
+CONFIG_FILE_ENABLE="enable"
+CONFIG_FILE_TAILSCALED_STATE="tailscaled.state"
+CONFIG_FILE_LOGIN_SERVER="login_server"
+
+[ -f "$APP_PATH" ] || { echo "Tailscale binary not found"; exit $ERROR_CODE_APP_NOT_FOUND; }
+
+start() {
+	mkdir -p "$DATA_PATH"
+
+	if ! is_enabled; then
+		echo "Tailscale is disabled, skipping Tailscale startup"
+		exit 0
+	fi
+
+	if pidof tailscaled >/dev/null 2>&1; then
+		echo "Tailscale already running"
+		exit 0
+	fi
+
+	if [ -s "$DATA_PATH/$CONFIG_FILE_LOGIN_SERVER" ]; then
+		LOGIN_SERVER=$(cat "$DATA_PATH/$CONFIG_FILE_LOGIN_SERVER")
+		$APP_PATH --state="$DATA_PATH/$CONFIG_FILE_TAILSCALED_STATE" --login-server="$LOGIN_SERVER" > /dev/null 2>&1 &
+		echo "Tailscale started with login server $LOGIN_SERVER"
+	else
+		$APP_PATH --state="$DATA_PATH/$CONFIG_FILE_TAILSCALED_STATE" > /dev/null 2>&1 &
+		echo "Tailscale started"
+	fi
+}
+
+stop() {
+	echo "Stopping Tailscale"
+	killall tailscaled
+	sleep 1
+	echo "Tailscale stopped"
+}
+
+restart() {
+	stop
+	start
+}
+
+register() {
+	if ! is_enabled; then
+		echo "Tailscale is disabled, skipping registration"
+		exit $ERROR_CODE_DISABLE
+	fi
+
+	$CLI_PATH up
+}
+
+register_force() {
+	if ! is_enabled; then
+		echo "Tailscale is disabled, skipping device registration"
+		exit $ERROR_CODE_DISABLE
+	fi
+
+	$CLI_PATH logout
+	$CLI_PATH login
+}
+
+reset_config() {
+	rm -f "$DATA_PATH/$CONFIG_FILE_TAILSCALED_STATE"
+	rm -f "$DATA_PATH/$CONFIG_FILE_LOGIN_SERVER"
+	echo "Tailscale config reset"
+	
+	if is_enabled; then
+		echo "Tailscale is enabled, restarting Tailscale"
+		restart
+	fi
+}
+
+reset() {
+	rm -f "$DATA_PATH/$CONFIG_FILE_TAILSCALED_STATE"
+	rm -f "$DATA_PATH/$CONFIG_FILE_LOGIN_SERVER"
+	echo "Tailscale config reset"
+	disable
+}
+
+get_ip() {
+	if ! is_enabled; then
+		echo "Tailscale is disabled, skipping IP retrieval"
+		exit $ERROR_CODE_DISABLE
+	fi
+
+	$CLI_PATH ip
+}
+
+get_status() {
+	if ! is_enabled; then
+		echo "Tailscale is disabled, skipping status retrieval"
+		exit $ERROR_CODE_DISABLE
+	fi
+
+	$CLI_PATH status --json
+}
+
+enable() {
+	mkdir -p "$DATA_PATH"
+
+	touch "$DATA_PATH/$CONFIG_FILE_ENABLE"
+	echo "Tailscale is enabled, restarting Tailscale"
+	restart
+}
+
+disable() {
+	rm -f "$DATA_PATH/$CONFIG_FILE_ENABLE"
+	echo "Tailscale is disabled, stopping Tailscale"
+	stop
+}
+
+set_login_server() {
+	local login_server=$1
+	mkdir -p "$DATA_PATH"
+
+	if [ -z "$login_server" ]; then
+		rm -f "$DATA_PATH/$CONFIG_FILE_LOGIN_SERVER"
+		echo "Login server reset"
+	else
+		printf '%s\n' "$login_server" > "$DATA_PATH/$CONFIG_FILE_LOGIN_SERVER"
+		echo "Login server set to $login_server"
+	fi
+	rm -f "$DATA_PATH/$CONFIG_FILE_TAILSCALED_STATE"
+
+	if is_enabled; then
+		echo "Tailscale is enabled, restarting Tailscale"
+		restart
+	fi
+}
+
+get_login_server() {
+	if [ -s "$DATA_PATH/$CONFIG_FILE_LOGIN_SERVER" ]; then
+		cat "$DATA_PATH/$CONFIG_FILE_LOGIN_SERVER"
+	fi
+}
+
+get_enable() {
+	if is_enabled; then
+		echo "enable"
+	else
+		echo "disable"
+	fi
+}
+
+is_enabled() {
+	[ -f "$DATA_PATH/$CONFIG_FILE_ENABLE" ]
+}
+
+usage() {
+	cat <<EOF
+Usage: $0 <command> [args]
+
+Service control (for init / manual):
+  start                 Start tailscaled (uses persisted login_server if set)
+  stop                  Stop tailscaled
+  restart | reload      Stop then start tailscaled
+
+Enable / disable (persisted under $DATA_PATH/):
+  enable                Mark enabled, then restart tailscaled
+  disable               Mark disabled, then stop tailscaled (keeps login_server file)
+  getEnable             Print "enable" or "disable"
+
+Join tailnet (requires enable; tailscaled running with correct --login-server):
+  register              Run "tailscale up" (no --login-server; uses daemon config)
+  registerForce         Run "tailscale up --force-reauth"
+
+Configuration:
+  setLoginServer <url>  Persist login_server, clear state, restart tailscaled
+                        Omit <url> to clear file and use official SaaS on next start
+  getLoginServer        Print persisted login_server (empty = official SaaS)
+  resetConfig           Remove state + login_server; restart if enabled
+  reset                 Same as resetConfig, then disable
+
+Status:
+  getIp                 Show Tailscale IP address(es)
+  getStatus             Show "tailscale status --json"
+
+Other:
+  help                  Show this message
+
+Paths:
+  tailscaled:  $APP_PATH
+  tailscale:   $CLI_PATH
+  data dir:    $DATA_PATH/
+  login_server file:   $DATA_PATH/$CONFIG_FILE_LOGIN_SERVER
+
+First-time setup (official Tailscale):
+  $0 enable
+  $0 setLoginServer
+  $0 register
+
+First-time setup (Headscale / custom control plane):
+  $0 enable
+  $0 setLoginServer https://headscale.example.com
+  $0 register
+
+Boot: place as init script (e.g. S40tailscale); "start" runs only when enabled.
+EOF
+}
+
+case "$1" in
+  start)
+	start
+	;;
+  stop)
+	stop
+	;;
+  restart|reload)
+	restart
+	;;
+  register)
+	register
+	;;
+  registerForce)
+	register_force
+	;;
+  resetConfig)
+	reset_config
+	;;
+  reset)
+	reset
+	;;
+  getIp)
+	get_ip
+	;;
+  getStatus)
+	get_status
+	;;
+  enable)
+	enable
+	;;
+  disable)
+	disable
+	;;
+  getEnable)
+	get_enable
+	;;
+  getLoginServer)
+	get_login_server
+	;;
+  setLoginServer)
+	set_login_server "$2"
+	;;
+  help|-h|--help)
+	usage
+	exit 0
+	;;
+  *)
+	usage >&2
+	exit 1
+esac
+
+exit $?
+

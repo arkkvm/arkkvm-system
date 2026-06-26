@@ -1,0 +1,2137 @@
+From 4de5bfc95bb6780970738738c49f417fada01da0 Mon Sep 17 00:00:00 2001
+From: Guochun Huang <hero.huang@rock-chips.com>
+Date: Thu, 14 Sep 2023 02:41:20 +0000
+Subject: [PATCH 168/232] arm64: dts: rockchip: add support
+ rk3568-evb-rk628-ddr4-v10 board
+
+Change-Id: I3a87d6aa16c4e09780a566117e4864d8d235038e
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ .../rockchip/rk3568-evb-rk628-ddr4-v10.dtsi   | 153 +++++++
+ .../rk3568-evb-rk628-hdmi2dsi-ddr4-v10.dts    | 397 +++++++++++++++++
+ ...k3568-evb-rk628-hdmi2dsi-dual-ddr4-v10.dts | 239 +++++++++++
+ .../rk3568-evb-rk628-hdmi2gvi-ddr4-v10.dts    | 137 ++++++
+ .../rk3568-evb-rk628-hdmi2lvds-ddr4-v10.dts   | 122 ++++++
+ ...3568-evb-rk628-hdmi2lvds-dual-ddr4-v10.dts | 130 ++++++
+ .../rk3568-evb-rk628-rgb2dsi-ddr4-v10.dts     | 399 ++++++++++++++++++
+ .../rk3568-evb-rk628-rgb2gvi-ddr4-v10.dts     | 140 ++++++
+ .../rk3568-evb-rk628-rgb2hdmi-ddr4-v10.dts    |  61 +++
+ .../rk3568-evb-rk628-rgb2lvds-ddr4-v10.dts    | 124 ++++++
+ ...k3568-evb-rk628-rgb2lvds-dual-ddr4-v10.dts | 133 ++++++
+ 11 files changed, 2035 insertions(+)
+ create mode 100644 arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-ddr4-v10.dtsi
+ create mode 100644 arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2dsi-ddr4-v10.dts
+ create mode 100644 arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2dsi-dual-ddr4-v10.dts
+ create mode 100644 arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2gvi-ddr4-v10.dts
+ create mode 100644 arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2lvds-ddr4-v10.dts
+ create mode 100644 arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2lvds-dual-ddr4-v10.dts
+ create mode 100644 arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2dsi-ddr4-v10.dts
+ create mode 100644 arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2gvi-ddr4-v10.dts
+ create mode 100644 arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2hdmi-ddr4-v10.dts
+ create mode 100644 arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2lvds-ddr4-v10.dts
+ create mode 100644 arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2lvds-dual-ddr4-v10.dts
+
+diff --git a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-ddr4-v10.dtsi b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-ddr4-v10.dtsi
+new file mode 100644
+index 00000000000000..b83ecd38bd8a94
+--- /dev/null
++++ b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-ddr4-v10.dtsi
+@@ -0,0 +1,153 @@
++// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
++/*
++ * Copyright (c) 2020 Rockchip Electronics Co., Ltd.
++ *
++ */
++
++/dts-v1/;
++
++#include <dt-bindings/gpio/gpio.h>
++#include <dt-bindings/pinctrl/rockchip.h>
++#include "rk3568.dtsi"
++#include "rk3568-evb.dtsi"
++
++/ {
++	model = "Rockchip RK3568 EVB RK628 DDR4 V10 Board";
++	compatible = "rockchip,rk3568-evb-rk628-ddr4-v10", "rockchip,rk3568";
++};
++
++&i2c2 {
++	clock-frequency = <400000>;
++	status = "okay";
++
++	i2c2_rk628: rk628@50 {
++		compatible = "rockchip,rk628";
++		reg = <0x50>;
++		interrupt-parent = <&gpio0>;
++		interrupts = <20 IRQ_TYPE_LEVEL_HIGH>;
++		enable-gpios = <&gpio0 RK_PC1 GPIO_ACTIVE_HIGH>;
++		reset-gpios = <&gpio2 RK_PA2 GPIO_ACTIVE_LOW>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&rk628_reset>;
++		status = "okay";
++	};
++};
++
++&i2c3 {
++	clock-frequency = <400000>;
++	status = "okay";
++
++	i2c3_rk628: rk628@51 {
++		compatible = "rockchip,rk628";
++		reg = <0x51>;
++
++		/* external test board
++		 * rk628_int1: gpio1_a5
++		 * rk628_reset1: gpio1_a6
++		 * rk628_int2: gpio1_a7
++		 * rk628_reset2: gpio1_b0
++		 */
++		interrupt-parent = <&gpio1>;
++		interrupts = <5 IRQ_TYPE_LEVEL_HIGH>;
++		reset-gpios = <&gpio1 RK_PA6 GPIO_ACTIVE_LOW>;
++		status = "disabled";
++	};
++};
++
++&i2c4 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&i2c4m1_xfer>;
++	clock-frequency = <400000>;
++	status = "okay";
++
++	i2c4_rk628: rk628@50 {
++		compatible = "rockchip,rk628";
++		reg = <0x50>;
++
++		interrupt-parent = <&gpio2>;
++		interrupts = <15 IRQ_TYPE_LEVEL_HIGH>;
++		enable-gpios = <&gpio2 RK_PC0 GPIO_ACTIVE_HIGH>;
++		reset-gpios = <&gpio2 RK_PB0 GPIO_ACTIVE_LOW>;
++		status = "disabled";
++	};
++};
++
++&i2c5 {
++	status = "disabled";
++};
++
++&i2s1_8ch {
++	status = "disabled";
++};
++
++&pinctrl {
++	rk628 {
++		rk628_reset: rk628-reset {
++			rockchip,pins = <2 RK_PA2 RK_FUNC_GPIO &pcfg_pull_none>;
++		};
++	};
++};
++
++&pwm5 {
++	status = "disabled";
++};
++
++&pwm7 {
++	status = "disabled";
++};
++
++&pmu_io_domains {
++	status = "okay";
++	pmuio1-supply = <&vcc3v3_pmu>;
++	pmuio2-supply = <&vcc3v3_pmu>;
++	vccio1-supply = <&vcc_3v3>;
++	vccio3-supply = <&vcc_3v3>;
++	vccio4-supply = <&vcc_3v3>;
++	vccio5-supply = <&vcc_3v3>;
++	vccio6-supply = <&vcc_3v3>;
++	vccio7-supply = <&vcc_3v3>;
++};
++
++&sdmmc0 {
++	status = "disabled";
++};
++
++&spdif_8ch {
++	status = "disabled";
++};
++
++&spdif_out {
++	status = "disabled";
++};
++
++&u2phy0_otg {
++	 /delete-property/ vbus-supply;
++	status = "okay";
++};
++
++&usbdrd_dwc3 {
++	dr_mode = "otg";
++	phys = <&u2phy0_otg>;
++	phy-names = "usb2-phy";
++	extcon = <&usb2phy0>;
++	maximum-speed = "high-speed";
++	snps,dis_u2_susphy_quirk;
++	status = "okay";
++};
++
++&vcc3v3_lcd0_n {
++	gpio = <&gpio2 RK_PA4 GPIO_ACTIVE_HIGH>;
++	enable-active-high;
++};
++
++&vcc3v3_lcd1_n {
++	status = "disabled";
++};
++
++&wireless_wlan {
++	status = "disabled";
++};
++
++&wireless_bluetooth {
++	status = "disabled";
++};
+diff --git a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2dsi-ddr4-v10.dts b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2dsi-ddr4-v10.dts
+new file mode 100644
+index 00000000000000..4ecd56149a244e
+--- /dev/null
++++ b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2dsi-ddr4-v10.dts
+@@ -0,0 +1,397 @@
++// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
++/*
++ * Copyright (c) 2020 Rockchip Electronics Co., Ltd.
++ *
++ */
++
++#include "rk3568-evb-rk628-ddr4-v10.dtsi"
++#include "rk3568-android.dtsi"
++#include <dt-bindings/display/media-bus-format.h>
++
++&gt1x {
++	status = "okay";
++	power-supply = <&vcc3v3_lcd0_n>;
++	goodix,rst-gpio = <&gpio0 RK_PB0 GPIO_ACTIVE_HIGH>;
++	goodix,irq-gpio = <&gpio0 RK_PA4 IRQ_TYPE_LEVEL_LOW>;
++};
++
++&i2c2_rk628 {
++	panel-backlight = <&backlight>;
++	panel-power-supply = <&vcc3v3_lcd0_n>;
++	panel-reset-delay-ms = <10>;
++	panel-enable-delay-ms = <10>;
++	panel-prepare-delay-ms = <60>;
++	panel-unprepare-delay-ms = <10>;
++	panel-disable-delay-ms = <60>;
++
++	rk628,hdmi-in;
++	rk628-dsi {
++		//rockchip,dual-channel;
++		dsi,eotp;
++		dsi,video-mode;
++		dsi,format = "rgb888";
++		dsi,lanes  = <4>;
++		status = "okay";
++
++		rk628-panel {
++			panel-init-sequence = [
++				23 00 02 FE 21
++				23 00 02 04 00
++				23 00 02 00 64
++				23 00 02 2A 00
++				23 00 02 26 64
++				23 00 02 54 00
++				23 00 02 50 64
++				23 00 02 7B 00
++				23 00 02 77 64
++				23 00 02 A2 00
++				23 00 02 9D 64
++				23 00 02 C9 00
++				23 00 02 C5 64
++				23 00 02 01 71
++				23 00 02 27 71
++				23 00 02 51 71
++				23 00 02 78 71
++				23 00 02 9E 71
++				23 00 02 C6 71
++				23 00 02 02 89
++				23 00 02 28 89
++				23 00 02 52 89
++				23 00 02 79 89
++				23 00 02 9F 89
++				23 00 02 C7 89
++				23 00 02 03 9E
++				23 00 02 29 9E
++				23 00 02 53 9E
++				23 00 02 7A 9E
++				23 00 02 A0 9E
++				23 00 02 C8 9E
++				23 00 02 09 00
++				23 00 02 05 B0
++				23 00 02 31 00
++				23 00 02 2B B0
++				23 00 02 5A 00
++				23 00 02 55 B0
++				23 00 02 80 00
++				23 00 02 7C B0
++				23 00 02 A7 00
++				23 00 02 A3 B0
++				23 00 02 CE 00
++				23 00 02 CA B0
++				23 00 02 06 C0
++				23 00 02 2D C0
++				23 00 02 56 C0
++				23 00 02 7D C0
++				23 00 02 A4 C0
++				23 00 02 CB C0
++				23 00 02 07 CF
++				23 00 02 2F CF
++				23 00 02 58 CF
++				23 00 02 7E CF
++				23 00 02 A5 CF
++				23 00 02 CC CF
++				23 00 02 08 DD
++				23 00 02 30 DD
++				23 00 02 59 DD
++				23 00 02 7F DD
++				23 00 02 A6 DD
++				23 00 02 CD DD
++				23 00 02 0E 15
++				23 00 02 0A E9
++				23 00 02 36 15
++				23 00 02 32 E9
++				23 00 02 5F 15
++				23 00 02 5B E9
++				23 00 02 85 15
++				23 00 02 81 E9
++				23 00 02 AD 15
++				23 00 02 A9 E9
++				23 00 02 D3 15
++				23 00 02 CF E9
++				23 00 02 0B 14
++				23 00 02 33 14
++				23 00 02 5C 14
++				23 00 02 82 14
++				23 00 02 AA 14
++				23 00 02 D0 14
++				23 00 02 0C 36
++				23 00 02 34 36
++				23 00 02 5D 36
++				23 00 02 83 36
++				23 00 02 AB 36
++				23 00 02 D1 36
++				23 00 02 0D 6B
++				23 00 02 35 6B
++				23 00 02 5E 6B
++				23 00 02 84 6B
++				23 00 02 AC 6B
++				23 00 02 D2 6B
++				23 00 02 13 5A
++				23 00 02 0F 94
++				23 00 02 3B 5A
++				23 00 02 37 94
++				23 00 02 64 5A
++				23 00 02 60 94
++				23 00 02 8A 5A
++				23 00 02 86 94
++				23 00 02 B2 5A
++				23 00 02 AE 94
++				23 00 02 D8 5A
++				23 00 02 D4 94
++				23 00 02 10 D1
++				23 00 02 38 D1
++				23 00 02 61 D1
++				23 00 02 87 D1
++				23 00 02 AF D1
++				23 00 02 D5 D1
++				23 00 02 11 04
++				23 00 02 39 04
++				23 00 02 62 04
++				23 00 02 88 04
++				23 00 02 B0 04
++				23 00 02 D6 04
++				23 00 02 12 05
++				23 00 02 3A 05
++				23 00 02 63 05
++				23 00 02 89 05
++				23 00 02 B1 05
++				23 00 02 D7 05
++				23 00 02 18 AA
++				23 00 02 14 36
++				23 00 02 42 AA
++				23 00 02 3D 36
++				23 00 02 69 AA
++				23 00 02 65 36
++				23 00 02 8F AA
++				23 00 02 8B 36
++				23 00 02 B7 AA
++				23 00 02 B3 36
++				23 00 02 DD AA
++				23 00 02 D9 36
++				23 00 02 15 74
++				23 00 02 3F 74
++				23 00 02 66 74
++				23 00 02 8C 74
++				23 00 02 B4 74
++				23 00 02 DA 74
++				23 00 02 16 9F
++				23 00 02 40 9F
++				23 00 02 67 9F
++				23 00 02 8D 9F
++				23 00 02 B5 9F
++				23 00 02 DB 9F
++				23 00 02 17 DC
++				23 00 02 41 DC
++				23 00 02 68 DC
++				23 00 02 8E DC
++				23 00 02 B6 DC
++				23 00 02 DC DC
++				23 00 02 1D FF
++				23 00 02 19 03
++				23 00 02 47 FF
++				23 00 02 43 03
++				23 00 02 6E FF
++				23 00 02 6A 03
++				23 00 02 94 FF
++				23 00 02 90 03
++				23 00 02 BC FF
++				23 00 02 B8 03
++				23 00 02 E2 FF
++				23 00 02 DE 03
++				23 00 02 1A 35
++				23 00 02 44 35
++				23 00 02 6B 35
++				23 00 02 91 35
++				23 00 02 B9 35
++				23 00 02 DF 35
++				23 00 02 1B 45
++				23 00 02 45 45
++				23 00 02 6C 45
++				23 00 02 92 45
++				23 00 02 BA 45
++				23 00 02 E0 45
++				23 00 02 1C 55
++				23 00 02 46 55
++				23 00 02 6D 55
++				23 00 02 93 55
++				23 00 02 BB 55
++				23 00 02 E1 55
++				23 00 02 22 FF
++				23 00 02 1E 68
++				23 00 02 4C FF
++				23 00 02 48 68
++				23 00 02 73 FF
++				23 00 02 6F 68
++				23 00 02 99 FF
++				23 00 02 95 68
++				23 00 02 C1 FF
++				23 00 02 BD 68
++				23 00 02 E7 FF
++				23 00 02 E3 68
++				23 00 02 1F 7E
++				23 00 02 49 7E
++				23 00 02 70 7E
++				23 00 02 96 7E
++				23 00 02 BE 7E
++				23 00 02 E4 7E
++				23 00 02 20 97
++				23 00 02 4A 97
++				23 00 02 71 97
++				23 00 02 97 97
++				23 00 02 BF 97
++				23 00 02 E5 97
++				23 00 02 21 B5
++				23 00 02 4B B5
++				23 00 02 72 B5
++				23 00 02 98 B5
++				23 00 02 C0 B5
++				23 00 02 E6 B5
++				23 00 02 25 F0
++				23 00 02 23 E8
++				23 00 02 4F F0
++				23 00 02 4D E8
++				23 00 02 76 F0
++				23 00 02 74 E8
++				23 00 02 9C F0
++				23 00 02 9A E8
++				23 00 02 C4 F0
++				23 00 02 C2 E8
++				23 00 02 EA F0
++				23 00 02 E8 E8
++				23 00 02 24 FF
++				23 00 02 4E FF
++				23 00 02 75 FF
++				23 00 02 9B FF
++				23 00 02 C3 FF
++				23 00 02 E9 FF
++				23 00 02 FE 3D
++				23 00 02 00 04
++				23 00 02 FE 23
++				23 00 02 08 82
++				23 00 02 0A 00
++				23 00 02 0B 00
++				23 00 02 0C 01
++				23 00 02 16 00
++				23 00 02 18 02
++				23 00 02 1B 04
++				23 00 02 19 04
++				23 00 02 1C 81
++				23 00 02 1F 00
++				23 00 02 20 03
++				23 00 02 23 04
++				23 00 02 21 01
++				23 00 02 54 63
++				23 00 02 55 54
++				23 00 02 6E 45
++				23 00 02 6D 36
++				23 00 02 FE 3D
++				23 00 02 55 78
++				23 00 02 FE 20
++				23 00 02 26 30
++				23 00 02 FE 3D
++				23 00 02 20 71
++				23 00 02 50 8F
++				23 00 02 51 8F
++				23 00 02 FE 00
++				23 00 02 35 00
++				05 78 01 11
++				05 00 01 29
++			];
++
++			panel-exit-sequence = [
++				05 00 01 28
++				05 00 01 10
++			];
++		};
++	};
++
++	display-timings {
++		src-timing {
++			clock-frequency = <132000000>;
++			hactive = <1080>;
++			vactive = <1920>;
++			hback-porch = <30>;
++			hfront-porch = <60>;
++			vback-porch = <10>;
++			vfront-porch = <10>;
++			hsync-len = <40>;
++			vsync-len = <10>;
++			hsync-active = <1>;
++			vsync-active = <1>;
++			de-active = <0>;
++			pixelclk-active = <0>;
++		};
++
++		dst-timing {
++			clock-frequency = <132000000>;
++			hactive = <1080>;
++			vactive = <1920>;
++			hback-porch = <30>;
++			hfront-porch = <60>;
++			vback-porch = <10>;
++			vfront-porch = <10>;
++			hsync-len = <40>;
++			vsync-len = <10>;
++			hsync-active = <1>;
++			vsync-active = <1>;
++			de-active = <0>;
++			pixelclk-active = <0>;
++		};
++	};
++};
++
++&hdmi {
++	status = "okay";
++	force-bus-format = <MEDIA_BUS_FMT_RGB888_1X24>;
++	force-output;
++	force_timing{
++		clock-frequency = <132000000>;
++		hactive = <1080>;
++		vactive = <1920>;
++		hback-porch = <30>;
++		hfront-porch = <60>;
++		vback-porch = <10>;
++		vfront-porch = <10>;
++		hsync-len = <40>;
++		vsync-len = <10>;
++		hsync-active = <1>;
++		vsync-active = <1>;
++		de-active = <0>;
++		pixelclk-active = <0>;
++	};
++};
++
++&hdmi_in_vp0 {
++	status = "okay";
++};
++
++&hdmi_in_vp1 {
++	status = "disabled";
++};
++
++&route_hdmi {
++	status = "okay";
++
++	force-bus-format = <MEDIA_BUS_FMT_RGB888_1X24>;
++	force-output;
++	force_timing{
++		clock-frequency = <132000000>;
++		hactive = <1080>;
++		vactive = <1920>;
++		hback-porch = <30>;
++		hfront-porch = <60>;
++		vback-porch = <10>;
++		vfront-porch = <10>;
++		hsync-len = <40>;
++		vsync-len = <10>;
++		hsync-active = <1>;
++		vsync-active = <1>;
++		de-active = <0>;
++		pixelclk-active = <0>;
++	};
++};
++
++&touch_gpio {
++	rockchip,pins = <0 RK_PA4 RK_FUNC_GPIO &pcfg_pull_up>,
++			<0 RK_PB0 RK_FUNC_GPIO &pcfg_pull_none>;
++};
+diff --git a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2dsi-dual-ddr4-v10.dts b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2dsi-dual-ddr4-v10.dts
+new file mode 100644
+index 00000000000000..0892e5e9ee477c
+--- /dev/null
++++ b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2dsi-dual-ddr4-v10.dts
+@@ -0,0 +1,239 @@
++// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
++/*
++ * Copyright (c) 2020 Rockchip Electronics Co., Ltd.
++ *
++ */
++
++#include "rk3568-evb-rk628-ddr4-v10.dtsi"
++#include "rk3568-android.dtsi"
++#include <dt-bindings/display/media-bus-format.h>
++
++&gt1x {
++	status = "disabled";
++};
++
++&i2c2_rk628 {
++	panel-backlight = <&backlight>;
++	panel-power-supply = <&vcc3v3_lcd0_n>;
++	panel-reset-delay-ms = <240>;
++	panel-enable-delay-ms = <240>;
++	panel-prepare-delay-ms = <240>;
++	panel-unprepare-delay-ms = <240>;
++	panel-disable-delay-ms = <240>;
++	panel-init-delay-ms = <240>;
++
++	rk628,hdmi-in;
++	rk628-dsi {
++		rockchip,lane-mbps = <1100>;
++		rockchip,dual-channel;
++		dsi,eotp;
++		dsi,video-mode;
++		dsi,format = "rgb888";
++		dsi,lanes  = <4>;
++		status = "okay";
++
++		rk628-panel {
++			panel-init-sequence = [
++				29 00 05 ff aa 55 a5 80
++				23 00 02 6f 31
++				23 00 02 fa 00
++				23 00 02 6f 13
++				23 00 02 f4 00
++				23 00 02 fa 00
++				29 00 05 ff aa 55 a5 00
++				29 00 06 f0 55 aa 52 08 00
++				23 00 02 b1 21
++				29 00 03 b2 10 82
++				29 00 03 b2 87 22
++				29 00 04 b4 25 02 8c
++				29 00 03 b5 0a 00
++				29 00 04 b8 00 04 02
++				29 00 0a b9 03 00 18 11 31 44 03 51 00
++				29 00 03 ba 00 32
++				29 00 03 bc 4f 00
++				29 00 05 bd 00 b6 10 10
++				29 00 03 c6 11 10
++				29 00 06 f0 55 aa 52 08 01
++				29 00 03 b1 11 11
++				29 00 07 b2 08 08 08 08 08 08
++				29 00 07 b3 0f 19 0f 19 0f 19
++				29 00 07 b6 15 14 15 14 15 14
++				29 00 03 bc 5f 00
++				29 00 03 bd 5f 00
++				29 00 03 be 00 db
++				23 00 02 ca 0f
++				29 00 06 f0 55 aa 52 08 02
++				29 00 0f b0 00 0e 29 36 3f 48 51 3b 37
++					3c 3c 51 61 60
++				29 00 0f b1 59 6a 81 81 94 9b a8 a8 af
++					b6 bd c4 cc ff
++				29 00 0f b2 00 0e 29 36 3f 48 51 3b 37
++					3c 3c 51 61 60
++				29 00 10 b3 59 6a 81 81 94 9b a8 a8 af
++					b6 bd c4 ca cc ff
++				29 00 0f b4 00 0e 29 36 3f 48 51 3b 37
++					3c 3c 51 61 60
++				29 00 10 b5 59 6a 81 81 94 9b a8 a8 af
++					b6 bd c4 ca cc ff
++				29 00 0f b6 00 0e 29 36 3f 48 51 3b 37
++					3c 3c 51 61 60
++				29 00 10 b7 59 6a 81 81 94 9b a8 a8 af
++					b6 bd c4 ca cc ff
++				29 00 0f b8 00 0e 29 36 3f 48 51 3b 37
++					3c 3c 51 61 60
++				29 00 10 b9 59 6a 81 81 94 9b a8 a8 af
++					b6 bd c4 ca cc ff
++				29 00 0f ba 00 0e 29 36 3f 48 51 3b 37
++					3c 3c 51 61 60
++				29 00 10 bb 59 6a 81 81 94 9b a8 a8 af
++					b6 bd c4 ca cc ff
++				29 00 06 f0 55 aa 52 08 03
++				29 00 05 b0 00 00 00 00
++				29 00 05 b1 03 00 00 03
++				29 00 08 b2 00 00 64 00 64 05 02
++				29 00 03 b4 00 08
++				29 00 05 b5 12 28 06 06
++				29 00 06 ba 31 00 01 00 09
++				29 00 06 bb 31 00 01 00 09
++				29 00 06 f0 55 aa 52 08 05
++				29 00 04 b0 03 11 3f
++				29 00 03 b2 06 60
++				29 00 03 b3 10 33
++				23 00 02 b4 26
++				29 00 04 b5 06 20 00
++				29 00 04 b6 86 e0 00
++				29 00 06 ba 8e 00 00 a4 00
++				29 00 06 bb 06 00 00 20 00
++				29 00 06 bc 8e 00 00 a4 00
++				29 00 06 bd 2e 00 00 a4 00
++				29 00 06 be 8e 00 00 a0 00
++				29 00 06 bf 06 00 00 24 00
++				23 00 02 c1 00
++				29 00 03 c8 05 10
++				29 00 03 c9 03 10
++				29 00 04 d0 00 0a 02
++				29 00 04 d1 00 0a 04
++				23 00 02 ec 12
++				23 00 02 ed 00
++				29 00 03 ee 03 00
++				29 00 06 f0 55 aa 52 08 06
++				29 00 06 b0 00 04 08 11 12
++				29 00 06 b1 1f 15 16 1f 1f
++				29 00 06 b2 1f 13 1f 1f 1f
++				29 00 06 b3 1f 19 19 19 19
++				29 00 06 b4 1b 1b 1b 1b 1d
++				29 00 04 b5 1d 1d 1d
++				29 00 06 b6 00 05 09 11 12
++				29 00 06 b7 1f 15 16 1f 1f
++				29 00 06 b8 1f 13 1f 1f 1f
++				29 00 06 b9 1f 19 19 19 19
++				29 00 06 ba 1b 1b 1b 1b 1d
++				29 00 04 bb 1d 1d 1d
++				29 00 06 c0 00 09 05 12 11
++				29 00 06 c1 1f 15 16 1f 1f
++				29 00 06 c2 1f 13 1f 1f 1f
++				29 00 06 c3 1f 19 19 19 19
++				29 00 06 c4 1b 1b 1b 1b 1d
++				29 00 04 c5 1d 1d 1d
++				29 00 06 c6 00 08 04 12 11
++				29 00 06 c7 1f 15 16 1f 1f
++				29 00 06 c8 1f 13 1f 1f 1f
++				29 00 06 c9 1f 19 19 19 19
++				29 00 06 ca 1b 1b 1b 1b 1d
++				29 00 04 cb 1d 1d 1d
++				29 78 04 d0 00 aa 0a
++				05 78 01 11
++				05 78 01 29
++			];
++
++			panel-exit-sequence = [
++				05 00 01 28
++				05 00 01 10
++			];
++		};
++	};
++
++	display-timings {
++		src-timing {
++			clock-frequency = <264000000>;
++			hactive = <1440>;
++			vactive = <2560>;
++			hfront-porch = <150>;
++			hsync-len = <30>;
++			hback-porch = <60>;
++			vfront-porch = <20>;
++			vsync-len = <20>;
++			vback-porch = <20>;
++			hsync-active = <1>;
++			vsync-active = <1>;
++			de-active = <0>;
++			pixelclk-active = <0>;
++		};
++
++		dst-timing {
++			clock-frequency = <264000000>;
++			hactive = <1440>;
++			vactive = <2560>;
++			hfront-porch = <150>;
++			hsync-len = <30>;
++			hback-porch = <60>;
++			vfront-porch = <20>;
++			vsync-len = <20>;
++			vback-porch = <20>;
++			hsync-active = <1>;
++			vsync-active = <1>;
++			de-active = <0>;
++			pixelclk-active = <0>;
++		};
++	};
++};
++
++&hdmi {
++	status = "okay";
++	force-bus-format = <MEDIA_BUS_FMT_RGB888_1X24>;
++	force-output;
++	force_timing{
++		clock-frequency = <264000000>;
++		hactive = <1440>;
++		vactive = <2560>;
++		hfront-porch = <150>;
++		hsync-len = <30>;
++		hback-porch = <60>;
++		vfront-porch = <20>;
++		vsync-len = <20>;
++		vback-porch = <20>;
++		hsync-active = <1>;
++		vsync-active = <1>;
++		de-active = <0>;
++		pixelclk-active = <0>;
++	};
++};
++
++&hdmi_in_vp0 {
++	status = "okay";
++};
++
++&hdmi_in_vp1 {
++	status = "disabled";
++};
++
++&route_hdmi {
++	status = "okay";
++	force-bus-format = <MEDIA_BUS_FMT_RGB888_1X24>;
++	force-output;
++	force_timing {
++		clock-frequency = <264000000>;
++		hactive = <1440>;
++		vactive = <2560>;
++		hfront-porch = <150>;
++		hsync-len = <30>;
++		hback-porch = <60>;
++		vfront-porch = <20>;
++		vsync-len = <20>;
++		vback-porch = <20>;
++		hsync-active = <1>;
++		vsync-active = <1>;
++		de-active = <0>;
++		pixelclk-active = <0>;
++	};
++};
+diff --git a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2gvi-ddr4-v10.dts b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2gvi-ddr4-v10.dts
+new file mode 100644
+index 00000000000000..93631f254526f4
+--- /dev/null
++++ b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2gvi-ddr4-v10.dts
+@@ -0,0 +1,137 @@
++// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
++/*
++ * Copyright (c) 2020 Rockchip Electronics Co., Ltd.
++ *
++ */
++
++#include <dt-bindings/display/media-bus-format.h>
++#include "rk3568-evb-rk628-ddr4-v10.dtsi"
++#include "rk3568-android.dtsi"
++
++&backlight {
++	enable-gpios = <&gpio2 RK_PA4 GPIO_ACTIVE_HIGH>;
++};
++
++&gt1x {
++	status = "disabled";
++};
++
++&i2c2_rk628 {
++		panel-backlight = <&backlight>;
++		panel-power-supply = <&vcc3v3_lcd0_n>;
++		panel-reset-delay-ms = <10>;
++		panel-enable-delay-ms = <150>;
++		panel-prepare-delay-ms = <60>;
++		panel-unprepare-delay-ms = <10>;
++		panel-disable-delay-ms = <60>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&rk628_reset &refclk_pins>;
++		assigned-clocks = <&pmucru CLK_WIFI>;
++		assigned-clock-rates = <24000000>;
++		clocks = <&pmucru CLK_WIFI>;
++		clock-names = "soc_24M";
++
++		rk628,hdmi-in;
++		rk628-gvi {
++			/* "rgb666"
++			 * "rgb888"
++			 * "rgb101010"
++			 * "yuyv8"
++			 * "yuyv10"
++			 */
++			bus-format = "rgb888";
++			gvi,lanes = <8>;
++			//"rockchip,division-mode";
++			//"rockchip, gvi-frm-rst";
++			status = "okay";
++		};
++
++		display-timings {
++			src-timing {
++				clock-frequency = <594000000>;
++				hactive = <3840>;
++				vactive = <2160>;
++				hback-porch = <296>;
++				hfront-porch = <176>;
++				vback-porch = <72>;
++				vfront-porch = <8>;
++				hsync-len = <88>;
++				vsync-len = <10>;
++				hsync-active = <1>;
++				vsync-active = <1>;
++				de-active = <0>;
++				pixelclk-active = <0>;
++			};
++
++			dst-timing {
++				clock-frequency = <594000000>;
++				hactive = <3840>;
++				vactive = <2160>;
++				hback-porch = <296>;
++				hfront-porch = <176>;
++				vback-porch = <72>;
++				vfront-porch = <8>;
++				hsync-len = <88>;
++				vsync-len = <10>;
++				hsync-active = <0>;
++				vsync-active = <0>;
++				de-active = <0>;
++				pixelclk-active = <0>;
++			};
++	    };
++};
++
++&hdmi {
++	status = "okay";
++	force-bus-format = <MEDIA_BUS_FMT_RGB888_1X24>;
++	force-output;
++	force_timing {
++		clock-frequency = <594000000>;
++		hactive = <3840>;
++		vactive = <2160>;
++		hback-porch = <296>;
++		hfront-porch = <176>;
++		vback-porch = <72>;
++		vfront-porch = <8>;
++		hsync-len = <88>;
++		vsync-len = <10>;
++		hsync-active = <1>;
++		vsync-active = <1>;
++		de-active = <0>;
++		pixelclk-active = <0>;
++	};
++};
++
++&hdmi_in_vp0 {
++	status = "okay";
++};
++
++&hdmi_in_vp1 {
++	status = "disabled";
++};
++
++&route_hdmi {
++	status = "okay";
++	force-bus-format = <MEDIA_BUS_FMT_RGB888_1X24>;
++	force-output;
++	force_timing {
++		clock-frequency = <594000000>;
++		hactive = <3840>;
++		vactive = <2160>;
++		hback-porch = <296>;
++		hfront-porch = <176>;
++		vback-porch = <72>;
++		vfront-porch = <8>;
++		hsync-len = <88>;
++		vsync-len = <10>;
++		hsync-active = <1>;
++		vsync-active = <1>;
++		de-active = <0>;
++		pixelclk-active = <0>;
++	};
++};
++
++&vcc3v3_lcd0_n {
++	gpio = <&gpio1 RK_PA3 GPIO_ACTIVE_HIGH>;
++	enable-active-high;
++};
+diff --git a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2lvds-ddr4-v10.dts b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2lvds-ddr4-v10.dts
+new file mode 100644
+index 00000000000000..66f0401fb32908
+--- /dev/null
++++ b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2lvds-ddr4-v10.dts
+@@ -0,0 +1,122 @@
++// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
++/*
++ * Copyright (c) 2020 Rockchip Electronics Co., Ltd.
++ *
++ */
++
++#include "rk3568-evb-rk628-ddr4-v10.dtsi"
++#include "rk3568-android.dtsi"
++#include <dt-bindings/display/media-bus-format.h>
++
++&gt1x {
++	status = "disabled";
++};
++
++&i2c2_rk628 {
++	panel-backlight = <&backlight>;
++	panel-power-supply = <&vcc3v3_lcd0_n>;
++	panel-enable-gpios = <&gpio2 RK_PC6 GPIO_ACTIVE_HIGH>;
++	panel-reset-delay-ms = <10>;
++	panel-enable-delay-ms = <10>;
++	panel-prepare-delay-ms = <60>;
++	panel-unprepare-delay-ms = <10>;
++	panel-disable-delay-ms = <60>;
++
++	rk628,hdmi-in;
++	rk628-lvds {
++		/* "jeida_18","vesa_24","vesa_18" */
++		bus-format = "jeida_24";
++
++		/* "dual_link_odd_even_pixels"
++		 * "dual_link_even_odd_pixels"
++		 * "dual_link_left_right_pixels"
++		 * "dual_link_right_left_pixels"
++		 */
++		link-type = "single_link";
++		status = "okay";
++	};
++
++	display-timings {
++		src-timing {
++			clock-frequency = <66000000>;
++			hactive = <800>;
++			vactive = <1280>;
++			hback-porch = <30>;
++			hfront-porch = <30>;
++			vback-porch = <3>;
++			vfront-porch = <3>;
++			hsync-len = <10>;
++			vsync-len = <2>;
++			hsync-active = <1>;
++			vsync-active = <1>;
++			de-active = <0>;
++			pixelclk-active = <0>;
++		};
++
++		dst-timing {
++			clock-frequency = <66000000>;
++			hactive = <800>;
++			vactive = <1280>;
++			hback-porch = <30>;
++			hfront-porch = <30>;
++			vback-porch = <3>;
++			vfront-porch = <3>;
++			hsync-len = <10>;
++			vsync-len = <2>;
++			hsync-active = <1>;
++			vsync-active = <1>;
++			de-active = <0>;
++			pixelclk-active = <0>;
++		};
++	};
++};
++
++&hdmi {
++	status = "okay";
++	force-bus-format = <MEDIA_BUS_FMT_RGB888_1X24>;
++	force-output;
++	force_timing{
++		clock-frequency = <66000000>;
++		hactive = <800>;
++		vactive = <1280>;
++		hback-porch = <30>;
++		hfront-porch = <30>;
++		vback-porch = <3>;
++		vfront-porch = <3>;
++		hsync-len = <10>;
++		vsync-len = <2>;
++		hsync-active = <1>;
++		vsync-active = <1>;
++		de-active = <0>;
++		pixelclk-active = <0>;
++	};
++};
++
++&hdmi_in_vp0 {
++	status = "okay";
++};
++
++&hdmi_in_vp1 {
++	status = "disabled";
++};
++
++&route_hdmi {
++	status = "okay";
++	force-bus-format = <MEDIA_BUS_FMT_RGB888_1X24>;
++	force-output;
++	force_timing{
++		clock-frequency = <66000000>;
++		hactive = <800>;
++		vactive = <1280>;
++		hback-porch = <30>;
++		hfront-porch = <30>;
++		vback-porch = <3>;
++		vfront-porch = <3>;
++		hsync-len = <10>;
++		vsync-len = <2>;
++		hsync-active = <1>;
++		vsync-active = <1>;
++		de-active = <0>;
++		pixelclk-active = <0>;
++	};
++};
+diff --git a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2lvds-dual-ddr4-v10.dts b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2lvds-dual-ddr4-v10.dts
+new file mode 100644
+index 00000000000000..b48bb44cc2bf34
+--- /dev/null
++++ b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-hdmi2lvds-dual-ddr4-v10.dts
+@@ -0,0 +1,130 @@
++// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
++/*
++ * Copyright (c) 2020 Rockchip Electronics Co., Ltd.
++ *
++ */
++
++#include <dt-bindings/display/media-bus-format.h>
++#include "rk3568-evb-rk628-ddr4-v10.dtsi"
++#include "rk3568-android.dtsi"
++
++&backlight {
++	enable-gpios = <&gpio2 RK_PA4 GPIO_ACTIVE_HIGH>;
++};
++
++&gt1x {
++	status = "disabled";
++};
++
++&i2c2_rk628 {
++		panel-backlight = <&backlight>;
++		panel-power-supply = <&vcc3v3_lcd0_n>;
++		panel-reset-delay-ms = <10>;
++		panel-enable-delay-ms = <10>;
++		panel-prepare-delay-ms = <60>;
++		panel-unprepare-delay-ms = <10>;
++		panel-disable-delay-ms = <60>;
++
++		rk628,hdmi-in;
++		rk628-lvds {
++			/* "jeida_18","vesa_24","vesa_18" */
++			bus-format = "vesa_24";
++
++			/* "dual_link_odd_even_pixels"
++			 * "dual_link_even_odd_pixels"
++			 * "dual_link_left_right_pixels"
++			 * "dual_link_right_left_pixels"
++			 */
++			link-type = "dual_link_even_odd_pixels";
++			status = "okay";
++		};
++
++		display-timings {
++			src-timing {
++				clock-frequency = <148500000>;
++				hactive = <1920>;
++				vactive = <1080>;
++				hback-porch = <148>;
++				hfront-porch = <88>;
++				vback-porch = <36>;
++				vfront-porch = <4>;
++				hsync-len = <44>;
++				vsync-len = <5>;
++				hsync-active = <1>;
++				vsync-active = <1>;
++				de-active = <0>;
++				pixelclk-active = <0>;
++			};
++
++			dst-timing {
++				clock-frequency = <148500000>;
++				hactive = <1920>;
++				vactive = <1080>;
++				hback-porch = <148>;
++				hfront-porch = <88>;
++				vback-porch = <36>;
++				vfront-porch = <4>;
++				hsync-len = <44>;
++				vsync-len = <5>;
++				hsync-active = <1>;
++				vsync-active = <1>;
++				de-active = <0>;
++				pixelclk-active = <0>;
++			};
++	    };
++};
++
++&hdmi {
++	status = "okay";
++	force-bus-format = <MEDIA_BUS_FMT_RGB888_1X24>;
++	force-output;
++	force_timing{
++		clock-frequency = <148500000>;
++		hactive = <1920>;
++		vactive = <1080>;
++		hback-porch = <148>;
++		hfront-porch = <88>;
++		vback-porch = <36>;
++		vfront-porch = <4>;
++		hsync-len = <44>;
++		vsync-len = <5>;
++		hsync-active = <1>;
++		vsync-active = <1>;
++		de-active = <0>;
++		pixelclk-active = <0>;
++	};
++};
++
++&hdmi_in_vp0 {
++	status = "okay";
++};
++
++&hdmi_in_vp1 {
++	status = "disabled";
++};
++
++&route_hdmi {
++	status = "okay";
++	force-bus-format = <MEDIA_BUS_FMT_RGB888_1X24>;
++	force-output;
++	force_timing{
++		clock-frequency = <148500000>;
++		hactive = <1920>;
++		vactive = <1080>;
++		hback-porch = <148>;
++		hfront-porch = <88>;
++		vback-porch = <36>;
++		vfront-porch = <4>;
++		hsync-len = <44>;
++		vsync-len = <5>;
++		hsync-active = <1>;
++		vsync-active = <1>;
++		de-active = <0>;
++		pixelclk-active = <0>;
++	};
++};
++
++&vcc3v3_lcd0_n {
++	gpio = <&gpio2 RK_PC6 GPIO_ACTIVE_HIGH>;
++	enable-active-high;
++};
+diff --git a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2dsi-ddr4-v10.dts b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2dsi-ddr4-v10.dts
+new file mode 100644
+index 00000000000000..804640323de16b
+--- /dev/null
++++ b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2dsi-ddr4-v10.dts
+@@ -0,0 +1,399 @@
++// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
++/*
++ * Copyright (c) 2020 Rockchip Electronics Co., Ltd.
++ *
++ */
++
++#include "rk3568-evb-rk628-ddr4-v10.dtsi"
++#include "rk3568-android.dtsi"
++
++/ {
++	panel@0 {
++		compatible = "simple-panel";
++
++		disp_timings3: display-timings {
++			native-mode = <&rgb2dsi_timing>;
++			rgb2dsi_timing: timing0 {
++				clock-frequency = <132000000>;
++				hactive = <1080>;
++				vactive = <1920>;
++				hfront-porch = <15>;
++				hsync-len = <2>;
++				hback-porch = <30>;
++				vfront-porch = <15>;
++				vsync-len = <2>;
++				vback-porch = <15>;
++				hsync-active = <0>;
++				vsync-active = <0>;
++				de-active = <0>;
++				pixelclk-active = <1>;
++			};
++		};
++
++		port {
++			panel_in_rgb: endpoint {
++				remote-endpoint = <&rgb_out_panel>;
++			};
++		};
++	};
++
++};
++
++&gt1x {
++	status = "okay";
++	power-supply = <&vcc3v3_lcd0_n>;
++	goodix,rst-gpio = <&gpio0 RK_PB0 GPIO_ACTIVE_HIGH>;
++	goodix,irq-gpio = <&gpio0 RK_PA4 IRQ_TYPE_LEVEL_LOW>;
++};
++
++&i2c2_rk628 {
++		panel-backlight = <&backlight>;
++		panel-power-supply = <&vcc3v3_lcd0_n>;
++		panel-reset-delay-ms = <10>;
++		panel-enable-delay-ms = <10>;
++		panel-prepare-delay-ms = <60>;
++		panel-unprepare-delay-ms = <10>;
++		panel-disable-delay-ms = <60>;
++
++		rk628,rgb-in;
++		rk628-dsi {
++			//rockchip,dual-channel;
++			dsi,eotp;
++			dsi,video-mode;
++			dsi,format = "rgb888";
++			dsi,lanes  = <4>;
++			status = "okay";
++
++			rk628-panel {
++					panel-init-sequence = [
++						23 00 02 FE 21
++						23 00 02 04 00
++						23 00 02 00 64
++						23 00 02 2A 00
++						23 00 02 26 64
++						23 00 02 54 00
++						23 00 02 50 64
++						23 00 02 7B 00
++						23 00 02 77 64
++						23 00 02 A2 00
++						23 00 02 9D 64
++						23 00 02 C9 00
++						23 00 02 C5 64
++						23 00 02 01 71
++						23 00 02 27 71
++						23 00 02 51 71
++						23 00 02 78 71
++						23 00 02 9E 71
++						23 00 02 C6 71
++						23 00 02 02 89
++						23 00 02 28 89
++						23 00 02 52 89
++						23 00 02 79 89
++						23 00 02 9F 89
++						23 00 02 C7 89
++						23 00 02 03 9E
++						23 00 02 29 9E
++						23 00 02 53 9E
++						23 00 02 7A 9E
++						23 00 02 A0 9E
++						23 00 02 C8 9E
++						23 00 02 09 00
++						23 00 02 05 B0
++						23 00 02 31 00
++						23 00 02 2B B0
++						23 00 02 5A 00
++						23 00 02 55 B0
++						23 00 02 80 00
++						23 00 02 7C B0
++						23 00 02 A7 00
++						23 00 02 A3 B0
++						23 00 02 CE 00
++						23 00 02 CA B0
++						23 00 02 06 C0
++						23 00 02 2D C0
++						23 00 02 56 C0
++						23 00 02 7D C0
++						23 00 02 A4 C0
++						23 00 02 CB C0
++						23 00 02 07 CF
++						23 00 02 2F CF
++						23 00 02 58 CF
++						23 00 02 7E CF
++						23 00 02 A5 CF
++						23 00 02 CC CF
++						23 00 02 08 DD
++						23 00 02 30 DD
++						23 00 02 59 DD
++						23 00 02 7F DD
++						23 00 02 A6 DD
++						23 00 02 CD DD
++						23 00 02 0E 15
++						23 00 02 0A E9
++						23 00 02 36 15
++						23 00 02 32 E9
++						23 00 02 5F 15
++						23 00 02 5B E9
++						23 00 02 85 15
++						23 00 02 81 E9
++						23 00 02 AD 15
++						23 00 02 A9 E9
++						23 00 02 D3 15
++						23 00 02 CF E9
++						23 00 02 0B 14
++						23 00 02 33 14
++						23 00 02 5C 14
++						23 00 02 82 14
++						23 00 02 AA 14
++						23 00 02 D0 14
++						23 00 02 0C 36
++						23 00 02 34 36
++						23 00 02 5D 36
++						23 00 02 83 36
++						23 00 02 AB 36
++						23 00 02 D1 36
++						23 00 02 0D 6B
++						23 00 02 35 6B
++						23 00 02 5E 6B
++						23 00 02 84 6B
++						23 00 02 AC 6B
++						23 00 02 D2 6B
++						23 00 02 13 5A
++						23 00 02 0F 94
++						23 00 02 3B 5A
++						23 00 02 37 94
++						23 00 02 64 5A
++						23 00 02 60 94
++						23 00 02 8A 5A
++						23 00 02 86 94
++						23 00 02 B2 5A
++						23 00 02 AE 94
++						23 00 02 D8 5A
++						23 00 02 D4 94
++						23 00 02 10 D1
++						23 00 02 38 D1
++						23 00 02 61 D1
++						23 00 02 87 D1
++						23 00 02 AF D1
++						23 00 02 D5 D1
++						23 00 02 11 04
++						23 00 02 39 04
++						23 00 02 62 04
++						23 00 02 88 04
++						23 00 02 B0 04
++						23 00 02 D6 04
++						23 00 02 12 05
++						23 00 02 3A 05
++						23 00 02 63 05
++						23 00 02 89 05
++						23 00 02 B1 05
++						23 00 02 D7 05
++						23 00 02 18 AA
++						23 00 02 14 36
++						23 00 02 42 AA
++						23 00 02 3D 36
++						23 00 02 69 AA
++						23 00 02 65 36
++						23 00 02 8F AA
++						23 00 02 8B 36
++						23 00 02 B7 AA
++						23 00 02 B3 36
++						23 00 02 DD AA
++						23 00 02 D9 36
++						23 00 02 15 74
++						23 00 02 3F 74
++						23 00 02 66 74
++						23 00 02 8C 74
++						23 00 02 B4 74
++						23 00 02 DA 74
++						23 00 02 16 9F
++						23 00 02 40 9F
++						23 00 02 67 9F
++						23 00 02 8D 9F
++						23 00 02 B5 9F
++						23 00 02 DB 9F
++						23 00 02 17 DC
++						23 00 02 41 DC
++						23 00 02 68 DC
++						23 00 02 8E DC
++						23 00 02 B6 DC
++						23 00 02 DC DC
++						23 00 02 1D FF
++						23 00 02 19 03
++						23 00 02 47 FF
++						23 00 02 43 03
++						23 00 02 6E FF
++						23 00 02 6A 03
++						23 00 02 94 FF
++						23 00 02 90 03
++						23 00 02 BC FF
++						23 00 02 B8 03
++						23 00 02 E2 FF
++						23 00 02 DE 03
++						23 00 02 1A 35
++						23 00 02 44 35
++						23 00 02 6B 35
++						23 00 02 91 35
++						23 00 02 B9 35
++						23 00 02 DF 35
++						23 00 02 1B 45
++						23 00 02 45 45
++						23 00 02 6C 45
++						23 00 02 92 45
++						23 00 02 BA 45
++						23 00 02 E0 45
++						23 00 02 1C 55
++						23 00 02 46 55
++						23 00 02 6D 55
++						23 00 02 93 55
++						23 00 02 BB 55
++						23 00 02 E1 55
++						23 00 02 22 FF
++						23 00 02 1E 68
++						23 00 02 4C FF
++						23 00 02 48 68
++						23 00 02 73 FF
++						23 00 02 6F 68
++						23 00 02 99 FF
++						23 00 02 95 68
++						23 00 02 C1 FF
++						23 00 02 BD 68
++						23 00 02 E7 FF
++						23 00 02 E3 68
++						23 00 02 1F 7E
++						23 00 02 49 7E
++						23 00 02 70 7E
++						23 00 02 96 7E
++						23 00 02 BE 7E
++						23 00 02 E4 7E
++						23 00 02 20 97
++						23 00 02 4A 97
++						23 00 02 71 97
++						23 00 02 97 97
++						23 00 02 BF 97
++						23 00 02 E5 97
++						23 00 02 21 B5
++						23 00 02 4B B5
++						23 00 02 72 B5
++						23 00 02 98 B5
++						23 00 02 C0 B5
++						23 00 02 E6 B5
++						23 00 02 25 F0
++						23 00 02 23 E8
++						23 00 02 4F F0
++						23 00 02 4D E8
++						23 00 02 76 F0
++						23 00 02 74 E8
++						23 00 02 9C F0
++						23 00 02 9A E8
++						23 00 02 C4 F0
++						23 00 02 C2 E8
++						23 00 02 EA F0
++						23 00 02 E8 E8
++						23 00 02 24 FF
++						23 00 02 4E FF
++						23 00 02 75 FF
++						23 00 02 9B FF
++						23 00 02 C3 FF
++						23 00 02 E9 FF
++						23 00 02 FE 3D
++						23 00 02 00 04
++						23 00 02 FE 23
++						23 00 02 08 82
++						23 00 02 0A 00
++						23 00 02 0B 00
++						23 00 02 0C 01
++						23 00 02 16 00
++						23 00 02 18 02
++						23 00 02 1B 04
++						23 00 02 19 04
++						23 00 02 1C 81
++						23 00 02 1F 00
++						23 00 02 20 03
++						23 00 02 23 04
++						23 00 02 21 01
++						23 00 02 54 63
++						23 00 02 55 54
++						23 00 02 6E 45
++						23 00 02 6D 36
++						23 00 02 FE 3D
++						23 00 02 55 78
++						23 00 02 FE 20
++						23 00 02 26 30
++						23 00 02 FE 3D
++						23 00 02 20 71
++						23 00 02 50 8F
++						23 00 02 51 8F
++						23 00 02 FE 00
++						23 00 02 35 00
++						05 78 01 11
++						05 00 01 29
++					];
++
++					panel-exit-sequence = [
++						05 00 01 28
++						05 00 01 10
++					];
++			};
++		};
++
++		display-timings {
++			src-timing {
++				clock-frequency = <132000000>;
++				hactive = <1080>;
++				vactive = <1920>;
++				hback-porch = <30>;
++				hfront-porch = <15>;
++				vback-porch = <15>;
++				vfront-porch = <15>;
++				hsync-len = <2>;
++				vsync-len = <2>;
++				hsync-active = <0>;
++				vsync-active = <0>;
++				de-active = <0>;
++				pixelclk-active = <0>;
++			};
++
++			dst-timing {
++				clock-frequency = <132000000>;
++				hactive = <1080>;
++				vactive = <1920>;
++				hback-porch = <30>;
++				hfront-porch = <15>;
++				vback-porch = <15>;
++				vfront-porch = <15>;
++				hsync-len = <2>;
++				vsync-len = <2>;
++				hsync-active = <0>;
++				vsync-active = <0>;
++				de-active = <0>;
++				pixelclk-active = <0>;
++			};
++		};
++};
++
++&route_rgb {
++	status = "okay";
++};
++
++&rgb_in_vp2 {
++	status = "okay";
++};
++
++&rgb {
++	status = "okay";
++
++	ports {
++		port@1 {
++			reg = <1>;
++
++			rgb_out_panel: endpoint {
++				remote-endpoint = <&panel_in_rgb>;
++			};
++		};
++	};
++};
++
++&touch_gpio {
++	rockchip,pins = <0 RK_PA4 RK_FUNC_GPIO &pcfg_pull_up>,
++			<0 RK_PB0 RK_FUNC_GPIO &pcfg_pull_none>;
++};
+diff --git a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2gvi-ddr4-v10.dts b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2gvi-ddr4-v10.dts
+new file mode 100644
+index 00000000000000..9b47d9eda21ae4
+--- /dev/null
++++ b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2gvi-ddr4-v10.dts
+@@ -0,0 +1,140 @@
++// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
++/*
++ * Copyright (c) 2020 Rockchip Electronics Co., Ltd.
++ *
++ */
++
++#include "rk3568-evb-rk628-ddr4-v10.dtsi"
++#include "rk3568-android.dtsi"
++
++/ {
++	panel@0 {
++		compatible = "simple-panel";
++
++		disp_timings3: display-timings {
++			native-mode = <&rgb2lvds_timing>;
++			rgb2lvds_timing: timing0 {
++				clock-frequency = <148500000>;
++				hactive = <1920>;
++				vactive = <1080>;
++				hback-porch = <148>;
++				hfront-porch = <88>;
++				vback-porch = <36>;
++				vfront-porch = <4>;
++				hsync-len = <44>;
++				vsync-len = <5>;
++				hsync-active = <0>;
++				vsync-active = <0>;
++				de-active = <0>;
++				pixelclk-active = <0>;
++			};
++		};
++
++		port {
++			panel_in_rgb: endpoint {
++				remote-endpoint = <&rgb_out_panel>;
++			};
++		};
++	};
++
++};
++
++&backlight {
++	enable-gpios = <&gpio2 RK_PA4 GPIO_ACTIVE_HIGH>;
++};
++
++&gt1x {
++	status = "disabled";
++};
++
++&i2c2_rk628 {
++		panel-backlight = <&backlight>;
++		panel-power-supply = <&vcc3v3_lcd0_n>;
++		panel-reset-delay-ms = <10>;
++		panel-enable-delay-ms = <100>;
++		panel-prepare-delay-ms = <60>;
++		panel-unprepare-delay-ms = <10>;
++		panel-disable-delay-ms = <60>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&rk628_reset &refclk_pins>;
++		assigned-clocks = <&pmucru CLK_WIFI>;
++		assigned-clock-rates = <24000000>;
++		clocks = <&pmucru CLK_WIFI>;
++		clock-names = "soc_24M";
++
++		rk628,rgb-in;
++		rk628-gvi {
++			/* "rgb666"
++			 * "rgb888"
++			 * "rgb101010"
++			 * "yuyv8"
++			 * "yuyv10"
++			 */
++			bus-format = "rgb888";
++			gvi,lanes = <8>;
++			//"rockchip,division-mode";
++			//"rockchip, gvi-frm-rst";
++			status = "okay";
++		};
++
++		display-timings {
++			src-timing {
++				clock-frequency = <148500000>;
++				hactive = <1920>;
++				vactive = <1080>;
++				hback-porch = <148>;
++				hfront-porch = <88>;
++				vback-porch = <36>;
++				vfront-porch = <4>;
++				hsync-len = <44>;
++				vsync-len = <5>;
++				hsync-active = <0>;
++				vsync-active = <0>;
++				de-active = <0>;
++				pixelclk-active = <0>;
++			};
++
++			dst-timing {
++				clock-frequency = <594000000>;
++				hactive = <3840>;
++				vactive = <2160>;
++				hback-porch = <296>;
++				hfront-porch = <176>;
++				vback-porch = <72>;
++				vfront-porch = <8>;
++				hsync-len = <88>;
++				vsync-len = <10>;
++				hsync-active = <0>;
++				vsync-active = <0>;
++				de-active = <0>;
++				pixelclk-active = <0>;
++			};
++	    };
++};
++
++&route_rgb {
++	status = "okay";
++};
++
++&rgb_in_vp2 {
++	status = "okay";
++};
++
++&rgb {
++	status = "okay";
++
++	ports {
++		port@1 {
++			reg = <1>;
++
++			rgb_out_panel: endpoint {
++				remote-endpoint = <&panel_in_rgb>;
++			};
++		};
++	};
++};
++
++&vcc3v3_lcd0_n {
++	gpio = <&gpio1 RK_PA3 GPIO_ACTIVE_HIGH>;
++	enable-active-high;
++};
+diff --git a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2hdmi-ddr4-v10.dts b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2hdmi-ddr4-v10.dts
+new file mode 100644
+index 00000000000000..5c0f4886a69080
+--- /dev/null
++++ b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2hdmi-ddr4-v10.dts
+@@ -0,0 +1,61 @@
++// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
++/*
++ * Copyright (c) 2020 Rockchip Electronics Co., Ltd.
++ *
++ */
++
++#include "rk3568-evb-rk628-ddr4-v10.dtsi"
++#include "rk3568-android.dtsi"
++
++&backlight {
++	enable-gpios = <&gpio2 RK_PA4 GPIO_ACTIVE_HIGH>;
++};
++
++&gt1x {
++	status = "disabled";
++};
++
++&i2c2_rk628 {
++		assigned-clocks = <&pmucru CLK_WIFI>;
++		assigned-clock-rates = <24000000>;
++		clocks = <&pmucru CLK_WIFI>;
++		clock-names = "soc_24M";
++		pinctrl-names = "default";
++		pinctrl-0 = <&rk628_reset &refclk_pins>;
++
++		rk628,rgb-in;
++		rk628,hdmi-out;
++		status = "okay";
++
++		port {
++			rgb_in_hdmi: endpoint {
++				remote-endpoint = <&rgb_out_hdmi>;
++			};
++		};
++};
++
++&i2c5 {
++	status = "disabled";
++};
++
++&route_rgb {
++	status = "disabled";
++};
++
++&rgb_in_vp2 {
++	status = "okay";
++};
++
++&rgb {
++	status = "okay";
++
++	ports {
++		port@1 {
++			reg = <1>;
++
++			rgb_out_hdmi: endpoint {
++				remote-endpoint = <&rgb_in_hdmi>;
++			};
++		};
++	};
++};
+diff --git a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2lvds-ddr4-v10.dts b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2lvds-ddr4-v10.dts
+new file mode 100644
+index 00000000000000..b82f14272bf0b3
+--- /dev/null
++++ b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2lvds-ddr4-v10.dts
+@@ -0,0 +1,124 @@
++// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
++/*
++ * Copyright (c) 2020 Rockchip Electronics Co., Ltd.
++ *
++ */
++
++#include "rk3568-evb-rk628-ddr4-v10.dtsi"
++#include "rk3568-android.dtsi"
++
++/ {
++	panel@0 {
++		compatible = "simple-panel";
++
++		disp_timings3: display-timings {
++			native-mode = <&rgb2lvds_timing>;
++			rgb2lvds_timing: timing0 {
++				clock-frequency = <66000000>;
++				hactive = <800>;
++				vactive = <1280>;
++				hback-porch = <30>;
++				hfront-porch = <30>;
++				vback-porch = <3>;
++				vfront-porch = <3>;
++				hsync-len = <4>;
++				vsync-len = <2>;
++				hsync-active = <0>;
++				vsync-active = <0>;
++				de-active = <0>;
++				pixelclk-active = <0>;
++			};
++		};
++
++		port {
++			panel_in_rgb: endpoint {
++				remote-endpoint = <&rgb_out_panel>;
++			};
++		};
++	};
++
++};
++
++&gt1x {
++	status = "disabled";
++};
++
++&i2c2_rk628 {
++		panel-backlight = <&backlight>;
++		panel-power-supply = <&vcc3v3_lcd0_n>;
++		panel-reset-delay-ms = <10>;
++		panel-enable-delay-ms = <10>;
++		panel-prepare-delay-ms = <60>;
++		panel-unprepare-delay-ms = <10>;
++		panel-disable-delay-ms = <60>;
++
++		rk628,rgb-in;
++		rk628-lvds {
++			/* "jeida_18","vesa_24","vesa_18" */
++			bus-format = "jeida_24";
++
++			/* "dual_link_odd_even_pixels"
++			 * "dual_link_even_odd_pixels"
++			 * "dual_link_left_right_pixels"
++			 * "dual_link_right_left_pixels"
++			 */
++			link-type = "single_link";
++			status = "okay";
++		};
++
++		display-timings {
++			src-timing {
++				clock-frequency = <66000000>;
++				hactive = <800>;
++				vactive = <1280>;
++				hback-porch = <30>;
++				hfront-porch = <30>;
++				vback-porch = <3>;
++				vfront-porch = <3>;
++				hsync-len = <4>;
++				vsync-len = <2>;
++				hsync-active = <0>;
++				vsync-active = <0>;
++				de-active = <0>;
++				pixelclk-active = <0>;
++			};
++
++			dst-timing {
++				clock-frequency = <66000000>;
++				hactive = <800>;
++				vactive = <1280>;
++				hback-porch = <30>;
++				hfront-porch = <30>;
++				vback-porch = <3>;
++				vfront-porch = <3>;
++				hsync-len = <4>;
++				vsync-len = <2>;
++				hsync-active = <0>;
++				vsync-active = <0>;
++				de-active = <0>;
++				pixelclk-active = <0>;
++			};
++	    };
++};
++
++&route_rgb {
++	status = "okay";
++};
++
++&rgb_in_vp2 {
++	status = "okay";
++};
++
++&rgb {
++	status = "okay";
++
++	ports {
++		port@1 {
++			reg = <1>;
++
++			rgb_out_panel: endpoint {
++				remote-endpoint = <&panel_in_rgb>;
++			};
++		};
++	};
++};
+diff --git a/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2lvds-dual-ddr4-v10.dts b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2lvds-dual-ddr4-v10.dts
+new file mode 100644
+index 00000000000000..3a547c051ff5a3
+--- /dev/null
++++ b/arch/arm64/boot/dts/rockchip/rk3568-evb-rk628-rgb2lvds-dual-ddr4-v10.dts
+@@ -0,0 +1,133 @@
++// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
++/*
++ * Copyright (c) 2020 Rockchip Electronics Co., Ltd.
++ *
++ */
++
++#include "rk3568-evb-rk628-ddr4-v10.dtsi"
++#include "rk3568-android.dtsi"
++
++/ {
++	panel@0 {
++		compatible = "simple-panel";
++
++		disp_timings3: display-timings {
++			native-mode = <&rgb2lvds_timing>;
++			rgb2lvds_timing: timing0 {
++				clock-frequency = <148500000>;
++				hactive = <1920>;
++				vactive = <1080>;
++				hback-porch = <96>;
++				hfront-porch = <120>;
++				vback-porch = <8>;
++				vfront-porch = <33>;
++				hsync-len = <64>;
++				vsync-len = <4>;
++				hsync-active = <0>;
++				vsync-active = <0>;
++				de-active = <0>;
++				pixelclk-active = <0>;
++			};
++		};
++
++		port {
++			panel_in_rgb: endpoint {
++				remote-endpoint = <&rgb_out_panel>;
++			};
++		};
++	};
++
++};
++
++&backlight {
++	enable-gpios = <&gpio2 RK_PA4 GPIO_ACTIVE_HIGH>;
++};
++
++&gt1x {
++	status = "disabled";
++};
++
++&i2c2_rk628 {
++		panel-backlight = <&backlight>;
++		panel-power-supply = <&vcc3v3_lcd0_n>;
++		panel-reset-delay-ms = <10>;
++		panel-enable-delay-ms = <10>;
++		panel-prepare-delay-ms = <60>;
++		panel-unprepare-delay-ms = <10>;
++		panel-disable-delay-ms = <60>;
++
++		rk628,rgb-in;
++		rk628-lvds {
++			/* "jeida_18","vesa_24","vesa_18" */
++			bus-format = "vesa_24";
++
++			/* "dual_link_odd_even_pixels"
++			 * "dual_link_even_odd_pixels"
++			 * "dual_link_left_right_pixels"
++			 * "dual_link_right_left_pixels"
++			 */
++			link-type = "dual_link_even_odd_pixels";
++			status = "okay";
++		};
++
++		display-timings {
++			src-timing {
++				clock-frequency = <148500000>;
++				hactive = <1920>;
++				vactive = <1080>;
++				hback-porch = <96>;
++				hfront-porch = <120>;
++				vback-porch = <8>;
++				vfront-porch = <33>;
++				hsync-len = <64>;
++				vsync-len = <4>;
++				hsync-active = <0>;
++				vsync-active = <0>;
++				de-active = <0>;
++				pixelclk-active = <0>;
++			};
++
++			dst-timing {
++				clock-frequency = <148500000>;
++				hactive = <1920>;
++				vactive = <1080>;
++				hback-porch = <96>;
++				hfront-porch = <120>;
++				vback-porch = <8>;
++				vfront-porch = <33>;
++				hsync-len = <64>;
++				vsync-len = <4>;
++				hsync-active = <0>;
++				vsync-active = <0>;
++				de-active = <0>;
++				pixelclk-active = <0>;
++			};
++	    };
++};
++
++&route_rgb {
++	status = "okay";
++};
++
++&rgb_in_vp2 {
++	status = "okay";
++};
++
++&rgb {
++	status = "okay";
++
++	ports {
++		port@1 {
++			reg = <1>;
++
++			rgb_out_panel: endpoint {
++				remote-endpoint = <&panel_in_rgb>;
++			};
++		};
++	};
++};
++
++&vcc3v3_lcd0_n {
++	gpio = <&gpio2 RK_PC6 GPIO_ACTIVE_HIGH>;
++	enable-active-high;
++};
+-- 
+2.17.1
+

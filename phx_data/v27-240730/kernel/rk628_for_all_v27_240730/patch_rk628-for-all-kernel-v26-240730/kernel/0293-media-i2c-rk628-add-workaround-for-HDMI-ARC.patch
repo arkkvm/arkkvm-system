@@ -1,0 +1,36 @@
+From 196c1114f1c321b81b08511b284ed99fcc61c1d8 Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Mon, 20 May 2024 12:00:42 +0800
+Subject: [PATCH 293/305] media: i2c: rk628: add workaround for HDMI ARC
+
+The HPD should not be triggered if the HDMI ARC is enabled.
+
+Type: Fix
+Redmine ID: N/A
+Associated modifications: N/A
+Test: N/A
+
+Signed-off-by: Jason Zhang <jason.zhang@rock-chips.com>
+Change-Id: If4d74ea9d72a4295a054ab0be45454a0914ab35b
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index 66f2141397f7f7..79fe70309ea5bc 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -459,6 +459,8 @@ static int rk628_hdmirx_config_all(struct v4l2_subdev *sd)
+ 	}
+ 
+ 	if (ret < 0 || rk628_hdmirx_scdc_ced_err(csi->rk628)) {
++		if (rk628_hdmirx_get_arc_enable(csi->audio_info))
++			return ret;
+ 		rk628_hdmirx_plugout(sd);
+ 		csi->lock_fail_time++;
+ 		v4l2_dbg(1, debug, sd, "%s: lock fail time: %d\n",
+-- 
+2.17.1
+

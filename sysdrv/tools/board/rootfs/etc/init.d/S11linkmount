@@ -1,0 +1,250 @@
+#!/bin/sh
+bootmedium=emmc
+STATIC_CONF=/userdata/arkkvm/static_ip.conf
+STATIC_IF=eth0
+DHCPCD_DB_PERSIST_DIR=/userdata/arkkvm/dhcpcd
+DHCPCD_DB_RUNTIME_DIR=/var/db/dhcpcd
+# 与 S31arkkvmapp FT_IMG_PATH 一致（关机卸 loop 用）
+FT_IMG_PATH=/userdata/arkkvm/imgs/ft_disk.img
+# 产线/工厂置位：存在则本函数清空 userdata 后删除该文件（文件名按 oem 约定）
+OEM_FACTORY_FLAG=/oem/usr/etc/FACTORY_MODE
+linkdev(){
+if [ ! -d "/dev/block/by-name" ];then
+mkdir -p /dev/block/by-name
+cd /dev/block/by-name
+ln -sf /dev/mmcblk0p1 env
+ln -sf /dev/mmcblk0p2 idblock
+ln -sf /dev/mmcblk0p3 uboot_a
+ln -sf /dev/mmcblk0p4 uboot_b
+ln -sf /dev/mmcblk0p5 misc
+ln -sf /dev/mmcblk0p6 boot_a
+ln -sf /dev/mmcblk0p7 boot_b
+ln -sf /dev/mmcblk0p8 system_a
+ln -sf /dev/mmcblk0p9 system_b
+ln -sf /dev/mmcblk0p10 ota
+ln -sf /dev/mmcblk0p11 userdata
+fi }
+mount_part(){
+if [ -z "$1" -o -z "$2" -o -z "$3" ];then
+	echo "Invalid paramter, exit !!!"
+	exit 1
+fi
+root_dev=$(mountpoint -n /)
+root_dev=${root_dev%% *}
+partname=$1
+part_dev=/dev/block/by-name/$1
+mountpt=$2
+part_fstype=$3
+part_realdev=$(realpath $part_dev)
+
+if [ ! -d $mountpt ]; then
+	if [ "$mountpt" = "IGNORE" -a "emmc" = "$bootmedium" ];then
+		if [ "$root_dev" = "$part_realdev" ];then
+			resize2fs $part_dev
+		fi
+		return 0;
+	elif [ "$mountpt" = "IGNORE" -a "sd_card" = "$bootmedium" ];then
+		if [ "$root_dev" = "$part_realdev" ];then
+			resize2fs $part_dev
+		fi
+		return 0;
+	else
+		echo "${0} info: mount point path [$mountpt] not found, skip..."
+		return 1;
+	fi
+fi
+
+if test -h $part_dev; then
+case $bootmedium in
+	emmc|sd_card)
+		if [ "$root_dev" = "$part_realdev" ];then
+			resize2fs $part_dev
+		else
+			# userdata/ota 等：全量 e2fsck -y 每次开机都扫整盘，干净卷也极慢；先 -p 预检/日志回放，失败再 -y
+			e2fsck -p "$part_dev" </dev/null 2>/dev/null
+			ec=$?
+			[ "$ec" -ge 4 ] 2>/dev/null && e2fsck -y "$part_dev" </dev/null 2>/dev/null || true
+			mount -t $part_fstype $part_dev $mountpt
+			if [ $? -eq 0 ]; then
+				resize2fs $part_dev
+				tune2fs $part_dev -L $partname -c 0 -i 0
+			else
+				echo "mount $partname error, try to format..."
+				mke2fs -F -L $partname $part_dev  && 					tune2fs -c 0 -i 0 $part_dev && 					mount -t $part_fstype $part_dev $mountpt
+			fi
+		fi
+		;;
+	spi_nand|slc_nand)
+		if [ $partname = "rootfs" ];then
+			echo "rootfs mount on $root_dev"
+		elif [ "$part_fstype" = "ubifs" ]; then
+			part_no=$(echo $part_realdev | grep -oE "[0-9]*$")
+			ubi_dev=/dev/ubi${part_no}
+			ubi_vol=${ubi_dev}_0
+			mount | grep $ubi_vol
+			if [ $? -eq 0 ];then
+				echo "***********$partname has been mounted***********"
+			else
+				if [ ! -e $ubi_vol ];then
+					echo "***********$ubi_vol not exist***********"
+					if [ ! -e $ubi_dev ];then
+						echo "***********$ubi_dev not exist***********"
+						ubiattach /dev/ubi_ctrl -m $part_no -d $part_no
+						if [ $? -ne 0 ];then
+							echo "ubiattach $part_realdev error, try to format..."
+							ubiformat -y $part_realdev
+							ubiattach /dev/ubi_ctrl -m $part_no -d $part_no
+						fi
+					fi
+					ubi_info_dir=/sys/class/ubi/ubi${part_no}
+					avail_eraseblocks=$(cat $ubi_info_dir/avail_eraseblocks)
+					eraseblock_size=$(cat $ubi_info_dir/eraseblock_size)
+					echo "try to make volume: $ubi_vol ..."
+					ubimkvol $ubi_dev -N $partname -s $((avail_eraseblocks*eraseblock_size))
+				fi
+				mount -t $part_fstype $ubi_vol $mountpt
+			fi
+		elif [ "$part_fstype" = "squashfs" ]; then
+			part_no=$(echo $part_realdev | grep -oE "[0-9]*$")
+			ubi_dev=/dev/ubi${part_no}
+			ubi_vol=${ubi_dev}_0
+			ubi_block=/dev/ubiblock${part_no}_0
+			mount | grep $ubi_block
+			if [ $? -eq 0 ];then
+				echo "***********$partname has been mounted***********"
+			else
+				if [ ! -e $ubi_block ];then
+					echo "***********$ubi_block not exist***********"
+					ubiattach /dev/ubi_ctrl -m $part_no -d $part_no
+					if [ $? -ne 0 ];then
+						echo "ubiattach $part_realdev error, return !!!"
+						echo "Please check the device: $part_realdev"
+						return 1
+					fi
+					ubiblock -c $ubi_vol
+				fi
+				mount -t $part_fstype $ubi_block $mountpt
+			fi
+		elif [ "$part_fstype" = "erofs" ]; then
+			part_no=$(echo $part_realdev | grep -oE "[0-9]*$")
+			ubi_dev=/dev/ubi${part_no}
+			ubi_vol=${ubi_dev}_0
+			ubi_block=/dev/ubiblock${part_no}_0
+			mount | grep $ubi_block
+			if [ $? -eq 0 ];then
+				echo "***********$partname has been mounted***********"
+			else
+				if [ ! -e $ubi_block ];then
+					echo "***********$ubi_block not exist***********"
+					ubiattach /dev/ubi_ctrl -m $part_no -d $part_no
+					if [ $? -ne 0 ];then
+						echo "ubiattach $part_realdev error, return !!!"
+						echo "Please check the device: $part_realdev"
+						return 1
+					fi
+					ubiblock -c $ubi_vol
+				fi
+				mount -t $part_fstype $ubi_block $mountpt
+			fi
+		else
+			echo "Error: wrong filesystem type: $part_fstype, return !!!"
+			return 1
+		fi
+		;;
+	spi_nor)
+		if [ "$root_dev" = "$part_realdev" ];then
+			echo "***********$part_dev has been mounted, skipping***********"
+		else
+			echo "mount -t $part_fstype $part_dev $mountpt"
+			mount -t $part_fstype $part_dev $mountpt
+			if [ $? -eq 0 ]; then
+				echo "***********succeed in mounting***********"
+			elif [ "$part_fstype" = "jffs2" ]; then
+				echo "mount $partname error, try to format..."
+				echo "flash_erase -j ${part_realdev/block/} 0 0 && mount -t $part_fstype $part_dev $mountpt"
+				flash_erase -j ${part_realdev/block/} 0 0 && mount -t $part_fstype $part_dev $mountpt
+			else
+				echo "mount $partname error, skipping! Please check the filesystem."
+			fi
+		fi
+		;;
+	*)
+		echo "Invalid Parameter: Check bootmedium !!!"
+		exit 1
+		;;
+esac
+fi
+}
+
+persist_dhcpcd_db_after_userdata_mount() {
+	if [ -L "$DHCPCD_DB_RUNTIME_DIR" ]; then
+		mkdir -p "$DHCPCD_DB_PERSIST_DIR" || return 1
+		return 0
+	fi
+
+	mkdir -p "$DHCPCD_DB_PERSIST_DIR" || return 1
+	mkdir -p /var/db || return 1
+
+	if [ -d "$DHCPCD_DB_RUNTIME_DIR" ]; then
+		cp -a "$DHCPCD_DB_RUNTIME_DIR"/. "$DHCPCD_DB_PERSIST_DIR"/ 2>/dev/null || true
+		rm -rf "$DHCPCD_DB_RUNTIME_DIR" || return 1
+	fi
+
+	if [ -e "$DHCPCD_DB_RUNTIME_DIR" ] || [ -L "$DHCPCD_DB_RUNTIME_DIR" ]; then
+		rm -rf "$DHCPCD_DB_RUNTIME_DIR" || return 1
+	fi
+
+	ln -s "$DHCPCD_DB_PERSIST_DIR" "$DHCPCD_DB_RUNTIME_DIR" || return 1
+
+}
+
+# userdata 已挂载后：若 oem 置位文件存在则清空分区内容并删除置位文件（在 persist_dhcpcd 前执行以便重建目录）
+factory_clear_userdata_if_oem_flag() {
+	[ -f "$OEM_FACTORY_FLAG" ] || return 0
+	echo "${0}: factory flag $OEM_FACTORY_FLAG present, wiping /userdata ..."
+	for item in /userdata/* /userdata/.[!.]* /userdata/..?*; do
+		[ ! -e "$item" ] && [ ! -L "$item" ] && continue
+		rm -rf "$item" 2>/dev/null || true
+	done
+	sync
+	rm -f "$OEM_FACTORY_FLAG" 2>/dev/null || true
+}
+
+# 先卸 ft_disk 的挂载点再 losetup -d，才能 umount /userdata
+umount_ft_disk_loop() {
+	command -v losetup >/dev/null 2>&1 || return 0
+	losetup -a 2>/dev/null | grep -F "$FT_IMG_PATH" | while IFS= read -r line; do
+		[ -z "$line" ] && continue
+		loopdev=${line%%:*}
+		mp=$(awk -v d="$loopdev" '$1 == d { print $2; exit }' /proc/mounts)
+		if [ -n "$mp" ]; then
+			echo "S11linkmount: umount ft_disk $mp"
+			umount "$mp" 2>/dev/null || umount -l "$mp" 2>/dev/null || true
+		fi
+		losetup -d "$loopdev" 2>/dev/null || true
+	done
+}
+
+shutdown_kill_arkkvm_and_umount() {
+	echo "S11linkmount stop: kill arkkvm_app arkkvm_ui -> ft_disk loop -> userdata ota"
+	killall -TERM arkkvm_app arkkvm_ui 2>/dev/null || true
+	sync
+	umount_ft_disk_loop
+	if grep -qs ' /userdata ' /proc/mounts; then
+		umount /userdata 2>/dev/null || umount -l /userdata 2>/dev/null || true
+	fi
+	if grep -qs ' /ota ' /proc/mounts; then
+		umount /ota 2>/dev/null || umount -l /ota 2>/dev/null || true
+	fi
+}
+
+case $1 in start) linkdev;
+mount_part system_a IGNORE ext4 ;
+mount_part system_b IGNORE ext4 ;
+mount_part ota /ota ext4 ;
+mount_part userdata /userdata ext4 ;
+factory_clear_userdata_if_oem_flag ;
+persist_dhcpcd_db_after_userdata_mount ;
+;; linkdev) linkdev ;
+;; stop) shutdown_kill_arkkvm_and_umount ; printf "stop %s finished\n" "$0" ;;
+*) echo Usage: $0 {start|stop} exit 1 ;; esac

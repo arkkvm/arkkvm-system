@@ -1,0 +1,59 @@
+From 5d2600821617908321cb1a832471c0e4d0e7e9d2 Mon Sep 17 00:00:00 2001
+From: Shunqing Chen <csq@rock-chips.com>
+Date: Sat, 31 Jul 2021 16:32:54 +0800
+Subject: [PATCH 031/232] media: i2c: rk628: compatible with MCU mode
+
+Signed-off-by: Shunqing Chen <csq@rock-chips.com>
+Change-Id: Ib2661f755c996a84be91683cc3affd90b5cf8764
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628.h     |  2 ++
+ drivers/media/i2c/rk628/rk628_cru.c | 12 ++++++++----
+ 2 files changed, 10 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628.h b/drivers/media/i2c/rk628/rk628.h
+index 6838e41054f836..81a1e482b1f0fd 100644
+--- a/drivers/media/i2c/rk628/rk628.h
++++ b/drivers/media/i2c/rk628/rk628.h
+@@ -179,6 +179,8 @@
+ #define GRF_INTR1_STATUS		0x0118
+ #define GRF_INTR1_RAW_STATUS		0x011c
+ #define GRF_SYSTEM_STATUS0		0x0120
++/* 0: i2c mode and mcu mode; 1: i2c mode only */
++#define I2C_ONLY_FLAG			BIT(6)
+ #define GRF_SYSTEM_STATUS3		0x012c
+ #define GRF_SYSTEM_STATUS4		0x0130
+ #define GRF_OS_REG0			0x0140
+diff --git a/drivers/media/i2c/rk628/rk628_cru.c b/drivers/media/i2c/rk628/rk628_cru.c
+index ac1ac597f8ad40..fa3e8d43e18afe 100644
+--- a/drivers/media/i2c/rk628/rk628_cru.c
++++ b/drivers/media/i2c/rk628/rk628_cru.c
+@@ -515,9 +515,14 @@ unsigned long rk628_cru_clk_get_rate(unsigned int id)
+ 
+ void rk628_cru_init(void)
+ {
+-	//cru_update_bits(CRU_MODE_CON00, CLK_GPLL_MODE_MASK | CLK_CPLL_MODE_MASK,
+-	//		CLK_GPLL_MODE_GPLL | CLK_CPLL_MODE_CPLL);
+-#if 1
++	u32 val;
++	u8 mcu_mode;
++
++	rk628_i2c_read(GRF_SYSTEM_STATUS0, &val);
++	mcu_mode = (val & I2C_ONLY_FLAG) ? 0 : 1;
++	if (mcu_mode)
++		return;
++
+ 	cru_write(CRU_GPLL_CON00, 0xffff701d);
+ 	msleep(1);
+ 	cru_write(CRU_MODE_CON00, 0xffff0004);
+@@ -535,7 +540,6 @@ void rk628_cru_init(void)
+ 	cru_write(CRU_CPLL_CON00, 0xffff1063);
+ 	msleep(1);
+ 	cru_write(CRU_CLKSEL_CON00, 0x00ff000b);
+-#endif
+ }
+ 
+ MODULE_AUTHOR("Shunqing Chen <csq@rock-chips.com>");
+-- 
+2.17.1
+

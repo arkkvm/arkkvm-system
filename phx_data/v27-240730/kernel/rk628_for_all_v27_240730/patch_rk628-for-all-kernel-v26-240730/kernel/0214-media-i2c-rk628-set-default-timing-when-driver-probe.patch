@@ -1,0 +1,37 @@
+From 9d249f4129b20ad6da91c1fc574be4b5aa6281d0 Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Tue, 12 Dec 2023 07:18:12 +0000
+Subject: [PATCH 214/232] media: i2c: rk628: set default timing when driver
+ probe
+
+Change-Id: I0f92974fef4a970ae21d24fa685e0f4a94f9e6e4
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index e4461f4e531f65..161e256f72cffc 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -2232,6 +2232,8 @@ static int rk628_csi_probe(struct i2c_client *client,
+ 	struct rk628 *rk628;
+ 	unsigned long irq_flags;
+ 	const struct of_device_id *match;
++	struct v4l2_dv_timings default_timing =
++				V4L2_DV_BT_CEA_640X480P59_94;
+ 
+ 	dev_info(dev, "RK628 I2C driver version: %02x.%02x.%02x",
+ 		DRIVER_VERSION >> 16,
+@@ -2257,6 +2259,7 @@ static int rk628_csi_probe(struct i2c_client *client,
+ 	csi->rk628 = rk628;
+ 	csi->dsi.rk628 = rk628;
+ 	csi->cur_mode = &supported_modes[0];
++	csi->timings = default_timing;
+ 	csi->hdmirx_irq = client->irq;
+ 	sd = &csi->sd;
+ 	sd->dev = dev;
+-- 
+2.17.1
+

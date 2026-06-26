@@ -1,0 +1,40 @@
+From 03e759c7fb20ffba977bd19cc3f56ce2aa7bd6b4 Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Sat, 11 May 2024 22:02:13 +0800
+Subject: [PATCH 273/305] media: i2c: rk628: fix color space err on "RGB"
+ format
+
+Type: Fix
+Redmine ID: N/A
+Associated modifications: N/A
+Test: N/A
+
+Change-Id: If950c7971143a411f2a83ccda92afafdb047c2d7
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_hdmirx.c | 8 +++++---
+ 1 file changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_hdmirx.c b/drivers/media/i2c/rk628/rk628_hdmirx.c
+index 4c9ffdae26baf4..b61bb294197f93 100644
+--- a/drivers/media/i2c/rk628/rk628_hdmirx.c
++++ b/drivers/media/i2c/rk628/rk628_hdmirx.c
+@@ -1511,9 +1511,11 @@ u8 rk628_hdmirx_get_color_space(struct rk628 *rk628)
+ 	C1_C0 = (val & COLORIMETRY_MASK) >> 14;
+ 	fmt = (val & VIDEO_FORMAT_MASK) >> 5;
+ 	if (fmt == HDMIRX_RGB888) {
+-		(C1_C0 == 0) ?
+-		(color_space = HDMIRX_RGB) :
+-		(color_space = EC2_0);
++		if (EC2_0 == HDMIRX_ADOBE_RGB ||
++		    EC2_0 == HDMIRX_BT2020_RGB_OR_YCC)
++			color_space = EC2_0;
++		else
++			color_space = HDMIRX_RGB;
+ 	} else {
+ 		switch (C1_C0) {
+ 		case 0:
+-- 
+2.17.1
+

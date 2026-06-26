@@ -1,0 +1,153 @@
+From 4fb3fee55c3019d803b4a93571eb889d81a097e8 Mon Sep 17 00:00:00 2001
+From: Luo Wei <lw@rock-chips.com>
+Date: Thu, 30 Sep 2021 10:32:38 +0800
+Subject: [PATCH 110/232] rk3399 dts: add hdmi-in audio support and hdmi-in
+ function test pass base on rk3399-ind
+
+Signed-off-by: Luo Wei <lw@rock-chips.com>
+Change-Id: I5e8d105a7758831acd557b5e69c4577af6a4405b
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ ...evb-ind-lpddr4-rk628-hdmi2csi-v4l2-avb.dts | 90 ++++++++++++++++++-
+ 1 file changed, 87 insertions(+), 3 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/rockchip/rk3399-evb-ind-lpddr4-rk628-hdmi2csi-v4l2-avb.dts b/arch/arm64/boot/dts/rockchip/rk3399-evb-ind-lpddr4-rk628-hdmi2csi-v4l2-avb.dts
+index abd294538be3b3..9196fa6016c85d 100755
+--- a/arch/arm64/boot/dts/rockchip/rk3399-evb-ind-lpddr4-rk628-hdmi2csi-v4l2-avb.dts
++++ b/arch/arm64/boot/dts/rockchip/rk3399-evb-ind-lpddr4-rk628-hdmi2csi-v4l2-avb.dts
+@@ -18,6 +18,27 @@
+ 		reg = <0x0 0xff8d0000 0x0 0x20000>;
+ 	};
+ 
++	dummy_codec: dummy-codec {
++		compatible = "rockchip,dummy-codec";
++		#sound-dai-cells = <0>;
++	};
++
++	hdmiin-sound {
++		compatible = "simple-audio-card";
++		simple-audio-card,format = "i2s";
++		simple-audio-card,name = "rockchip,hdmiin";
++		simple-audio-card,bitclock-master = <&dailink0_master>;
++		simple-audio-card,frame-master = <&dailink0_master>;
++		status = "okay";
++		simple-audio-card,cpu {
++			sound-dai = <&i2s0>;
++		};
++
++		dailink0_master: simple-audio-card,codec {
++			sound-dai = <&dummy_codec>;
++		};
++	};
++
+ 	backlight: backlight {
+ 		status = "okay";
+ 		compatible = "pwm-backlight";
+@@ -59,6 +80,52 @@
+ 		enable-gpios = <&gpio1 13 GPIO_ACTIVE_HIGH>;
+ 	};
+ 
++	vcc_lcd: vcc-lcd {
++		compatible = "regulator-fixed";
++		regulator-name = "vcc_lcd";
++		startup-delay-us = <20000>;
++		enable-active-high;
++		regulator-min-microvolt = <3300000>;
++		regulator-max-microvolt = <3300000>;
++		regulator-boot-on;
++		vin-supply = <&vcc5v0_sys>;
++	};
++
++	panel: panel {
++		compatible = "simple-panel";
++		backlight = <&backlight>;
++		power-supply = <&vcc_lcd>;
++		reset-gpios = <&gpio1 23 GPIO_ACTIVE_LOW>;
++		prepare-delay-ms = <20>;
++		enable-delay-ms = <20>;
++
++		display-timings {
++			native-mode = <&timing0>;
++
++			timing0: timing0 {
++				clock-frequency = <200000000>;
++				hactive = <1536>;
++				vactive = <2048>;
++				hfront-porch = <12>;
++				hsync-len = <16>;
++				hback-porch = <48>;
++				vfront-porch = <8>;
++				vsync-len = <4>;
++				vback-porch = <8>;
++				hsync-active = <0>;
++				vsync-active = <0>;
++				de-active = <0>;
++				pixelclk-active = <0>;
++			};
++		};
++
++		ports {
++			panel_in: endpoint {
++				remote-endpoint = <&edp_out>;
++			};
++		};
++	};
++
+ 	test-power {
+ 		status = "okay";
+ 	};
+@@ -115,13 +182,18 @@
+ 	status = "okay";
+ };
+ 
++&i2s0 {
++	rockchip,clk-trcm = <1>;
++	status = "okay";
++};
++
+ &i2s1 {
+ 	#sound-dai-cells = <0>;
+-	status = "disabled";
++	status = "okay";
+ };
+ 
+ &rk809_sound {
+-	status = "okay";
++	status = "disabled";
+ };
+ 
+ &i2s2 {
+@@ -242,6 +314,14 @@
+ };
+ 
+ &isp0 {
++       status = "disabled";
++};
++
++&isp1 {
++        status = "disabled";
++};
++
++&rkisp1_0 {
+ 	status = "okay";
+ 	port {
+ 		#address-cells = <1>;
+@@ -254,10 +334,14 @@
+ 	};
+ };
+ 
+-&isp1 {
++&rkisp1_1 {
+ 	status = "disabled";
+ };
+ 
+ &isp0_mmu {
+ 	status = "okay";
+ };
++
++&isp1_mmu {
++        status = "disabled";
++};
+-- 
+2.17.1
+

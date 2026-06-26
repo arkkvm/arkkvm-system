@@ -1,0 +1,132 @@
+From c9f57842c752ef3a93fce1c7abf7fac376a9957e Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Mon, 20 May 2024 11:56:26 +0800
+Subject: [PATCH 292/305] media: i2c: rk628: add attributes for enabling HDMI
+ ARC
+
+This patch adds attributes for enabling HDMI ARC.
+
+Type: Fix
+Redmine ID: N/A
+Associated modifications: N/A
+Test: N/A
+
+Signed-off-by: Jason Zhang <jason.zhang@rock-chips.com>
+Change-Id: Iec7e1169efc65f298e5b5449e3803151d91c7258
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c | 36 ++++++++++++++++++++++++
+ drivers/media/i2c/rk628/rk628_hdmirx.c   | 23 +++++++++++++++
+ drivers/media/i2c/rk628/rk628_hdmirx.h   |  2 ++
+ 3 files changed, 61 insertions(+)
+
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index 1af7721a33a436..66f2141397f7f7 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -2867,11 +2867,47 @@ static ssize_t audio_present_show(struct device *dev,
+ 			rk628_hdmirx_audio_present(csi->audio_info) : 0);
+ }
+ 
++static ssize_t arc_enable_show(struct device *dev,
++			       struct device_attribute *attr, char *buf)
++{
++	struct rk628_csi *csi = dev_get_drvdata(dev);
++	struct rk_hdmirx_dev *hdmirx_dev = dev_get_drvdata(dev);
++
++	if (!hdmirx_dev)
++		return -EINVAL;
++
++	return snprintf(buf, PAGE_SIZE, "%d\n",
++			rk628_hdmirx_get_arc_enable(csi->audio_info) ? 1 : 0);
++}
++
++static ssize_t arc_enable_store(struct device *dev,
++				struct device_attribute *attr,
++				const char *buf, size_t count)
++{
++	struct rk628_csi *csi = dev_get_drvdata(dev);
++	struct rk_hdmirx_dev *hdmirx_dev = dev_get_drvdata(dev);
++	bool enabled;
++	int ret;
++
++	if (!hdmirx_dev)
++		return -EINVAL;
++
++	ret = kstrtobool(buf, &enabled);
++	if (ret)
++		return ret;
++
++	rk628_hdmirx_set_arc_enable(csi->audio_info, enabled);
++
++	return count;
++}
++
+ static DEVICE_ATTR_RO(audio_rate);
+ static DEVICE_ATTR_RO(audio_present);
++static DEVICE_ATTR_RW(arc_enable);
+ static struct attribute *rk628_attrs[] = {
+ 	&dev_attr_audio_rate.attr,
+ 	&dev_attr_audio_present.attr,
++	&dev_attr_arc_enable.attr,
+ 	NULL
+ };
+ ATTRIBUTE_GROUPS(rk628);
+diff --git a/drivers/media/i2c/rk628/rk628_hdmirx.c b/drivers/media/i2c/rk628/rk628_hdmirx.c
+index 20269efe550dd9..5ba290a11da0e7 100644
+--- a/drivers/media/i2c/rk628/rk628_hdmirx.c
++++ b/drivers/media/i2c/rk628/rk628_hdmirx.c
+@@ -50,6 +50,7 @@ struct rk628_audioinfo {
+ 	bool fifo_ints_en;
+ 	bool ctsn_ints_en;
+ 	bool audio_present;
++	bool arc_en;
+ 	struct device *dev;
+ };
+ 
+@@ -292,6 +293,28 @@ static u32 _rk628_hdmirx_audio_fs(struct rk628_audioinfo *aif)
+ 	return fs_audio;
+ }
+ 
++bool rk628_hdmirx_get_arc_enable(HAUDINFO info)
++{
++	struct rk628_audioinfo *aif = (struct rk628_audioinfo *)info;
++
++	if (!aif)
++		return false;
++
++	return aif->arc_en;
++}
++EXPORT_SYMBOL(rk628_hdmirx_get_arc_enable);
++
++int rk628_hdmirx_set_arc_enable(HAUDINFO info, bool enabled)
++{
++	struct rk628_audioinfo *aif = (struct rk628_audioinfo *)info;
++
++	if (!aif)
++		return false;
++
++	return aif->arc_en = enabled;
++}
++EXPORT_SYMBOL(rk628_hdmirx_set_arc_enable);
++
+ static void rk628_hdmirx_audio_clk_set_rate(struct rk628_audioinfo *aif, u32 rate)
+ {
+ 
+diff --git a/drivers/media/i2c/rk628/rk628_hdmirx.h b/drivers/media/i2c/rk628/rk628_hdmirx.h
+index 9e7f9b12922fd9..de294d3287c363 100644
+--- a/drivers/media/i2c/rk628/rk628_hdmirx.h
++++ b/drivers/media/i2c/rk628/rk628_hdmirx.h
+@@ -523,6 +523,8 @@ void rk628_hdmirx_audio_cancel_work_rate_change(HAUDINFO info, bool sync);
+ bool rk628_hdmirx_audio_present(HAUDINFO info);
+ int  rk628_hdmirx_audio_fs(HAUDINFO info);
+ void rk628_hdmirx_audio_i2s_ctrl(HAUDINFO info, bool enable);
++bool rk628_hdmirx_get_arc_enable(HAUDINFO info);
++int rk628_hdmirx_set_arc_enable(HAUDINFO info, bool enabled);
+ 
+ /* for audio isr process */
+ bool rk628_audio_fifoints_enabled(HAUDINFO info);
+-- 
+2.17.1
+

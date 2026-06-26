@@ -1,0 +1,42 @@
+From 5f381f78d1cec0b136c14f3689d281aa4148e016 Mon Sep 17 00:00:00 2001
+From: Sandy Huang <hjc@rock-chips.com>
+Date: Wed, 1 Nov 2023 10:12:50 +0800
+Subject: [PATCH 177/232] misc: rk628: gvi: enable 8 pixel align for gvi
+ compatibility
+
+Signed-off-by: Sandy Huang <hjc@rock-chips.com>
+Change-Id: I86422a7bfe5fc2165cd04003665c6b76af21338b
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/misc/rk628/rk628.h     | 1 +
+ drivers/misc/rk628/rk628_gvi.c | 2 ++
+ 2 files changed, 3 insertions(+)
+
+diff --git a/drivers/misc/rk628/rk628.h b/drivers/misc/rk628/rk628.h
+index 80573417bdf55c..8f74a207d73d24 100644
+--- a/drivers/misc/rk628/rk628.h
++++ b/drivers/misc/rk628/rk628.h
+@@ -65,6 +65,7 @@
+ #define GRF_AS_DSIPHY_MASK		BIT(0)
+ #define GRF_AS_DSIPHY(x)		UPDATE(x, 0, 0)
+ #define GRF_SCALER_CON0			0x0010
++#define SCL_8_PIXEL_ALIGN(x)		HIWORD_UPDATE(x, 12, 12)
+ #define SCL_VER_DOWN_MODE(x)		HIWORD_UPDATE(x, 8, 8)
+ #define SCL_HOR_DOWN_MODE(x)		HIWORD_UPDATE(x, 7, 7)
+ #define SCL_BIC_COE_SEL(x)		HIWORD_UPDATE(x, 6, 5)
+diff --git a/drivers/misc/rk628/rk628_gvi.c b/drivers/misc/rk628/rk628_gvi.c
+index ee7e49aa69cc46..13468f218e5592 100644
+--- a/drivers/misc/rk628/rk628_gvi.c
++++ b/drivers/misc/rk628/rk628_gvi.c
+@@ -119,6 +119,8 @@ static void rk628_gvi_pre_enable(struct rk628 *rk628, struct rk628_gvi *gvi)
+ 	rk628_i2c_update_bits(rk628, GVI_SYS_RST, SYS_RST_SOFT_RST, 0);
+ 	udelay(10);
+ 
++	rk628_i2c_write(rk628, GRF_SCALER_CON0, SCL_8_PIXEL_ALIGN(1));
++
+ 	rk628_i2c_update_bits(rk628, GVI_SYS_CTRL0, SYS_CTRL0_LANE_NUM_MASK,
+ 			      SYS_CTRL0_LANE_NUM(gvi->lanes - 1));
+ 	rk628_i2c_update_bits(rk628, GVI_SYS_CTRL0, SYS_CTRL0_BYTE_MODE_MASK,
+-- 
+2.17.1
+

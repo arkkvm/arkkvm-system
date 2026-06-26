@@ -1,0 +1,29 @@
+From 4e575f1b1b1bd911d718a44e5627dd2dc6b4ad00 Mon Sep 17 00:00:00 2001
+From: Shunqing Chen <csq@rock-chips.com>
+Date: Wed, 11 Aug 2021 17:10:04 +0800
+Subject: [PATCH 063/232] media: rk628-for-all: fix vfront_porch set error
+ value
+
+Signed-off-by: Shunqing Chen <csq@rock-chips.com>
+Change-Id: I48d83fc49149937aa21d0d7d08b5643b874efc6e
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_csi.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_csi.c b/drivers/media/i2c/rk628/rk628_csi.c
+index 8f8842054c5bac..f01dc3165240a5 100644
+--- a/drivers/media/i2c/rk628/rk628_csi.c
++++ b/drivers/media/i2c/rk628/rk628_csi.c
+@@ -823,7 +823,7 @@ static void rk628_post_process_setup(struct rk628_csi *csi)
+ 	src.hsync_len = bt->hsync;
+ 	src.hback_porch = bt->hbackporch;
+ 	src.vactive = bt->height;
+-	src.vfront_porch = bt->hfrontporch;
++	src.vfront_porch = bt->vfrontporch;
+ 	src.vsync_len = bt->vsync;
+ 	src.vback_porch = bt->vbackporch;
+ 	src.pixelclock = bt->pixelclock;
+-- 
+2.17.1
+

@@ -1,0 +1,74 @@
+From 99b2bfc30c87e801514239d8de2f62e634319051 Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Sat, 11 May 2024 22:00:03 +0800
+Subject: [PATCH 272/305] media: i2c: rk628: fix set CPLL if pixclk more than
+ 594M
+
+Type: Fix
+Redmine ID: N/A
+Associated modifications: N/A
+Test: N/A
+
+Change-Id: I3faaed0e7efbdb0cb5b44454c931b48f41092592
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_bt1120_v4l2.c | 1 +
+ drivers/media/i2c/rk628/rk628_cru.h         | 2 ++
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c    | 1 +
+ drivers/media/i2c/rk628/rk628_hdmirx.c      | 2 +-
+ 4 files changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+index 6268055c945cbe..59d2612ba88f38 100644
+--- a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+@@ -334,6 +334,7 @@ static void rk628_hdmirx_plugout(struct v4l2_subdev *sd)
+ 	rk628_hdmirx_hpd_ctrl(sd, false);
+ 	rk628_hdmirx_inno_phy_power_off(sd);
+ 	rk628_hdmirx_controller_reset(bt1120->rk628);
++	rk628_clk_set_rate(bt1120->rk628, CGU_CLK_CPLL, CPLL_REF_CLK);
+ }
+ 
+ static int rk628_hdmirx_config_all(struct v4l2_subdev *sd)
+diff --git a/drivers/media/i2c/rk628/rk628_cru.h b/drivers/media/i2c/rk628/rk628_cru.h
+index 5cafa2be555e72..f96b0c4ae2891f 100644
+--- a/drivers/media/i2c/rk628/rk628_cru.h
++++ b/drivers/media/i2c/rk628/rk628_cru.h
+@@ -200,6 +200,8 @@
+ #define RGU_TXESC		30
+ #define RGU_CSI1		31
+ 
++#define CPLL_REF_CLK		1188000000
++
+ unsigned long rk628_clk_get_rate(struct rk628 *rk628, unsigned int id);
+ int rk628_clk_set_rate(struct rk628 *rk628, unsigned int id,
+ 		       unsigned long rate);
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index 5b0951cec49600..bf1a228221003b 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -436,6 +436,7 @@ static void rk628_hdmirx_plugout(struct v4l2_subdev *sd)
+ 	rk628_hdmirx_hpd_ctrl(sd, false);
+ 	rk628_hdmirx_inno_phy_power_off(sd);
+ 	rk628_hdmirx_controller_reset(csi->rk628);
++	rk628_clk_set_rate(csi->rk628, CGU_CLK_CPLL, CPLL_REF_CLK);
+ }
+ 
+ static int rk628_hdmirx_config_all(struct v4l2_subdev *sd)
+diff --git a/drivers/media/i2c/rk628/rk628_hdmirx.c b/drivers/media/i2c/rk628/rk628_hdmirx.c
+index 16ed62caf049bd..4c9ffdae26baf4 100644
+--- a/drivers/media/i2c/rk628/rk628_hdmirx.c
++++ b/drivers/media/i2c/rk628/rk628_hdmirx.c
+@@ -1470,7 +1470,7 @@ int rk628_hdmirx_get_timings(struct rk628 *rk628,
+ 	if (rk628->version >= RK628F_VERSION) {
+ 		val = DIV_ROUND_CLOSEST_ULL(1188000000, bt->pixelclock);
+ 		val *= bt->pixelclock;
+-		if (val > 1188000000) {
++		if (bt->pixelclock > 594000000) {
+ 			/* set pll rate according hdmirx tmds clk */
+ 			rk628_clk_set_rate(rk628, CGU_CLK_CPLL, val);
+ 			dev_dbg(rk628->dev, "set CPLL to %d\n", val);
+-- 
+2.17.1
+

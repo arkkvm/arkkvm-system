@@ -1,0 +1,117 @@
+From c4812fda1420bd2ef93c318844439351e064afd3 Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Tue, 12 Mar 2024 19:25:39 +0800
+Subject: [PATCH 266/305] media: i2c: rk628: add quick stream
+
+Type: Fix/Function/PerOpt
+Redmine ID: redmine ID
+Associated modifications: gerrit links
+Test: test method
+
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+Change-Id: I64882241f0e02e6888596d1f3378170613404c07
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c | 63 +++++++++++++++++++++++-
+ 1 file changed, 62 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index a2796db16e8ddd..140508a73d78f6 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -2235,15 +2235,69 @@ static void rk628_csi_get_module_inf(struct rk628_csi *rk628_csi,
+ 	strlcpy(inf->base.lens, rk628_csi->len_name, sizeof(inf->base.lens));
+ }
+ 
++static void rk628_csi_reset_streaming(struct v4l2_subdev *sd, int on)
++{
++	struct rk628_csi *csi = to_csi(sd);
++
++	if (on) {
++		if (csi->plat_data->tx_mode == CSI_MODE) {
++			rk628_csi_soft_reset(sd);
++			usleep_range(5000, 5500);
++			if (csi->continues_clk) {
++				rk628_i2c_update_bits(csi->rk628, CSITX_SYS_CTRL3_IMD,
++					CONT_MODE_CLK_CLR_MASK | CONT_MODE_CLK_SET_MASK |
++					NON_CONTINUOUS_MODE_MASK, CONT_MODE_CLK_CLR(0) |
++					CONT_MODE_CLK_SET(1) | NON_CONTINUOUS_MODE(0));
++				if (csi->rk628->version >= RK628F_VERSION)
++					rk628_i2c_update_bits(csi->rk628, CSITX1_SYS_CTRL3_IMD,
++						CONT_MODE_CLK_CLR_MASK | CONT_MODE_CLK_SET_MASK |
++						NON_CONTINUOUS_MODE_MASK, CONT_MODE_CLK_CLR(0) |
++						CONT_MODE_CLK_SET(1) | NON_CONTINUOUS_MODE(0));
++			} else {
++				rk628_i2c_update_bits(csi->rk628, CSITX_SYS_CTRL3_IMD,
++					CONT_MODE_CLK_CLR_MASK | CONT_MODE_CLK_SET_MASK |
++					NON_CONTINUOUS_MODE_MASK, CONT_MODE_CLK_CLR(0) |
++					CONT_MODE_CLK_SET(0) | NON_CONTINUOUS_MODE(1));
++				if (csi->rk628->version >= RK628F_VERSION)
++					rk628_i2c_update_bits(csi->rk628, CSITX1_SYS_CTRL3_IMD,
++						CONT_MODE_CLK_CLR_MASK | CONT_MODE_CLK_SET_MASK |
++						NON_CONTINUOUS_MODE_MASK, CONT_MODE_CLK_CLR(0) |
++						CONT_MODE_CLK_SET(0) | NON_CONTINUOUS_MODE(1));
++			}
++
++			rk628_i2c_update_bits(csi->rk628, CSITX_CSITX_EN,
++					DPHY_EN_MASK | CSITX_EN_MASK, DPHY_EN(1) | CSITX_EN(1));
++			rk628_i2c_write(csi->rk628, CSITX_CONFIG_DONE, CONFIG_DONE_IMD);
++			if (csi->rk628->version >= RK628F_VERSION) {
++				rk628_i2c_update_bits(csi->rk628, CSITX1_CSITX_EN,
++					DPHY_EN_MASK | CSITX_EN_MASK, DPHY_EN(1) | CSITX_EN(1));
++				rk628_i2c_write(csi->rk628, CSITX1_CONFIG_DONE, CONFIG_DONE_IMD);
++			}
++		} else {
++			enable_dsitx(sd);
++		}
++	} else {
++		if (csi->plat_data->tx_mode == CSI_MODE)
++			rk628_csi_disable_stream(sd);
++		else
++			rk628_dsi_enable_stream(sd, false);
++	}
++}
++
+ static long rk628_csi_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
+ {
+ 	struct rk628_csi *csi = to_csi(sd);
+ 	long ret = 0;
++	u32 stream = 0;
+ 
+ 	switch (cmd) {
+ 	case RKMODULE_GET_MODULE_INFO:
+ 		rk628_csi_get_module_inf(csi, (struct rkmodule_inf *)arg);
+ 		break;
++	case RKMODULE_SET_QUICK_STREAM:
++		stream = *((u32 *)arg);
++		rk628_csi_reset_streaming(sd, !!stream);
++		break;
+ 	default:
+ 		ret = -ENOIOCTLCMD;
+ 		break;
+@@ -2322,6 +2376,7 @@ static long rk628_csi_compat_ioctl32(struct v4l2_subdev *sd,
+ 	void __user *up = compat_ptr(arg);
+ 	struct rkmodule_inf *inf;
+ 	long ret;
++	u32 stream = 0;
+ 
+ 	switch (cmd) {
+ 	case RKMODULE_GET_MODULE_INFO:
+@@ -2339,7 +2394,13 @@ static long rk628_csi_compat_ioctl32(struct v4l2_subdev *sd,
+ 		}
+ 		kfree(inf);
+ 		break;
+-
++	case RKMODULE_SET_QUICK_STREAM:
++		ret = copy_from_user(&stream, up, sizeof(u32));
++		if (!ret)
++			ret = rk628_csi_ioctl(sd, cmd, &stream);
++		else
++			ret = -EFAULT;
++		break;
+ 	default:
+ 		ret = -ENOIOCTLCMD;
+ 		break;
+-- 
+2.17.1
+

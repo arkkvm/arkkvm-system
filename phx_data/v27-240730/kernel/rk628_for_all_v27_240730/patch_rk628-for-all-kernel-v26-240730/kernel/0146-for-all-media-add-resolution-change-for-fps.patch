@@ -1,0 +1,74 @@
+From 64937d33bc0756a0400159aa3ec79bea8eb243c7 Mon Sep 17 00:00:00 2001
+From: Chen Shunqing <csq@rock-chips.com>
+Date: Sun, 24 Apr 2022 06:52:44 +0000
+Subject: [PATCH 146/232] for-all: media: add resolution change for fps
+
+Signed-off-by: Chen Shunqing <csq@rock-chips.com>
+Change-Id: Iee8a67ab2e20df3f768792f0ee3f5832dd06ad70
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c | 21 ++++++++++++++++++---
+ 1 file changed, 18 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index dbabf6ce1ba542..1678172fd97465 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -114,6 +114,7 @@ struct rk628_csi {
+ 	u8 csi_lanes_in_use;
+ 	u32 mbus_fmt_code;
+ 	u8 fps;
++	u32 tmds_clk;
+ 	u32 stream_state;
+ 	int hdmirx_irq;
+ 	int plugin_irq;
+@@ -398,6 +399,7 @@ __retry:
+ 	tmp_data = ((tmp_data * MODETCLK_HZ) + MODETCLK_CNT_NUM / 2);
+ 	do_div(tmp_data, MODETCLK_CNT_NUM);
+ 	tmds_clk = tmp_data;
++	csi->tmds_clk = tmds_clk;
+ 	if (!(htotal * vtotal)) {
+ 		v4l2_err(&csi->sd, "timing err, htotal:%d, vtotal:%d\n",
+ 				htotal, vtotal);
+@@ -526,8 +528,10 @@ static int rk628_check_resulotion_change(struct v4l2_subdev *sd)
+ {
+ 	u32 val;
+ 	struct rk628_csi *csi = to_csi(sd);
+-	u32 htotal, vtotal;
+-	u32 old_htotal, old_vtotal;
++	u32 htotal, vtotal, fps;
++	u32 old_htotal, old_vtotal, old_fps;
++	u32 tmds_clk, tmdsclk_cnt;
++	u64 tmp_data;
+ 	struct v4l2_bt_timings *bt = &csi->src_timings.bt;
+ 
+ 	rk628_i2c_read(csi->rk628, HDMI_RX_MD_HT1, &val);
+@@ -535,13 +539,24 @@ static int rk628_check_resulotion_change(struct v4l2_subdev *sd)
+ 	rk628_i2c_read(csi->rk628, HDMI_RX_MD_VTL, &val);
+ 	vtotal = val & 0xffff;
+ 
++	rk628_i2c_read(csi->rk628, HDMI_RX_HDMI_CKM_RESULT, &val);
++	tmdsclk_cnt = val & 0xffff;
++	tmp_data = tmdsclk_cnt;
++	tmp_data = ((tmp_data * MODETCLK_HZ) + MODETCLK_CNT_NUM / 2);
++	do_div(tmp_data, MODETCLK_CNT_NUM);
++	tmds_clk = tmp_data;
++	fps = (tmds_clk + (htotal * vtotal) / 2) / (htotal * vtotal);
++
+ 	old_htotal = bt->hfrontporch + bt->hsync + bt->width + bt->hbackporch;
+ 	old_vtotal = bt->vfrontporch + bt->vsync + bt->height + bt->vbackporch;
++	old_fps = div_u64(bt->pixelclock, (old_htotal * old_vtotal));
+ 
+ 	v4l2_dbg(1, debug, sd, "new mode: %d x %d\n", htotal, vtotal);
+ 	v4l2_dbg(1, debug, sd, "old mode: %d x %d\n", old_htotal, old_vtotal);
+ 
+-	if (htotal != old_htotal || vtotal != old_vtotal)
++	if (htotal != old_htotal || vtotal != old_vtotal || fps != old_fps)
++		return 1;
++	if (htotal == old_htotal && vtotal == old_vtotal && tmds_clk != csi->tmds_clk)
+ 		return 1;
+ 
+ 	return 0;
+-- 
+2.17.1
+

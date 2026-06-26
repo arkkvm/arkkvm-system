@@ -1,0 +1,28 @@
+From d3d9366d81b78a049cc8250311e0accf2a734d3b Mon Sep 17 00:00:00 2001
+From: Shunqing Chen <csq@rock-chips.com>
+Date: Mon, 2 Aug 2021 10:46:32 +0800
+Subject: [PATCH 035/232] media: i2c: rk628: provider a clock for hdmirx after
+ phy poweroff
+
+Signed-off-by: Shunqing Chen <csq@rock-chips.com>
+Change-Id: I92e1257490a2cec760fea4ebe8cc9c0de16f819f
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_combrxphy.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/media/i2c/rk628/rk628_combrxphy.c b/drivers/media/i2c/rk628/rk628_combrxphy.c
+index e241ed6dd2b69f..ad4722187f8b2f 100644
+--- a/drivers/media/i2c/rk628/rk628_combrxphy.c
++++ b/drivers/media/i2c/rk628/rk628_combrxphy.c
+@@ -532,6 +532,7 @@ int rk628_combrxphy_power_on(int f)
+ 
+ int rk628_combrxphy_power_off(void)
+ {
++	rk628_i2c_update_bits(REG(0x6630), BIT(0), BIT(0));
+ 	return 0;
+ }
+ 
+-- 
+2.17.1
+

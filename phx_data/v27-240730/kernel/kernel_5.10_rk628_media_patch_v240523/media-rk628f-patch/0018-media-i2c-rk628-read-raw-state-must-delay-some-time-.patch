@@ -1,0 +1,28 @@
+From 96cb900406aeef92fb2e77184503a913ef78753c Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Mon, 11 Dec 2023 09:43:33 +0000
+Subject: [PATCH 18/30] media: i2c: rk628: read raw state must delay some time
+ when clear interrupt
+
+Change-Id: Ieccfd9135edf3a94d1b74d8c3492984c1b30d6e3
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index a482715de4add..2f48d393a1ff0 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -715,7 +715,7 @@ static void enable_csitx(struct v4l2_subdev *sd)
+ 			rk628_i2c_write(csi->rk628, CSITX1_ERR_INTR_CLR_IMD, 0xffffffff);
+ 			rk628_i2c_write(csi->rk628, CSITX1_CONFIG_DONE, CONFIG_DONE_IMD);
+ 		}
+-
++		msleep(50);
+ 		ret = rk628_i2c_read(csi->rk628, CSITX_ERR_INTR_RAW_STATUS_IMD, &val);
+ 		if (csi->rk628->version >= RK628F_VERSION)
+ 			ret |= rk628_i2c_read(csi->rk628,
+-- 
+2.25.1
+

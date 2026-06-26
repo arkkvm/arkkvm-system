@@ -1,0 +1,91 @@
+From 2e635eb7ca7bf6b2647be1a99612e108415b459f Mon Sep 17 00:00:00 2001
+From: Shunhua Lan <lsh@rock-chips.com>
+Date: Tue, 19 Dec 2023 17:46:24 +0800
+Subject: [PATCH 232/232] misc: rk628: cru: compatible with rk628d hdmirx audio
+ clock from gpll
+
+Signed-off-by: Shunhua Lan <lsh@rock-chips.com>
+Change-Id: Ia4d10decf137c2a282e00fa5ea2ed17751a5e192
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/misc/rk628/rk628_cru.c | 36 ++++++++++++++++++++++------------
+ drivers/misc/rk628/rk628_cru.h |  6 ++++++
+ 2 files changed, 29 insertions(+), 13 deletions(-)
+
+diff --git a/drivers/misc/rk628/rk628_cru.c b/drivers/misc/rk628/rk628_cru.c
+index 2b7bc799fc51c9..442d800f329242 100644
+--- a/drivers/misc/rk628/rk628_cru.c
++++ b/drivers/misc/rk628/rk628_cru.c
+@@ -430,12 +430,19 @@ static unsigned long rk628_cru_clk_set_rate_sclk_hdmirx_aud(struct rk628 *rk628,
+ 	u64 parent_rate;
+ 	u8 div;
+ 
+-	parent_rate = rk628_cru_clk_set_rate_pll(rk628, CGU_CLK_APLL, rate*4);
++	if (rk628->version >= RK628F_VERSION)
++		parent_rate = rk628_cru_clk_set_rate_pll(rk628, CGU_CLK_APLL, rate*4);
++	else
++		parent_rate = rk628_cru_clk_set_rate_pll(rk628, CGU_CLK_GPLL, rate*4);
+ 	div = DIV_ROUND_CLOSEST_ULL(parent_rate, rate);
+-	rate = DIV_ROUND_CLOSEST_ULL(parent_rate, div);
+-	rk628_i2c_write(rk628, CRU_CLKSEL_CON05,
+-			0x3fc0 << 16 | ((div - 1) << 6) |
+-			CLK_HDMIRX_AUD_SEL(2));
++	do_div(parent_rate, div);
++	rate = parent_rate;
++	if (rk628->version >= RK628F_VERSION)
++		rk628_i2c_write(rk628, CRU_CLKSEL_CON05, CLK_HDMIRX_AUD_DIV(div - 1) |
++				CLK_HDMIRX_AUD_SEL_V2(2));
++	else
++		rk628_i2c_write(rk628, CRU_CLKSEL_CON05, CLK_HDMIRX_AUD_DIV(div - 1) |
++				CLK_HDMIRX_AUD_SEL_V1(1));
+ 	return rate;
+ }
+ 
+@@ -447,16 +454,19 @@ static unsigned long rk628_cru_clk_get_rate_sclk_hdmirx_aud(struct rk628 *rk628)
+ 	u32 val;
+ 
+ 	rk628_i2c_read(rk628, CRU_CLKSEL_CON05, &val);
+-	div = ((val&0x3fc0) >> 6) + 1;
+-	val &= CLK_HDMIRX_AUD_SEL_MASK;
+-	if (val == 0)
+-		parent_rate = rk628_cru_clk_get_rate_pll(rk628, CGU_CLK_CPLL);
+-	else if (val == (1 << 14))
+-		parent_rate = rk628_cru_clk_get_rate_pll(rk628, CGU_CLK_GPLL);
++	div = ((val & CLK_HDMIRX_AUD_DIV_MASK) >> 6) + 1;
++	if (rk628->version >= RK628F_VERSION)
++		val = (val & CLK_HDMIRX_AUD_SEL_MASK_V2) >> 14;
+ 	else
++		val = (val & CLK_HDMIRX_AUD_SEL_MASK_V1) >> 15;
++	if (!val)
++		parent_rate = rk628_cru_clk_get_rate_pll(rk628, CGU_CLK_CPLL);
++	else if (val == 2)
+ 		parent_rate = rk628_cru_clk_get_rate_pll(rk628, CGU_CLK_APLL);
+-
+-	rate = DIV_ROUND_CLOSEST_ULL(parent_rate, div);
++	else
++		parent_rate = rk628_cru_clk_get_rate_pll(rk628, CGU_CLK_GPLL);
++	do_div(parent_rate, div);
++	rate = parent_rate;
+ 	return rate;
+ }
+ 
+diff --git a/drivers/misc/rk628/rk628_cru.h b/drivers/misc/rk628/rk628_cru.h
+index f54144d7ca4f36..c035d9bcc5003c 100644
+--- a/drivers/misc/rk628/rk628_cru.h
++++ b/drivers/misc/rk628/rk628_cru.h
+@@ -90,6 +90,12 @@
+ #define CLK_HDMIRX_AUD_SEL_MASK	GENMASK(15, 14)
+ #define CLK_HDMIRX_AUD_SEL(x)	HIWORD_UPDATE(x, 15, 14)
+ #define CRU_CLKSEL_CON05	CRU_REG(0x0094)
++#define CLK_HDMIRX_AUD_DIV_MASK	GENMASK(13, 6)
++#define CLK_HDMIRX_AUD_DIV(x)	HIWORD_UPDATE(x, 13, 6)
++#define CLK_HDMIRX_AUD_SEL_V1(x)	HIWORD_UPDATE(x, 15, 15)
++#define CLK_HDMIRX_AUD_SEL_MASK_V1	GENMASK(15, 15)
++#define CLK_HDMIRX_AUD_SEL_V2(x)	HIWORD_UPDATE(x, 15, 14)
++#define CLK_HDMIRX_AUD_SEL_MASK_V2	GENMASK(15, 14)
+ #define CLK_IMODET_SEL_MASK	BIT(5)
+ #define CLK_IMODET_SEL_SHIFT	5
+ #define CRU_CLKSEL_CON06	CRU_REG(0x0098)
+-- 
+2.17.1
+

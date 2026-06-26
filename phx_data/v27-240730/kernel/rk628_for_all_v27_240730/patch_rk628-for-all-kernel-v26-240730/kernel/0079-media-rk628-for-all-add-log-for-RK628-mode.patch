@@ -1,0 +1,33 @@
+From 6c07ff0d2d0ea0b997314f8fbc9c4a49c5e34106 Mon Sep 17 00:00:00 2001
+From: Shunqing Chen <csq@rock-chips.com>
+Date: Thu, 26 Aug 2021 11:23:06 +0800
+Subject: [PATCH 079/232] media: rk628-for-all: add log for RK628 mode
+
+Signed-off-by: Shunqing Chen <csq@rock-chips.com>
+Change-Id: I1b0777f39407e114d38146af784cba843b5610d3
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_cru.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_cru.c b/drivers/media/i2c/rk628/rk628_cru.c
+index a015b917f568c7..14d94804634194 100644
+--- a/drivers/media/i2c/rk628/rk628_cru.c
++++ b/drivers/media/i2c/rk628/rk628_cru.c
+@@ -542,9 +542,12 @@ void rk628_cru_initialize(struct rk628 *rk628)
+ 
+ 	rk628_i2c_read(rk628, GRF_SYSTEM_STATUS0, &val);
+ 	mcu_mode = (val & I2C_ONLY_FLAG) ? 0 : 1;
+-	if (mcu_mode)
++	if (mcu_mode) {
++		dev_info(rk628->dev, "RK628 MCU + I2C Mode\n");
+ 		return;
++	}
+ 
++	dev_info(rk628->dev, "RK628 I2C Mode Only\n");
+ 	rk628_i2c_write(rk628, CRU_GPLL_CON0, 0xffff701d);
+ 	mdelay(1);
+ 	rk628_i2c_write(rk628, CRU_MODE_CON00, 0xffff0004);
+-- 
+2.17.1
+

@@ -1,0 +1,46 @@
+From 01d676d5d1bc0eb96a8fe1d1178a659c853443ab Mon Sep 17 00:00:00 2001
+From: Chen Shunqing <csq@rock-chips.com>
+Date: Wed, 8 May 2024 11:18:12 +0800
+Subject: [PATCH 80/82] media: i2c: rk628: fix cec no response when send
+ messages
+
+Signed-off-by: Chen Shunqing <csq@rock-chips.com>
+Change-Id: If9c4dbe6a4aafe9117eb12140da632b8b59e5988
+---
+ drivers/media/i2c/rk628/rk628_bt1120_v4l2.c | 4 ----
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c    | 4 ----
+ 2 files changed, 8 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+index 9f1d9cba477f..e1dd2c6e9c4f 100644
+--- a/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_bt1120_v4l2.c
+@@ -938,10 +938,6 @@ static void rk628_bt1120_enable_interrupts(struct v4l2_subdev *sd, bool en)
+ 		rk628_i2c_write(bt1120->rk628, HDMI_RX_MD_IEN_CLR, md_mask);
+ 		rk628_i2c_write(bt1120->rk628, HDMI_RX_PDEC_IEN_CLR, pdec_mask);
+ 		rk628_i2c_write(bt1120->rk628, HDMI_RX_AUD_FIFO_IEN_CLR, 0x1f);
+-		if (bt1120->cec && bt1120->cec->adap) {
+-			rk628_i2c_write(bt1120->rk628, HDMI_RX_AUD_CEC_IEN_SET, 0);
+-			rk628_i2c_write(bt1120->rk628, HDMI_RX_AUD_CEC_IEN_CLR, ~0);
+-		}
+ 		bt1120->vid_ints_en = false;
+ 	}
+ 	usleep_range(5000, 5000);
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index f02417415f18..98e7a01086ec 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -1529,10 +1529,6 @@ static void rk628_csi_enable_interrupts(struct v4l2_subdev *sd, bool en)
+ 		rk628_i2c_write(csi->rk628, HDMI_RX_MD_IEN_CLR, md_mask);
+ 		rk628_i2c_write(csi->rk628, HDMI_RX_PDEC_IEN_CLR, pdec_mask);
+ 		rk628_i2c_write(csi->rk628, HDMI_RX_AUD_FIFO_IEN_CLR, 0x1f);
+-		if (csi->cec && csi->cec->adap) {
+-			rk628_i2c_write(csi->rk628, HDMI_RX_AUD_CEC_IEN_SET, 0);
+-			rk628_i2c_write(csi->rk628, HDMI_RX_AUD_CEC_IEN_CLR, ~0);
+-		}
+ 		csi->vid_ints_en = false;
+ 	}
+ 	usleep_range(5000, 5000);
+-- 
+2.17.1
+

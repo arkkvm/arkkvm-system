@@ -1,0 +1,54 @@
+From b27af31c7785411d6515741ab400cd360b1ed4ff Mon Sep 17 00:00:00 2001
+From: Chen Shunqing <csq@rock-chips.com>
+Date: Fri, 22 Dec 2023 07:09:03 +0000
+Subject: [PATCH 234/235] misc: rk628: hdmitx: set hdmitx sync polarity
+
+Change-Id: Ife56c57ff98bc76c41fa1b4a4d6f9375be8bf527
+Signed-off-by: Chen Shunqing <csq@rock-chips.com>
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/misc/rk628/rk628.h        | 2 ++
+ drivers/misc/rk628/rk628_hdmitx.c | 7 +++++++
+ 2 files changed, 9 insertions(+)
+
+diff --git a/drivers/misc/rk628/rk628.h b/drivers/misc/rk628/rk628.h
+index 4ab61eda395f7c..7b8a545f6b0841 100644
+--- a/drivers/misc/rk628/rk628.h
++++ b/drivers/misc/rk628/rk628.h
+@@ -99,6 +99,8 @@
+ #define DSP_VBOR_ST(x)			UPDATE(x, 28, 16)
+ #define DSP_VBOR_END(x)			UPDATE(x, 12, 0)
+ #define GRF_POST_PROC_CON		0x0034
++#define SW_HDMITX_VSYNC_POL		BIT(17)
++#define SW_HDMITX_HSYNC_POL		BIT(16)
+ #define SW_DCLK_OUT_INV_EN		BIT(9)
+ #define SW_DCLK_IN_INV_EN		BIT(8)
+ #define SW_TXPHY_REFCLK_SEL_MASK	GENMASK(6, 5)
+diff --git a/drivers/misc/rk628/rk628_hdmitx.c b/drivers/misc/rk628/rk628_hdmitx.c
+index 8949b3a9a9d9bc..e6cec7cee831bc 100644
+--- a/drivers/misc/rk628/rk628_hdmitx.c
++++ b/drivers/misc/rk628/rk628_hdmitx.c
+@@ -502,6 +502,7 @@ static int rk628_hdmi_config_video_timing(struct rk628_hdmi *hdmi,
+ 					  struct drm_display_mode *mode)
+ {
+ 	int value;
++	u32 hdmitx_sync_pol = 0;
+ 
+ 	/* Set detail external video timing polarity and interlace mode */
+ 	value = EXTERANL_VIDEO(1);
+@@ -512,6 +513,12 @@ static int rk628_hdmi_config_video_timing(struct rk628_hdmi *hdmi,
+ 	value |= mode->flags & DRM_MODE_FLAG_INTERLACE ?
+ 		 INETLACE(1) : INETLACE(0);
+ 	hdmi_writeb(hdmi, HDMI_VIDEO_TIMING_CTL, value);
++	hdmitx_sync_pol |= mode->flags & DRM_MODE_FLAG_PVSYNC ?
++		SW_HDMITX_VSYNC_POL : 0;
++	hdmitx_sync_pol |= mode->flags & DRM_MODE_FLAG_PHSYNC ?
++		SW_HDMITX_HSYNC_POL : 0;
++	rk628_i2c_update_bits(hdmi->rk628, GRF_POST_PROC_CON,
++			      SW_HDMITX_VSYNC_POL | SW_HDMITX_HSYNC_POL, hdmitx_sync_pol);
+ 
+ 	/* Set detail external video timing */
+ 	value = mode->htotal;
+-- 
+2.17.1
+

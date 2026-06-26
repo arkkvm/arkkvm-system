@@ -1,0 +1,66 @@
+From 277f935307d87abde33ad1b1dd8c36a987770751 Mon Sep 17 00:00:00 2001
+From: Shunqing Chen <csq@rock-chips.com>
+Date: Mon, 2 Aug 2021 09:33:57 +0800
+Subject: [PATCH 033/232] media: i2c: rk628: fix division by zero
+
+[<c010f0c4>] (unwind_backtrace) from [<c010b3dc>] (show_stack+0x10/0x14)
+[<c010b3dc>] (show_stack) from [<c03fcff8>] (dump_stack+0x7c/0x98)
+[<c03fcff8>] (dump_stack) from [<c03fb0c4>] (Ldiv0_64+0x8/0x18)
+[<c03fb0c4>] (Ldiv0_64) from [<c06bb3e8>] (enable_stream+0x290/0x940)
+[<c06bb3e8>] (enable_stream) from [<c06bc784>]
+(rk628_csi_s_stream+0x10/0x18)
+[<c06bc784>] (rk628_csi_s_stream) from [<c06f7538>]
+(rkisp1_pipeline_set_stream+0x7c/0x224)
+[<c06f7538>] (rkisp1_pipeline_set_stream) from [<c06ff754>]
+(rkisp1_start_streaming+0x364/0x69c)
+[<c06ff754>] (rkisp1_start_streaming) from [<c06dc918>]
+(vb2_start_streaming+0x64/0x128)
+[<c06dc918>] (vb2_start_streaming) from [<c06dd4a8>]
+(vb2_core_streamon+0xd0/0x12c)
+[<c06dd4a8>] (vb2_core_streamon) from [<c06ccc4c>]
+(__video_do_ioctl+0x224/0x2bc)
+[<c06ccc4c>] (__video_do_ioctl) from [<c06cc668>]
+(video_usercopy+0x294/0x648)
+[<c06cc668>] (video_usercopy) from [<c06c65c8>] (v4l2_ioctl+0x5c/0x98)
+[<c06c65c8>] (v4l2_ioctl) from [<c024f21c>] (do_vfs_ioctl+0x94/0x6a0)
+[<c024f21c>] (do_vfs_ioctl) from [<c024f874>] (SyS_ioctl+0x4c/0x70)
+[<c024f874>] (SyS_ioctl) from [<c0107240>] (ret_fast_syscall+0x0/0x54)
+Division by zero in kernel.
+
+Signed-off-by: Shunqing Chen <csq@rock-chips.com>
+Change-Id: I9eec05faaf4a6515dcfbfe93572d9e86db06109a
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index 1090452137cc93..4425fb6d5bf4a2 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -44,7 +44,7 @@ static int debug;
+ module_param(debug, int, 0644);
+ MODULE_PARM_DESC(debug, "debug level (0-3)");
+ 
+-#define DRIVER_VERSION			KERNEL_VERSION(0, 0x0, 0x3)
++#define DRIVER_VERSION			KERNEL_VERSION(0, 0x0, 0x4)
+ #define RK628_CSI_NAME			"rk628-csi"
+ 
+ #define EDID_NUM_BLOCKS_MAX 		2
+@@ -883,6 +883,13 @@ static void rk628_post_process_setup(struct v4l2_subdev *sd)
+ 	src.vsync_len = bt->vsync;
+ 	src.vback_porch = bt->vbackporch;
+ 	src.pixelclock = bt->pixelclock;
++	if (!src.pixelclock) {
++		enable_stream(sd, false);
++		csi->nosignal = true;
++		schedule_delayed_work(&csi->delayed_work_enable_hotplug, HZ / 20);
++		return;
++	}
++
+ 	src.flags = 0;
+ 	if (bt->interlaced == V4L2_DV_INTERLACED)
+ 		src.flags |= DISPLAY_FLAGS_INTERLACED;
+-- 
+2.17.1
+

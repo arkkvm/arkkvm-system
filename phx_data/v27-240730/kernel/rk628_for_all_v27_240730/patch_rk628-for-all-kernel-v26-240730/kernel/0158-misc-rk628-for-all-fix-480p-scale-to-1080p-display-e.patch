@@ -1,0 +1,42 @@
+From c5953d1cbe32d6ef1ecb530aea9c324a5b01e94c Mon Sep 17 00:00:00 2001
+From: Chen Shunqing <csq@rock-chips.com>
+Date: Wed, 8 Feb 2023 02:21:06 +0000
+Subject: [PATCH 158/232] misc: rk628-for-all: fix 480p scale to 1080p display
+ error
+
+Signed-off-by: Chen Shunqing <csq@rock-chips.com>
+Change-Id: Ibc2c805b41d849f845bf425291375ca79b47abc1
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/misc/rk628/rk628_post_process.c | 8 +++++---
+ 1 file changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/misc/rk628/rk628_post_process.c b/drivers/misc/rk628/rk628_post_process.c
+index 66f60ba983171f..99ffa644c67143 100644
+--- a/drivers/misc/rk628/rk628_post_process.c
++++ b/drivers/misc/rk628/rk628_post_process.c
+@@ -50,7 +50,7 @@ static void calc_dsp_frm_hst_vst(const struct rk628_display_mode *src,
+ 
+ 	t_bp_in = bp_in * src_pixclock;
+ 	t_bp_out = bp_out * dst_pixclock;
+-	tin = src_vtotal * src_htotal * src_pixclock;
++	tin = (u64)src_vtotal * src_htotal * src_pixclock;
+ 
+ 	v_scale_ratio = src_vactive / dst_vactive;
+ 	x = 5;
+@@ -72,8 +72,10 @@ __retry:
+ 		x++;
+ 		goto __retry;
+ 	}
+-	if (t_frm_st < 2 || t_frm_st > 14)
+-		t_frm_st = 4;
++	if (t_frm_st < 2 || t_frm_st > 14) {
++		if (src->vdisplay > 480 && src->hdisplay > 480)
++			t_frm_st = 4;
++	}
+ 
+ 	*dsp_frame_hst = rem;
+ 	*dsp_frame_vst = t_frm_st;
+-- 
+2.17.1
+

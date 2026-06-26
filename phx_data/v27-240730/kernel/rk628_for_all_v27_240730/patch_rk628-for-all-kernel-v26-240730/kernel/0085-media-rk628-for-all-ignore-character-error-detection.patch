@@ -1,0 +1,29 @@
+From 3aae88ae398bdf6bc8115acd3344e2f32ac4a2e5 Mon Sep 17 00:00:00 2001
+From: Shunqing Chen <csq@rock-chips.com>
+Date: Fri, 13 Aug 2021 11:14:18 +0800
+Subject: [PATCH 085/232] media: rk628-for-all: ignore character error
+ detection for video data
+
+Signed-off-by: Shunqing Chen <csq@rock-chips.com>
+Change-Id: I5f801d5f6fda8dd6ee0887e2ec08ceb749c12ee4
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_hdmirx.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_hdmirx.c b/drivers/media/i2c/rk628/rk628_hdmirx.c
+index f46f60a6df1f01..0c5998c1eed974 100644
+--- a/drivers/media/i2c/rk628/rk628_hdmirx.c
++++ b/drivers/media/i2c/rk628/rk628_hdmirx.c
+@@ -167,7 +167,7 @@ void rk628_hdmirx_set_hdcp(struct rk628 *rk628, struct rk628_hdcp *hdcp, bool en
+ 
+ void rk628_hdmirx_controller_setup(struct rk628 *rk628)
+ {
+-	rk628_i2c_write(rk628, HDMI_RX_HDMI20_CONTROL, 0x10001f10);
++	rk628_i2c_write(rk628, HDMI_RX_HDMI20_CONTROL, 0x10000f10);
+ 	rk628_i2c_write(rk628, HDMI_RX_HDMI_MODE_RECOVER, 0x00000021);
+ 	rk628_i2c_write(rk628, HDMI_RX_PDEC_CTRL, 0xbfff8011);
+ 	rk628_i2c_write(rk628, HDMI_RX_PDEC_ASP_CTRL, 0x00000040);
+-- 
+2.17.1
+

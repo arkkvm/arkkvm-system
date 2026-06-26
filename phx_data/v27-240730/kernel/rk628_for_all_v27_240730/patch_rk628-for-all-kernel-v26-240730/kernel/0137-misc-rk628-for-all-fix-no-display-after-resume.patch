@@ -1,0 +1,73 @@
+From 2c65a6d15c7fd1fbbcc094153f1049a030507d79 Mon Sep 17 00:00:00 2001
+From: Chen Shunqing <csq@rock-chips.com>
+Date: Thu, 13 Jan 2022 10:02:33 +0800
+Subject: [PATCH 137/232] misc: rk628-for-all: fix no display after resume
+
+Maybe hdmitx hasn't been output after rk628 works
+
+Signed-off-by: Chen Shunqing <csq@rock-chips.com>
+Change-Id: I7831122f76e1d7288a84b476621670a0ef88fa5b
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/misc/rk628/rk628_hdmirx.c | 10 ++++++++--
+ drivers/misc/rk628/rk628_hdmirx.h |  1 +
+ 2 files changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/misc/rk628/rk628_hdmirx.c b/drivers/misc/rk628/rk628_hdmirx.c
+index 9ed385d3286584..0a1aa9924b5392 100644
+--- a/drivers/misc/rk628/rk628_hdmirx.c
++++ b/drivers/misc/rk628/rk628_hdmirx.c
+@@ -14,7 +14,7 @@
+ #define POLL_INTERVAL_MS			1000
+ #define MODETCLK_CNT_NUM			1000
+ #define MODETCLK_HZ				49500000
+-#define RXPHY_CFG_MAX_TIMES			3
++#define RXPHY_CFG_MAX_TIMES			1
+ 
+ u8 debug = 0;
+ 
+@@ -77,6 +77,7 @@ struct rk628_hdmirx {
+ 	bool audio_present;
+ 	bool hpd_output_inverted;
+ 	bool src_mode_4K_yuv420;
++	bool phy_lock;
+ };
+ 
+ const static struct rk628_hdmi_mode supported_modes[] = {
+@@ -571,8 +572,11 @@ static int rk628_hdmirx_phy_setup(struct rk628 *rk628)
+ 		}
+ 	}
+ 
+-	if (i == RXPHY_CFG_MAX_TIMES)
++	if (i == RXPHY_CFG_MAX_TIMES) {
++		hdmirx->phy_lock = false;
+ 		return -1;
++	}
++	hdmirx->phy_lock = true;
+ 
+ 	return 0;
+ }
+@@ -793,6 +797,8 @@ int rk628_hdmirx_detect(struct rk628 *rk628)
+ 			ret |= HDMIRX_CHANGED;
+ 		if (rk628_hdmirx_status_change(rk628))
+ 			ret |= HDMIRX_CHANGED;
++		if (!hdmirx->phy_lock)
++			ret |= HDMIRX_NOLOCK;
+ 		hdmirx->plugin = true;
+ 	} else {
+ 		ret |= HDMIRX_PLUGOUT;
+diff --git a/drivers/misc/rk628/rk628_hdmirx.h b/drivers/misc/rk628/rk628_hdmirx.h
+index d83025a782c59f..814ddd52baefd1 100644
+--- a/drivers/misc/rk628/rk628_hdmirx.h
++++ b/drivers/misc/rk628/rk628_hdmirx.h
+@@ -623,6 +623,7 @@
+ #define HDMIRX_PLUGOUT				BIT(1)
+ #define HDMIRX_CHANGED				BIT(2)
+ #define HDMIRX_NOSIGNAL				BIT(3)
++#define HDMIRX_NOLOCK				BIT(4)
+ 
+ void rk628_hdmirx_enable_interrupts(struct rk628 *rk628, bool en);
+ int rk628_hdmirx_enable(struct rk628 *rk628);
+-- 
+2.17.1
+

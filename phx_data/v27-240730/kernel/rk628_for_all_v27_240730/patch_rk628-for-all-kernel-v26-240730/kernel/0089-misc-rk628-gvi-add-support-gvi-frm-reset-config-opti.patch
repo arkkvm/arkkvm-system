@@ -1,0 +1,55 @@
+From 9ef47955ed8a179b85c2d2f5dc6a8b24cb1b46ab Mon Sep 17 00:00:00 2001
+From: Guochun Huang <hero.huang@rock-chips.com>
+Date: Fri, 10 Sep 2021 14:18:13 +0800
+Subject: [PATCH 089/232] misc: rk628: gvi: add support gvi frm reset config
+ option
+
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+Change-Id: I7e0298c13aeded3431ff2e9ad4517808ac10ccbd
+---
+ drivers/misc/rk628/rk628_config.c | 1 +
+ drivers/misc/rk628/rk628_config.h | 1 +
+ drivers/misc/rk628/rk628_gvi.c    | 3 ++-
+ 3 files changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/misc/rk628/rk628_config.c b/drivers/misc/rk628/rk628_config.c
+index c08fd61edcfac7..4c80763637de19 100755
+--- a/drivers/misc/rk628/rk628_config.c
++++ b/drivers/misc/rk628/rk628_config.c
+@@ -207,6 +207,7 @@ static struct rk628_gvi rk628_gvi = {
+ 	/* .bus_format = */ MEDIA_BUS_FMT_RGB888_1X24,
+ 	/* .lanes = */ 8,
+ 	/* .division_mode = */ false,
++	/* .frm_rst = */ false,
+ 	/* .byte_mode = */ 3,
+ 	/* .color_depth = */ COLOR_DEPTH_RGB_YUV444_24BIT,
+ };
+diff --git a/drivers/misc/rk628/rk628_config.h b/drivers/misc/rk628/rk628_config.h
+index d8674c1e05ef94..a1f77cf2469e92 100755
+--- a/drivers/misc/rk628/rk628_config.h
++++ b/drivers/misc/rk628/rk628_config.h
+@@ -64,6 +64,7 @@ struct rk628_gvi {
+ 	uint8_t bus_format;
+ 	uint8_t lanes;
+ 	bool division_mode;
++	bool frm_rst;
+ 	u8 byte_mode;
+ 	u16 color_depth;
+ };
+diff --git a/drivers/misc/rk628/rk628_gvi.c b/drivers/misc/rk628/rk628_gvi.c
+index e507efdc11e0d1..54ca26686aa7de 100644
+--- a/drivers/misc/rk628/rk628_gvi.c
++++ b/drivers/misc/rk628/rk628_gvi.c
+@@ -89,7 +89,8 @@ static void rk628_gvi_pre_enable(struct rk628 *rk628, struct rk628_gvi *gvi)
+ 	rk628_i2c_update_bits(rk628, GVI_SYS_CTRL1, SYS_CTRL1_DUAL_PIXEL_EN,
+ 			      gvi->division_mode ? SYS_CTRL1_DUAL_PIXEL_EN : 0);
+ 
+-	rk628_i2c_update_bits(rk628, GVI_SYS_CTRL0, SYS_CTRL0_FRM_RST_EN, 0);
++	rk628_i2c_update_bits(rk628, GVI_SYS_CTRL0, SYS_CTRL0_FRM_RST_EN,
++			      gvi->frm_rst ? SYS_CTRL0_FRM_RST_EN : 0);
+ 	rk628_i2c_update_bits(rk628, GVI_SYS_CTRL1, SYS_CTRL1_LANE_ALIGN_EN, 0);
+ }
+ 
+-- 
+2.17.1
+

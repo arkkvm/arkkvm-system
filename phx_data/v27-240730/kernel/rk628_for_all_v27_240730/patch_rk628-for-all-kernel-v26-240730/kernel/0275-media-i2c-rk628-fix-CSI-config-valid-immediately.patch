@@ -1,0 +1,54 @@
+From a098876ef3b2d7c3aa13daaa3afe28be0383dae2 Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Mon, 13 May 2024 10:01:34 +0800
+Subject: [PATCH 275/305] media: i2c: rk628: fix CSI config valid immediately
+
+Type: Fix
+Redmine ID: N/A
+Associated modifications: N/A
+Test: N/A
+
+Change-Id: Ibe48d5bc702522fb266e3d7cc4987a6c3aa82aa0
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index 2ed0602a07fbca..fad7d412528b79 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -820,7 +820,7 @@ static void rk628_csi_disable_stream(struct v4l2_subdev *sd)
+ 				DPHY_EN(0) | CSITX_EN(0));
+ 	rk628_i2c_update_bits(csi->rk628, CSITX_SYS_CTRL3_IMD, CONT_MODE_CLK_CLR_MASK,
+ 			csi->continues_clk ? CONT_MODE_CLK_CLR(1) : CONT_MODE_CLK_CLR(0));
+-	rk628_i2c_write(csi->rk628, CSITX_CONFIG_DONE, CONFIG_DONE);
++	rk628_i2c_write(csi->rk628, CSITX_CONFIG_DONE, CONFIG_DONE_IMD);
+ 
+ 	if (csi->rk628->version >= RK628F_VERSION) {
+ 		rk628_i2c_update_bits(csi->rk628, CSITX1_CSITX_EN,
+@@ -828,7 +828,7 @@ static void rk628_csi_disable_stream(struct v4l2_subdev *sd)
+ 					DPHY_EN(0) | CSITX_EN(0));
+ 		rk628_i2c_update_bits(csi->rk628, CSITX1_SYS_CTRL3_IMD, CONT_MODE_CLK_CLR_MASK,
+ 				csi->continues_clk ? CONT_MODE_CLK_CLR(1) : CONT_MODE_CLK_CLR(0));
+-		rk628_i2c_write(csi->rk628, CSITX1_CONFIG_DONE, CONFIG_DONE);
++		rk628_i2c_write(csi->rk628, CSITX1_CONFIG_DONE, CONFIG_DONE_IMD);
+ 	}
+ }
+ 
+@@ -1503,9 +1503,9 @@ static void rk628_csi_error_process(struct v4l2_subdev *sd)
+ 		if (csi->rk628->version >= RK628F_VERSION)
+ 			rk628_i2c_update_bits(csi->rk628, CSITX1_CSITX_EN,
+ 						CSITX_EN_MASK, CSITX_EN(0));
+-		rk628_i2c_write(csi->rk628, CSITX_CONFIG_DONE, CONFIG_DONE);
++		rk628_i2c_write(csi->rk628, CSITX_CONFIG_DONE, CONFIG_DONE_IMD);
+ 		if (csi->rk628->version >= RK628F_VERSION)
+-			rk628_i2c_write(csi->rk628, CSITX1_CONFIG_DONE, CONFIG_DONE);
++			rk628_i2c_write(csi->rk628, CSITX1_CONFIG_DONE, CONFIG_DONE_IMD);
+ 
+ 		usleep_range(5000, 5500);
+ 		rk628_csi_soft_reset(sd);
+-- 
+2.17.1
+

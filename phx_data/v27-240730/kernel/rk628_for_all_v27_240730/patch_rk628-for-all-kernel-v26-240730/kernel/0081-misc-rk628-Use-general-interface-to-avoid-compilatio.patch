@@ -1,0 +1,31 @@
+From bc7b5df1d51bb5392956287cbd08bb31533fda3c Mon Sep 17 00:00:00 2001
+From: Guochun Huang <hero.huang@rock-chips.com>
+Date: Thu, 26 Aug 2021 10:58:09 +0800
+Subject: [PATCH 081/232] misc: rk628: Use general interface to avoid
+ compilation error
+
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+Change-Id: I2964d981d135ed00d8f57d93066cd7cd3d1f401f
+---
+ drivers/misc/rk628/rk628.c | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/misc/rk628/rk628.c b/drivers/misc/rk628/rk628.c
+index aaa26accab81b7..6492526518c456 100755
+--- a/drivers/misc/rk628/rk628.c
++++ b/drivers/misc/rk628/rk628.c
+@@ -357,7 +357,10 @@ rk628_i2c_probe(struct i2c_client *client, const struct i2c_device_id *id)
+ 	rk628->client = client;
+ 	i2c_set_clientdata(client, rk628);
+ 
+-	rk628->soc_24M = devm_clk_get_optional(dev, "soc_24M");
++	rk628->soc_24M = devm_clk_get(dev, "soc_24M");
++	if (rk628->soc_24M == ERR_PTR(-ENOENT))
++		rk628->soc_24M = NULL;
++
+ 	if (IS_ERR(rk628->soc_24M)) {
+ 		ret = PTR_ERR(rk628->soc_24M);
+ 		dev_err(dev, "Unable to get soc_24M: %d\n", ret);
+-- 
+2.17.1
+

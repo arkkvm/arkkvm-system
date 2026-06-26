@@ -1,0 +1,87 @@
+From 0257dc09e61947138e12499dd4c69824d714c2d3 Mon Sep 17 00:00:00 2001
+From: Chen Shunqing <csq@rock-chips.com>
+Date: Wed, 25 Oct 2023 02:07:18 +0000
+Subject: [PATCH 06/30] media: i2c: rk628: add version parse func
+
+Change-Id: I079bcf7a95d38d1e902543fbc522e75a7695db72
+Signed-off-by: Chen Shunqing <csq@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628.c | 23 +++++++++++++++++++++++
+ drivers/media/i2c/rk628/rk628.h | 10 +++++++++-
+ 2 files changed, 32 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628.c b/drivers/media/i2c/rk628/rk628.c
+index 3a0975ac6b597..8b29c6ab85a30 100644
+--- a/drivers/media/i2c/rk628/rk628.c
++++ b/drivers/media/i2c/rk628/rk628.c
+@@ -475,6 +475,29 @@ void rk628_post_process_en(struct rk628 *rk628,
+ }
+ EXPORT_SYMBOL(rk628_post_process_en);
+ 
++static const char * const rk628_version[] = {
++	"UNKNOWN",
++	"RK628D",
++	"RK628F",
++};
++
++void rk628_version_parse(struct rk628 *rk628)
++{
++	u32 version;
++
++	rk628_i2c_read(rk628, GRF_SOC_VERSION, &version);
++	if (version == 0x20200326)
++		rk628->version = RK628D_VERSION;
++	else if (version == 0x20230321)
++		rk628->version = RK628F_VERSION;
++	else
++		rk628->version = RK628_UNKNOWN;
++
++	dev_info(rk628->dev, "rk628 version is: %s (%x)\n",
++		 rk628_version[rk628->version], version);
++}
++EXPORT_SYMBOL(rk628_version_parse);
++
+ MODULE_AUTHOR("Shunqing Chen <csq@rock-chips.com>");
+ MODULE_DESCRIPTION("Rockchip RK628 driver");
+ MODULE_LICENSE("GPL");
+diff --git a/drivers/media/i2c/rk628/rk628.h b/drivers/media/i2c/rk628/rk628.h
+index 3f15be0ba9291..755153e8b0524 100644
+--- a/drivers/media/i2c/rk628/rk628.h
++++ b/drivers/media/i2c/rk628/rk628.h
+@@ -190,7 +190,7 @@
+ #define GRF_OS_REG1			0x0144
+ #define GRF_OS_REG2			0x0148
+ #define GRF_OS_REG3			0x014c
+-#define GRF_SOC_VERSION			0x0150
++#define GRF_SOC_VERSION			0x0200
+ #define GRF_MAX_REGISTER		GRF_SOC_VERSION
+ 
+ enum {
+@@ -236,10 +236,17 @@ enum {
+ 	RK628_DEV_MAX,
+ };
+ 
++enum {
++	RK628_UNKNOWN,
++	RK628D_VERSION,
++	RK628F_VERSION,
++};
++
+ struct rk628 {
+ 	struct device *dev;
+ 	struct i2c_client *client;
+ 	struct regmap *regmap[RK628_DEV_MAX];
++	u8 version;
+ 	void *txphy;
+ };
+ 
+@@ -280,5 +287,6 @@ void rk628_post_process_en(struct rk628 *rk628,
+ 			   struct videomode *src,
+ 			   struct videomode *dst,
+ 			   u64 *dst_pclk);
++void rk628_version_parse(struct rk628 *rk628);
+ 
+ #endif
+-- 
+2.25.1
+

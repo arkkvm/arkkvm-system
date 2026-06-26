@@ -1,0 +1,48 @@
+From 88fae540d35827e573f120fe076d19273a57d269 Mon Sep 17 00:00:00 2001
+From: Shunqing Chen <csq@rock-chips.com>
+Date: Wed, 20 Oct 2021 10:52:07 +0800
+Subject: [PATCH 116/232] media: rk628-for-all: support 2 lanes for csi
+
+Signed-off-by: Shunqing Chen <csq@rock-chips.com>
+Change-Id: I1265afbfb221b36e85077d7ad0c93f348473c12b
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_csi.c      | 5 +++--
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c | 5 +++--
+ 2 files changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_csi.c b/drivers/media/i2c/rk628/rk628_csi.c
+index 00f126bdc295f3..7166c4dd2b62df 100644
+--- a/drivers/media/i2c/rk628/rk628_csi.c
++++ b/drivers/media/i2c/rk628/rk628_csi.c
+@@ -1245,8 +1245,9 @@ static int mipi_dphy_power_on(struct rk628_csi *csi)
+ 	unsigned int val;
+ 	u32 bus_width, mask;
+ 
+-	if ((csi->timings.bt.width == 3840) &&
+-			(csi->timings.bt.height == 2160)) {
++	if ((csi->timings.bt.width == 3840 &&
++	     csi->timings.bt.height == 2160) ||
++	    csi->csi_lanes_in_use <= 2) {
+ 		csi->lane_mbps = MIPI_DATARATE_MBPS_HIGH;
+ 	} else {
+ 		csi->lane_mbps = MIPI_DATARATE_MBPS_LOW;
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index 07243b62d89243..9aca43bdcd8411 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -1825,8 +1825,9 @@ static int mipi_dphy_power_on(struct rk628_csi *csi)
+ 	u32 bus_width, mask;
+ 	struct v4l2_subdev *sd = &csi->sd;
+ 
+-	if ((csi->timings.bt.width == 3840) &&
+-			(csi->timings.bt.height == 2160)) {
++	if ((csi->timings.bt.width == 3840 &&
++	     csi->timings.bt.height == 2160) ||
++	    csi->csi_lanes_in_use <= 2) {
+ 		csi->lane_mbps = MIPI_DATARATE_MBPS_HIGH;
+ 	} else {
+ 		csi->lane_mbps = MIPI_DATARATE_MBPS_LOW;
+-- 
+2.17.1
+

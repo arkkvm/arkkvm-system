@@ -1,0 +1,70 @@
+From 2f3e7432f59ed316ae44657de4b3a692f768f684 Mon Sep 17 00:00:00 2001
+From: Jianwei Fan <jianwei.fan@rock-chips.com>
+Date: Wed, 13 Mar 2024 11:52:03 +0800
+Subject: [PATCH 265/305] media: i2c: rk628: select edid by configure dual mipi
+
+Type: Fix
+Redmine ID:
+Associated modifications:
+Test: consider some SOC don't support dual mipi, so config dual mipi if
+need 4K@60
+config as:
+        dual-mipi = <1>;
+
+Signed-off-by: Jianwei Fan <jianwei.fan@rock-chips.com>
+Change-Id: Iab147d63cad210e01b798f668e352eeae62b3b90
+Signed-off-by: Guochun Huang <hero.huang@rock-chips.com>
+---
+ drivers/media/i2c/rk628/rk628_csi_v4l2.c | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/media/i2c/rk628/rk628_csi_v4l2.c b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+index 9c4aea5a46946d..a2796db16e8ddd 100644
+--- a/drivers/media/i2c/rk628/rk628_csi_v4l2.c
++++ b/drivers/media/i2c/rk628/rk628_csi_v4l2.c
+@@ -123,6 +123,7 @@ struct rk628_csi {
+ 	const struct rk628_plat_data *plat_data;
+ 	bool is_streaming;
+ 	bool csi_ints_en;
++	bool dual_mipi_use;
+ };
+ 
+ struct rk628_csi_mode {
+@@ -1332,7 +1333,7 @@ static void rk628_csi_initial(struct v4l2_subdev *sd)
+ 	def_edid.pad = 0;
+ 	def_edid.start_block = 0;
+ 	def_edid.blocks = 2;
+-	if (csi->rk628->version >= RK628F_VERSION)
++	if (csi->rk628->version >= RK628F_VERSION && csi->dual_mipi_use)
+ 		def_edid.edid = rk628f_edid_init_data;
+ 	else
+ 		def_edid.edid = edid_init_data;
+@@ -2545,6 +2546,7 @@ static int rk628_csi_probe_of(struct rk628_csi *csi)
+ 	bool hdcp1x_enable = false, i2s_enable_default = false;
+ 	bool scaler_en = false;
+ 	bool continues_clk = false;
++	bool dual_mipi_use = false;
+ 
+ 	csi->soc_24M = devm_clk_get(dev, "soc_24M");
+ 	if (csi->soc_24M == ERR_PTR(-ENOENT))
+@@ -2607,6 +2609,9 @@ static int rk628_csi_probe_of(struct rk628_csi *csi)
+ 	if (of_property_read_bool(dev->of_node, "continues-clk"))
+ 		continues_clk = true;
+ 
++	if (of_property_read_bool(dev->of_node, "dual-mipi"))
++		dual_mipi_use = true;
++
+ 	ep = of_graph_get_next_endpoint(dev->of_node, NULL);
+ 	if (!ep) {
+ 		dev_err(dev, "missing endpoint node\n");
+@@ -2648,6 +2653,7 @@ static int rk628_csi_probe_of(struct rk628_csi *csi)
+ 	if (csi->scaler_en)
+ 		csi->timings = dst_timing;
+ 	csi->continues_clk = continues_clk;
++	csi->dual_mipi_use = dual_mipi_use;
+ 
+ 	csi->rxphy_pwron = false;
+ 	csi->txphy_pwron = false;
+-- 
+2.17.1
+
