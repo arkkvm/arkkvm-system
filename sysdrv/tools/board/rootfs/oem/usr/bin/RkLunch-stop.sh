@@ -26,7 +26,6 @@ rcK()
 
 echo "Stop Application ..."
 killall rkipc
-killall udhcpc
 
 while [ 1 ];
 do

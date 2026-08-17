@@ -1,0 +1,152 @@
+#!/bin/sh
+# network-config-unified — single network.conf + single refresh script
+set -e
+
+NWU_ROOT="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
+export NWU_ROOT
+
+# shellcheck source=/dev/null
+. "$NWU_ROOT/lib/common.sh"
+# shellcheck source=/dev/null
+. "$NWU_ROOT/lib/config.sh"
+
+nwu_usage() {
+	cat <<'EOF'
+network-config-unified — ArkKVM simplified networking
+
+Assumes the app layer no longer embeds network config logic and only
+maintains a network.conf; all networking is handled by this tool +
+refresh-network.sh.
+
+Usage:
+  ./ctl <command> [args...]
+
+Commands:
+  help                 Show help
+  refresh [network.conf]  Read config and refresh network (default NETWORK_CONF)
+                          Supports --staging | --committed
+  conf [network.conf]     Show parsed configuration
+  status               Show runtime network info (IPv4/IPv6/VLAN fields as in UI)
+  vlan status          Show VLAN subinterface status
+  vlan cleanup-pending Clean up .pending/.rollback temp files
+  vlan disable         Disable VLAN in network.conf and refresh (serial rescue)
+  dhcp <op> [iface]    Operate on the backend selected in conf
+                       start | stop | restart | renew | release | lease
+                       iface optional, e.g. eth0.10
+  resolv show          Show resolv.conf
+  test [subset]        Run tests (all|parse|dhcp|refresh)
+  dry-run <command>    Simulate subsequent command
+
+network.conf key sections:
+  [dhcp] client=udhcpc|dhcpcd   — after switch, all DHCP ops use that backend only
+  [ipv4] mode=dhcp|static|disabled
+  [ipv6] mode=slaac|static|link_local|disabled
+
+Environment:
+  NWU_DRY_RUN=1        Simulate
+  NWU_FORCE=1          Attempt real ops even without eth0
+  NETWORK_CONF=...     Config path (default /userdata/arkkvm/network.conf)
+
+Examples:
+  ./ctl test
+  ./ctl dry-run refresh ./config/network.conf.example
+  sudo ./ctl refresh
+  sudo ./ctl refresh --staging /userdata/arkkvm/network.conf.pending
+  sudo ./ctl vlan status
+  sudo ./ctl vlan disable
+  sudo ./ctl dhcp renew eth0.10
+
+EOF
+}
+
+nwu_boot() {
+	nwu_load_paths
+	nwu_source_libs
+}
+
+cmd="${1:-help}"
+shift || true
+
+case "$cmd" in
+	help|-h|--help)
+		nwu_usage
+		;;
+	dry-run)
+		export NWU_DRY_RUN=1
+		msg_warn "dry-run enabled"
+		exec "$0" "$@"
+		;;
+	test)
+		exec sh "$NWU_ROOT/scripts/run-tests.sh" "${1:-all}"
+		;;
+	refresh)
+		exec sh "$NWU_ROOT/scripts/refresh-network.sh" "$@"
+		;;
+	conf)
+		nwu_boot
+		nwu_conf_show "$@"
+		;;
+	status)
+		nwu_boot
+		nwu_conf_parse 2>/dev/null || true
+		nwu_state_print
+		;;
+	vlan)
+		nwu_boot
+		sub="${1:-status}"
+		shift || true
+		case "$sub" in
+		status)
+			nwu_conf_parse 2>/dev/null || true
+			nwu_vlan_status
+			;;
+		cleanup-pending)
+			nwu_vlan_cleanup_pending
+			msg_ok "Cleaned VLAN pending temp files"
+			;;
+		disable)
+			# Serial rescue when SSH is unreachable after a bad VLAN config.
+			nwu_require_root
+			nwu_vlan_disable_in_conf "$NETWORK_CONF"
+			nwu_vlan_cleanup_pending
+			export NWU_APPLY_MODE=committed
+			sh "$NWU_ROOT/scripts/refresh-network.sh" --committed "$NETWORK_CONF"
+			msg_ok "VLAN disabled; untagged eth0 restored from network.conf"
+			msg_info "If arkkvm_app is running, it will sync encrypted config on next getVlanSettings/boot"
+			;;
+		*)
+			die "Usage: ctl vlan status | cleanup-pending | disable"
+			;;
+		esac
+		;;
+	dhcp)
+		nwu_boot
+		nwu_require_root
+		op="${1:-lease}"
+		shift || true
+		iface=""
+		if [ $# -gt 0 ]; then
+			case "$1" in
+			start|stop|restart|renew|release|lease) ;;
+			*)
+				iface="$1"
+				shift || true
+				;;
+			esac
+		fi
+		nwu_dhcp_op "$op" "$iface"
+		;;
+	resolv)
+		nwu_boot
+		sub="${1:-show}"
+		case "$sub" in
+		show) nwu_resolv_show ;;
+		*) die "Usage: ctl resolv show" ;;
+		esac
+		;;
+	*)
+		msg_err "Unknown command: $cmd"
+		nwu_usage
+		exit 1
+		;;
+esac

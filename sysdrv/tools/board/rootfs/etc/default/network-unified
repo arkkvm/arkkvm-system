@@ -1,0 +1,5 @@
+# network-config-unified boot autostart config
+NWU_ROOT=/oem/usr/bin/arkkvm-network
+NETWORK_CONF=/userdata/arkkvm/network.conf
+USERDATA_DIR=/userdata/arkkvm
+WAIT_USERDATA_SEC=30

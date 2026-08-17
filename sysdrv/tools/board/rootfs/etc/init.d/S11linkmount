@@ -1,7 +1,5 @@
 #!/bin/sh
 bootmedium=emmc
-STATIC_CONF=/userdata/arkkvm/static_ip.conf
-STATIC_IF=eth0
 DHCPCD_DB_PERSIST_DIR=/userdata/arkkvm/dhcpcd
 DHCPCD_DB_RUNTIME_DIR=/var/db/dhcpcd
 # 与 S31arkkvmapp FT_IMG_PATH 一致（关机卸 loop 用）
@@ -60,17 +58,19 @@ case $bootmedium in
 		if [ "$root_dev" = "$part_realdev" ];then
 			resize2fs $part_dev
 		else
-			# userdata/ota 等：全量 e2fsck -y 每次开机都扫整盘，干净卷也极慢；先 -p 预检/日志回放，失败再 -y
+			# userdata/ota 等：先 -p 预检/日志回放，失败再 -y
 			e2fsck -p "$part_dev" </dev/null 2>/dev/null
 			ec=$?
 			[ "$ec" -ge 4 ] 2>/dev/null && e2fsck -y "$part_dev" </dev/null 2>/dev/null || true
-			mount -t $part_fstype $part_dev $mountpt
+			# 确保有 journal（data=writeback 依赖 journal 做崩溃恢复）
+			tune2fs -O has_journal "$part_dev" 2>/dev/null || true
+			mount -t $part_fstype -o data=writeback,journal_async_commit,noatime $part_dev $mountpt
 			if [ $? -eq 0 ]; then
 				resize2fs $part_dev
 				tune2fs $part_dev -L $partname -c 0 -i 0
 			else
 				echo "mount $partname error, try to format..."
-				mke2fs -F -L $partname $part_dev  && 					tune2fs -c 0 -i 0 $part_dev && 					mount -t $part_fstype $part_dev $mountpt
+				mke2fs -t ext4 -F -L $partname $part_dev && tune2fs -c 0 -i 0 $part_dev && mount -t $part_fstype -o data=writeback,journal_async_commit,noatime $part_dev $mountpt
 			fi
 		fi
 		;;

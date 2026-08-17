@@ -133,7 +133,4 @@ echo 1 > /proc/sys/vm/overcommit_memory
 
 post_chk &
 # phx_id_confirm &
-phx152_kvm.sh 
-
- 
-/oem/usr/bin/gen_info.sh > /run/udhcpc.eth0.info & 
+phx152_kvm.sh

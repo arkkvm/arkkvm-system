@@ -1,0 +1,322 @@
+#!/bin/sh
+#
+# network-config-unified boot autostart (BusyBox init.d)
+#
+# Install (on device):
+#   sudo cp init/S16network /etc/init.d/S16network
+#   sudo chmod +x /etc/init.d/S16network
+#   or: sudo ./scripts/install-init.sh
+#
+# Suggested boot order:
+#   S11linkmount (userdata mount) → this script → S20appinit
+# When using this scheme, disable legacy S15dhcpcd to avoid conflicting
+# with the unified DHCP backend.
+#
+# Optional overrides:
+#   /etc/default/network-unified
+
+### BEGIN INIT INFO
+# Provides:          network-unified
+# Required-Start:    $local_fs
+# Required-Stop:     $local_fs
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Apply network.conf via network-config-unified
+### END INIT INFO
+
+# Install root (adjust for device path, or override via /etc/default/network-unified)
+NWU_ROOT="${NWU_ROOT:-/oem/usr/bin/arkkvm-network}"
+
+# shellcheck source=/dev/null
+[ -f /etc/default/network-unified ] && . /etc/default/network-unified
+
+REFRESH_SCRIPT="$NWU_ROOT/scripts/refresh-network.sh"
+NETWORK_CONF="${NETWORK_CONF:-/userdata/arkkvm/network.conf}"
+USERDATA_DIR="${USERDATA_DIR:-/userdata/arkkvm}"
+BOOT_LOG="${NETWORK_LOG:-/userdata/arkkvm/network.log}"
+WAIT_USERDATA_SEC="${WAIT_USERDATA_SEC:-30}"
+NETWORK_LINK_MONITOR="${NETWORK_LINK_MONITOR:-1}"
+LINK_MONITOR_INTERVAL_SEC="${LINK_MONITOR_INTERVAL_SEC:-2}"
+LINK_MONITOR_PIDFILE="${LINK_MONITOR_PIDFILE:-/run/network-unified-link-monitor.pid}"
+# Set by ensure_network_conf when migrate-legacy-network.sh already refreshed.
+SKIP_BOOT_REFRESH=0
+
+log_msg() {
+	TS=$(date '+%Y-%m-%d %H:%M:%S')
+	LINE="$TS [init] $*"
+	echo "$LINE"
+	mkdir -p "$(dirname "$BOOT_LOG")" 2>/dev/null || true
+	echo "$LINE" >>"$BOOT_LOG" 2>/dev/null || echo "$LINE" >>/tmp/network-unified-init.log 2>/dev/null || true
+}
+
+wait_userdata() {
+	if [ -f "$NETWORK_CONF" ]; then
+		return 0
+	fi
+	if [ ! -d "$USERDATA_DIR" ]; then
+		log_msg "Waiting for userdata mount: $USERDATA_DIR (${WAIT_USERDATA_SEC}s)"
+	fi
+	i=0
+	while [ "$i" -lt "$WAIT_USERDATA_SEC" ]; do
+		if [ -d "$USERDATA_DIR" ] && [ -w "$USERDATA_DIR" ]; then
+			log_msg "userdata ready"
+			return 0
+		fi
+		sleep 1
+		i=$((i + 1))
+	done
+	log_msg "Warning: userdata wait timed out, continuing refresh attempt"
+	return 1
+}
+
+# True when conf is a boot-time DHCP placeholder; L3 apply is deferred to arkkvm_app
+# so encrypted config / static_ip can be migrated once before the first refresh.
+is_provisional_conf() {
+	[ -f "$NETWORK_CONF" ] || return 1
+	grep -q 'provisional-template' "$NETWORK_CONF" 2>/dev/null
+}
+
+ensure_network_conf() {
+	SKIP_BOOT_REFRESH=0
+	if [ -f "$NETWORK_CONF" ]; then
+		return 0
+	fi
+	# Try migrating from legacy config first (static_ip.conf, etc.)
+	MIGRATE_SCRIPT="$NWU_ROOT/scripts/migrate-legacy-network.sh"
+	if [ -x "$MIGRATE_SCRIPT" ]; then
+		if "$MIGRATE_SCRIPT"; then
+			if [ -f "$NETWORK_CONF" ]; then
+				# migrate-legacy already ran refresh-network on success; avoid a second apply.
+				if grep -q 'Migrated from' "$NETWORK_CONF" 2>/dev/null && [ ! -f "${STATIC_IP_CONF:-/userdata/arkkvm/static_ip.conf}" ]; then
+					SKIP_BOOT_REFRESH=1
+					log_msg "Legacy static_ip migration already applied — skipping duplicate boot refresh"
+				fi
+				return 0
+			fi
+		fi
+	fi
+	example="$NWU_ROOT/config/network.conf.example"
+	if [ -f "$example" ]; then
+		mkdir -p "$(dirname "$NETWORK_CONF")" || return 1
+		{
+			echo "# provisional-template — defer L3 apply until arkkvm_app migrates encrypted config"
+			cat "$example"
+		} >"$NETWORK_CONF"
+		log_msg "First boot: created provisional $NETWORK_CONF from template (refresh deferred)"
+		return 0
+	fi
+	log_msg "Error: missing $NETWORK_CONF and no template $example"
+	return 1
+}
+
+start_link_monitor() {
+	[ "$NETWORK_LINK_MONITOR" = "1" ] || return 0
+
+	if [ -f "$LINK_MONITOR_PIDFILE" ]; then
+		_pid=$(cat "$LINK_MONITOR_PIDFILE" 2>/dev/null)
+		if [ -n "$_pid" ] && kill -0 "$_pid" 2>/dev/null; then
+			return 0
+		fi
+		rm -f "$LINK_MONITOR_PIDFILE" 2>/dev/null || true
+	fi
+
+	(
+		last_carrier=""
+		while true; do
+			sleep "$LINK_MONITOR_INTERVAL_SEC"
+			[ -f "$NETWORK_CONF" ] || continue
+			# Skip until arkkvm_app replaces provisional template
+			grep -q 'provisional-template' "$NETWORK_CONF" 2>/dev/null && continue
+
+			# shellcheck source=/dev/null
+			. "$NWU_ROOT/lib/common.sh"
+			# shellcheck source=/dev/null
+			. "$NWU_ROOT/lib/config.sh"
+			# shellcheck source=/dev/null
+			. "$NWU_ROOT/lib/parse.sh"
+			nwu_load_paths
+			nwu_conf_parse "$NETWORK_CONF" 2>/dev/null || continue
+
+			iface="$CONF_IFACE"
+			[ "${CONF_VLAN_ENABLED:-false}" = "true" ] && iface="$CONF_VLAN_PARENT"
+			carrier_file="/sys/class/net/$iface/carrier"
+			[ -r "$carrier_file" ] || continue
+			carrier=$(cat "$carrier_file" 2>/dev/null)
+			[ -n "$carrier" ] || continue
+
+			if [ -z "$last_carrier" ]; then
+				last_carrier="$carrier"
+				continue
+			fi
+
+			if [ "$carrier" != "$last_carrier" ]; then
+				log_msg "Link state change iface=$iface $last_carrier->$carrier"
+				if [ "$carrier" = "1" ]; then
+					if NWU_APPLY_MODE=committed "$REFRESH_SCRIPT" --committed "$NETWORK_CONF" >/dev/null 2>&1; then
+						log_msg "Network refresh after link up succeeded iface=$iface"
+					else
+						log_msg "Network refresh after link up failed iface=$iface"
+					fi
+				elif [ "$carrier" = "0" ]; then
+					# Link down: flush L3 so UI/SSH see no stale IP (#1).
+					# shellcheck source=/dev/null
+					. "$NWU_ROOT/lib/common.sh"
+					# shellcheck source=/dev/null
+					. "$NWU_ROOT/lib/config.sh"
+					nwu_load_paths
+					nwu_source_libs
+					nwu_conf_parse "$NETWORK_CONF" 2>/dev/null || true
+					nwu_dhcp_retry_bump_gen 2>/dev/null || true
+					nwu_dhcp_retry_stop 2>/dev/null || true
+					NET_IF="$iface"
+					export NET_IF
+					nwu_udhcpc_stop 2>/dev/null || true
+					nwu_link_flush_ipv4 2>/dev/null || true
+					nwu_link_flush_ipv6_global 2>/dev/null || true
+					# Drop stale defaults for this iface (and VLAN subifs below).
+					while ip route del default dev "$iface" 2>/dev/null; do :; done
+					rm -f "$(printf "$LEASE_FILE" "$iface")" 2>/dev/null || true
+					if [ "${CONF_VLAN_ENABLED:-false}" = "true" ]; then
+						for vif in $(nwu_vlan_list_ifaces "$CONF_VLAN_PARENT" 2>/dev/null); do
+							NET_IF="$vif"
+							export NET_IF
+							nwu_udhcpc_stop 2>/dev/null || true
+							nwu_link_flush_ipv4 2>/dev/null || true
+							nwu_link_flush_ipv6_global 2>/dev/null || true
+							while ip route del default dev "$vif" 2>/dev/null; do :; done
+							rm -f "$(printf "$LEASE_FILE" "$vif")" 2>/dev/null || true
+						done
+						nwu_vlan_strip_all_default_routes 2>/dev/null || true
+					fi
+					log_msg "Flushed addresses after link down iface=$iface"
+				fi
+				last_carrier="$carrier"
+			fi
+		done
+	) &
+	echo "$!" >"$LINK_MONITOR_PIDFILE"
+	log_msg "Started link monitor pid=$(cat "$LINK_MONITOR_PIDFILE" 2>/dev/null)"
+}
+
+stop_link_monitor() {
+	[ -f "$LINK_MONITOR_PIDFILE" ] || return 0
+	_pid=$(cat "$LINK_MONITOR_PIDFILE" 2>/dev/null)
+	if [ -n "$_pid" ]; then
+		kill "$_pid" 2>/dev/null || true
+	fi
+	rm -f "$LINK_MONITOR_PIDFILE" 2>/dev/null || true
+}
+
+do_start() {
+	log_msg "======== S16network start ========"
+
+	if [ ! -x "$REFRESH_SCRIPT" ]; then
+		log_msg "Error: refresh script not executable: $REFRESH_SCRIPT"
+		return 1
+	fi
+
+	wait_userdata || true
+	ensure_network_conf || return 1
+
+	# Clean unconfirmed VLAN pending files (apply committed network.conf only)
+	# shellcheck source=/dev/null
+	. "$NWU_ROOT/lib/common.sh"
+	# shellcheck source=/dev/null
+	. "$NWU_ROOT/lib/config.sh"
+	nwu_load_paths
+	# shellcheck source=/dev/null
+	. "$NWU_ROOT/lib/vlan.sh"
+	nwu_vlan_cleanup_pending
+
+	# Older app promote left apply_mode=staging in committed network.conf; boot must
+	# always use committed semantics (and heal the file so later refreshes stay correct).
+	if [ -f "$NETWORK_CONF" ] && grep -q '^apply_mode=staging$' "$NETWORK_CONF" 2>/dev/null; then
+		log_msg "Healing $NETWORK_CONF: apply_mode=staging -> committed"
+		sed -i 's/^apply_mode=staging$/apply_mode=committed/' "$NETWORK_CONF" 2>/dev/null || true
+	fi
+	export NWU_APPLY_MODE=committed
+
+	export NWU_ROOT NETWORK_CONF
+
+	# OTA/first-boot placeholder: do not apply DHCP template before app migrates
+	# encrypted L3 / static_ip.conf (avoids double refresh and IP flap).
+	if is_provisional_conf; then
+		log_msg "Provisional network.conf detected — deferring refresh to arkkvm_app"
+		start_link_monitor
+		return 0
+	fi
+
+	# static_ip path: migrate-legacy-network.sh already refreshed once this boot.
+	if [ "$SKIP_BOOT_REFRESH" = "1" ]; then
+		start_link_monitor
+		return 0
+	fi
+
+	# Refresh in background: VLAN modules are loaded by S20/RkLunch (insmod_ko.sh).
+	# vlan.sh only waits for them — a foreground refresh here would block S20 forever.
+	log_msg "Starting network refresh in background (waits for VLAN modules if needed)"
+	(
+		export NWU_ROOT NETWORK_CONF NWU_APPLY_MODE=committed
+		if "$REFRESH_SCRIPT" --committed "$NETWORK_CONF"; then
+			log_msg "Network refresh succeeded"
+			sleep 12
+			. "$NWU_ROOT/lib/common.sh"
+			. "$NWU_ROOT/lib/config.sh"
+			nwu_load_paths
+			nwu_source_libs
+			nwu_conf_parse "$NETWORK_CONF" 2>/dev/null || exit 0
+			if [ "$CONF_IPV4_MODE" = "dhcp" ] && [ "$CONF_DHCP_CLIENT" = "udhcpc" ]; then
+				nwu_udhcpc_wait_lease 2>/dev/null || nwu_udhcpc_write_lease_from_system 2>/dev/null || true
+			fi
+		else
+			log_msg "Error: refresh-network failed"
+		fi
+		start_link_monitor
+	) &
+	return 0
+}
+
+do_stop() {
+	log_msg "======== S16network stop ========"
+	stop_link_monitor
+	# Stop DHCP clients on shutdown (harmless in static mode)
+	killall udhcpc 2>/dev/null || true
+	if [ -x /etc/init.d/S15dhcpcd ]; then
+		/etc/init.d/S15dhcpcd stop 2>/dev/null || true
+	fi
+	killall dhcpcd 2>/dev/null || true
+	log_msg "DHCP clients stopped"
+	return 0
+}
+
+case "$1" in
+start)
+	do_start
+	;;
+stop)
+	do_stop
+	;;
+restart | reload)
+	do_stop
+	sleep 1
+	do_start
+	;;
+status)
+	if [ -f "$NETWORK_CONF" ]; then
+		echo "network.conf: $NETWORK_CONF (present)"
+	else
+		echo "network.conf: $NETWORK_CONF (missing)"
+	fi
+	if [ -x "$REFRESH_SCRIPT" ]; then
+		echo "refresh: $REFRESH_SCRIPT (executable)"
+	else
+		echo "refresh: $REFRESH_SCRIPT (unavailable)"
+	fi
+	;;
+*)
+	echo "Usage: $0 {start|stop|restart|reload|status}"
+	exit 1
+	;;
+esac
+
+exit $?
