@@ -11,6 +11,7 @@ coordination service.
 |------|---------|
 | `sysdrv/tools/board/netbird/fetch-netbird.sh` | Downloads the pinned client release and verifies its SHA256 |
 | `sysdrv/tools/board/rootfs/oem/usr/bin/netbird/netbird` | Client + daemon binary (fetched, not committed) |
+| `sysdrv/tools/board/rootfs/oem/usr/bin/netbird/cacert.pem` | Mozilla CA bundle (fetched, not committed) |
 | `sysdrv/tools/board/rootfs/etc/init.d/S41netbird` | Init script, driven by `arkkvm_app` (same contract as `S40tailscale`) |
 
 Run `fetch-netbird.sh` once before building the rootfs.
@@ -38,6 +39,11 @@ NB_SETUP_KEY=XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX /etc/init.d/S41netbird registe
 ```
 
 ## Notes
+
+- The rootfs ships no CA certificates (`/etc/ssl/certs` is empty). NetBird is a
+  Go binary and verifies TLS against the system roots, so `S41netbird` exports
+  `SSL_CERT_FILE` pointing at the bundled `cacert.pem`. Without it, connecting
+  to the management server fails with `context deadline exceeded`.
 
 - NetBird uses kernel WireGuard when available and otherwise falls back to
   userspace WireGuard on a TUN device (same requirement as Tailscale).

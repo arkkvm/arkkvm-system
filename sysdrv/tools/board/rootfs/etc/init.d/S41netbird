@@ -10,6 +10,7 @@ ERROR_CODE_APP_NOT_FOUND=1
 ERROR_CODE_DISABLE=2
 
 APP_PATH=/oem/usr/bin/netbird/netbird
+CA_BUNDLE=/oem/usr/bin/netbird/cacert.pem
 DATA_PATH=/userdata/arkkvm/netbird
 STATE_PATH="$DATA_PATH/state"
 DAEMON_ADDR="unix:///var/run/netbird.sock"
@@ -31,6 +32,13 @@ DAEMON_WAIT_SECONDS=15
 export NB_STATE_DIR="$STATE_PATH"
 export HOME="$DATA_PATH/home"
 export XDG_CONFIG_HOME="$DATA_PATH/home/.config"
+
+# The rootfs ships no CA certificates (/etc/ssl/certs is empty), so Go's TLS
+# verification of the management/signal/relay servers would fail. Use the
+# Mozilla CA bundle installed next to the binary unless one is set already.
+if [ -z "$SSL_CERT_FILE" ] && [ -s "$CA_BUNDLE" ]; then
+	export SSL_CERT_FILE="$CA_BUNDLE"
+fi
 
 nb() {
 	"$APP_PATH" --daemon-addr "$DAEMON_ADDR" --log-file console "$@"
@@ -302,6 +310,7 @@ Other:
 
 Paths:
   netbird:     $APP_PATH
+  CA bundle:   $CA_BUNDLE (SSL_CERT_FILE)
   data dir:    $DATA_PATH/
   state dir:   $STATE_PATH/ (NB_STATE_DIR)
   socket:      $DAEMON_SOCKET

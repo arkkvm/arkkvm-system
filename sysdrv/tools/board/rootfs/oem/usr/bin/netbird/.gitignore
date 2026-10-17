@@ -1,5 +1,6 @@
 # Fetched by sysdrv/tools/board/netbird/fetch-netbird.sh (pinned version + SHA256)
 netbird
+cacert.pem
 VERSION
 LICENSE
 LICENSES/
