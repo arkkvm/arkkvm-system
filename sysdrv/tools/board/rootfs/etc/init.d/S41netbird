@@ -1,0 +1,380 @@
+#!/bin/sh
+#
+# netbird          Starts the NetBird daemon (WireGuard mesh VPN).
+#
+# Contract mirrors S40tailscale so arkkvm_app can drive both the same way.
+# Exit codes: 0 = ok, 1 = binary not found, 2 = disabled, other = command error.
+#
+
+ERROR_CODE_APP_NOT_FOUND=1
+ERROR_CODE_DISABLE=2
+
+APP_PATH=/oem/usr/bin/netbird/netbird
+DATA_PATH=/userdata/arkkvm/netbird
+STATE_PATH="$DATA_PATH/state"
+DAEMON_ADDR="unix:///var/run/netbird.sock"
+DAEMON_SOCKET=/var/run/netbird.sock
+PID_FILE=/var/run/netbird.pid
+
+CONFIG_FILE_ENABLE="enable"
+CONFIG_FILE_MANAGEMENT_URL="management_url"
+CONFIG_FILE_HOSTNAME="hostname"
+
+# Seconds to wait for the daemon socket before running CLI commands.
+DAEMON_WAIT_SECONDS=15
+
+[ -f "$APP_PATH" ] || { echo "NetBird binary not found"; exit $ERROR_CODE_APP_NOT_FOUND; }
+
+# Keep all NetBird state (profile config, WireGuard key, service params) on
+# /userdata so it survives firmware updates. HOME/XDG_CONFIG_HOME keep the
+# CLI's per-user profile pointer off the (read-only) rootfs.
+export NB_STATE_DIR="$STATE_PATH"
+export HOME="$DATA_PATH/home"
+export XDG_CONFIG_HOME="$DATA_PATH/home/.config"
+
+nb() {
+	"$APP_PATH" --daemon-addr "$DAEMON_ADDR" --log-file console "$@"
+}
+
+ensure_dirs() {
+	mkdir -p "$STATE_PATH" "$XDG_CONFIG_HOME"
+	chmod 700 "$DATA_PATH" "$STATE_PATH"
+}
+
+# Track the daemon by PID: "netbird" CLI calls (status/up) share the process name.
+is_running() {
+	[ -s "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null
+}
+
+wait_for_daemon() {
+	i=0
+	while [ $i -lt $DAEMON_WAIT_SECONDS ]; do
+		[ -S "$DAEMON_SOCKET" ] && return 0
+		sleep 1
+		i=$((i + 1))
+	done
+	echo "NetBird daemon socket $DAEMON_SOCKET not available"
+	return 1
+}
+
+start() {
+	ensure_dirs
+
+	if ! is_enabled; then
+		echo "NetBird is disabled, skipping NetBird startup"
+		exit 0
+	fi
+
+	if is_running; then
+		echo "NetBird already running"
+		exit 0
+	fi
+
+	# The daemon reconnects automatically on boot using the persisted profile.
+	"$APP_PATH" service run \
+		--daemon-addr "$DAEMON_ADDR" \
+		--log-file syslog \
+		--log-level info \
+		> /dev/null 2>&1 &
+	echo $! > "$PID_FILE"
+	echo "NetBird started"
+}
+
+stop() {
+	echo "Stopping NetBird"
+	if is_running; then
+		pid=$(cat "$PID_FILE")
+		kill "$pid" 2>/dev/null
+		i=0
+		while kill -0 "$pid" 2>/dev/null && [ $i -lt 5 ]; do
+			sleep 1
+			i=$((i + 1))
+		done
+		kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null
+	fi
+	rm -f "$PID_FILE" "$DAEMON_SOCKET"
+	echo "NetBird stopped"
+}
+
+restart() {
+	stop
+	start
+}
+
+# Build "netbird up" arguments from persisted settings.
+# The setup key is taken from NB_SETUP_KEY in the environment (never argv),
+# so it does not show up in the process list.
+up_cmd() {
+	set -- up --no-browser
+	if [ -s "$DATA_PATH/$CONFIG_FILE_MANAGEMENT_URL" ]; then
+		set -- "$@" --management-url "$(cat "$DATA_PATH/$CONFIG_FILE_MANAGEMENT_URL")"
+	fi
+	if [ -s "$DATA_PATH/$CONFIG_FILE_HOSTNAME" ]; then
+		set -- "$@" --hostname "$(cat "$DATA_PATH/$CONFIG_FILE_HOSTNAME")"
+	fi
+	nb "$@"
+}
+
+register() {
+	if ! is_enabled; then
+		echo "NetBird is disabled, skipping registration"
+		exit $ERROR_CODE_DISABLE
+	fi
+
+	is_running || start
+	wait_for_daemon || exit 3
+	up_cmd
+}
+
+register_force() {
+	if ! is_enabled; then
+		echo "NetBird is disabled, skipping device registration"
+		exit $ERROR_CODE_DISABLE
+	fi
+
+	is_running || start
+	wait_for_daemon || exit 3
+	nb down > /dev/null 2>&1
+	# Deregisters the peer from management so it can join again (other account/key).
+	nb logout > /dev/null 2>&1
+	up_cmd
+}
+
+clear_state() {
+	rm -rf "${STATE_PATH:?}"/* "${DATA_PATH:?}/home"
+}
+
+reset_config() {
+	if is_running; then
+		nb down > /dev/null 2>&1
+	fi
+	stop
+	clear_state
+	rm -f "$DATA_PATH/$CONFIG_FILE_MANAGEMENT_URL" "$DATA_PATH/$CONFIG_FILE_HOSTNAME"
+	echo "NetBird config reset"
+
+	if is_enabled; then
+		echo "NetBird is enabled, restarting NetBird"
+		start
+	fi
+}
+
+reset() {
+	disable
+	clear_state
+	rm -f "$DATA_PATH/$CONFIG_FILE_MANAGEMENT_URL" "$DATA_PATH/$CONFIG_FILE_HOSTNAME"
+	echo "NetBird config reset"
+}
+
+get_ip() {
+	if ! is_enabled; then
+		echo "NetBird is disabled, skipping IP retrieval"
+		exit $ERROR_CODE_DISABLE
+	fi
+
+	nb status --ipv4
+	echo
+	nb status --ipv6
+}
+
+get_status() {
+	if ! is_enabled; then
+		echo "NetBird is disabled, skipping status retrieval"
+		exit $ERROR_CODE_DISABLE
+	fi
+
+	wait_for_daemon || exit 3
+	nb status --json
+}
+
+enable() {
+	ensure_dirs
+
+	touch "$DATA_PATH/$CONFIG_FILE_ENABLE"
+	echo "NetBird is enabled, restarting NetBird"
+	restart
+}
+
+disable() {
+	rm -f "$DATA_PATH/$CONFIG_FILE_ENABLE"
+	echo "NetBird is disabled, stopping NetBird"
+	stop
+}
+
+set_management_url() {
+	management_url=$1
+	ensure_dirs
+
+	old=""
+	[ -s "$DATA_PATH/$CONFIG_FILE_MANAGEMENT_URL" ] && old=$(cat "$DATA_PATH/$CONFIG_FILE_MANAGEMENT_URL")
+
+	if [ -z "$management_url" ]; then
+		rm -f "$DATA_PATH/$CONFIG_FILE_MANAGEMENT_URL"
+		echo "Management URL reset"
+	else
+		printf '%s\n' "$management_url" > "$DATA_PATH/$CONFIG_FILE_MANAGEMENT_URL"
+		echo "Management URL set to $management_url"
+	fi
+
+	# A different control plane means a different identity: drop the old peer state.
+	if [ "$old" != "$management_url" ]; then
+		stop
+		clear_state
+		if is_enabled; then
+			echo "NetBird is enabled, restarting NetBird"
+			start
+		fi
+	fi
+}
+
+get_management_url() {
+	if [ -s "$DATA_PATH/$CONFIG_FILE_MANAGEMENT_URL" ]; then
+		cat "$DATA_PATH/$CONFIG_FILE_MANAGEMENT_URL"
+	fi
+}
+
+set_hostname() {
+	peer_hostname=$1
+	ensure_dirs
+
+	if [ -z "$peer_hostname" ]; then
+		rm -f "$DATA_PATH/$CONFIG_FILE_HOSTNAME"
+		echo "Hostname reset"
+	else
+		printf '%s\n' "$peer_hostname" > "$DATA_PATH/$CONFIG_FILE_HOSTNAME"
+		echo "Hostname set to $peer_hostname"
+	fi
+}
+
+get_hostname() {
+	if [ -s "$DATA_PATH/$CONFIG_FILE_HOSTNAME" ]; then
+		cat "$DATA_PATH/$CONFIG_FILE_HOSTNAME"
+	fi
+}
+
+get_enable() {
+	if is_enabled; then
+		echo "enable"
+	else
+		echo "disable"
+	fi
+}
+
+is_enabled() {
+	[ -f "$DATA_PATH/$CONFIG_FILE_ENABLE" ]
+}
+
+usage() {
+	cat <<EOF
+Usage: $0 <command> [args]
+
+Service control (for init / manual):
+  start                 Start the NetBird daemon (only when enabled)
+  stop                  Stop the NetBird daemon
+  restart | reload      Stop then start
+
+Enable / disable (persisted under $DATA_PATH/):
+  enable                Mark enabled, then restart daemon
+  disable               Mark disabled, then stop daemon (keeps settings and peer state)
+  getEnable             Print "enable" or "disable"
+
+Join network (requires enable):
+  register              Run "netbird up". With NB_SETUP_KEY set in the
+                        environment the peer joins non-interactively,
+                        otherwise an SSO login URL is printed.
+  registerForce         "netbird down" + "netbird logout", then "netbird up"
+
+Configuration:
+  setManagementUrl <url>  Persist management URL (self-hosted). Omit <url> to use
+                          NetBird Cloud. Changing it clears the peer state.
+  getManagementUrl        Print persisted management URL (empty = NetBird Cloud)
+  setHostname <name>      Persist peer hostname used on next register. Omit to clear.
+  getHostname             Print persisted peer hostname
+  resetConfig             Remove peer state + settings; restart if enabled
+  reset                   Same as resetConfig, then disable
+
+Status:
+  getIp                 Show NetBird IP address(es)
+  getStatus             Show "netbird status --json"
+
+Other:
+  help                  Show this message
+
+Paths:
+  netbird:     $APP_PATH
+  data dir:    $DATA_PATH/
+  state dir:   $STATE_PATH/ (NB_STATE_DIR)
+  socket:      $DAEMON_SOCKET
+
+First-time setup (NetBird Cloud, SSO):
+  $0 enable
+  $0 register
+
+First-time setup (self-hosted, setup key):
+  $0 enable
+  $0 setManagementUrl https://netbird.example.com
+  NB_SETUP_KEY=XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX $0 register
+
+Boot: place as init script (e.g. S41netbird); "start" runs only when enabled.
+EOF
+}
+
+case "$1" in
+  start)
+	start
+	;;
+  stop)
+	stop
+	;;
+  restart|reload)
+	restart
+	;;
+  register)
+	register
+	;;
+  registerForce)
+	register_force
+	;;
+  resetConfig)
+	reset_config
+	;;
+  reset)
+	reset
+	;;
+  getIp)
+	get_ip
+	;;
+  getStatus)
+	get_status
+	;;
+  enable)
+	enable
+	;;
+  disable)
+	disable
+	;;
+  getEnable)
+	get_enable
+	;;
+  getManagementUrl)
+	get_management_url
+	;;
+  setManagementUrl)
+	set_management_url "$2"
+	;;
+  getHostname)
+	get_hostname
+	;;
+  setHostname)
+	set_hostname "$2"
+	;;
+  help|-h|--help)
+	usage
+	exit 0
+	;;
+  *)
+	usage >&2
+	exit 1
+esac
+
+exit $?
