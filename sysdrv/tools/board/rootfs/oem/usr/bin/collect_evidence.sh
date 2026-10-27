@@ -5,14 +5,15 @@
  # @version:
  # @Author: zhanglei
  # @Date: 2025-11-25 11:05:55
- # @LastEditors: zhanglei
- # @LastEditTime: 2026-05-14 16:59:32
+ # @LastEditors: wuhao
+ # @LastEditTime: 2026-10-09 15:24:00
 ###
 # Diagnostic artifact name, e.g. arkkvm-diagnostic-20251202-182430
 DATE_TAG="$(date +%Y%m%d-%H%M%S)"
 DIAGNOSTIC_NAME="arkkvm-diagnostic-${DATE_TAG}"
 REKVM_BASE="/userdata/arkkvm"
-MAX_LOG_FILE_BYTES=314572800  # 300 MiB; skip oversized files under log/
+# Product cap for /userdata/arkkvm/log is 50 MiB per app file; skip anything above that.
+MAX_LOG_FILE_BYTES=52428800  # 50 MiB
 # Device IP: prefer server_ip from SSH_CONNECTION, else from local interfaces
 if [ -n "$SSH_CONNECTION" ]; then
   # SSH_CONNECTION format: client_ip client_port server_ip server_port
@@ -132,13 +133,13 @@ echo "Collecting arkkvm config files..."
 
 echo "Copying arkkvm/log and arkkvm/logs..."
 
-# /userdata/arkkvm/log (skip files over 300 MiB to avoid slow collection)
+# /userdata/arkkvm/log (skip files over 50 MiB — above product per-app cap)
 if [ -d "$REKVM_BASE/log" ]; then
   mkdir -p "$LOG_DIR/arkkvm_log"
   find "$REKVM_BASE/log" -maxdepth 3 -type f | while read -r _f; do
     _size=$(stat -c %s "$_f" 2>/dev/null || stat -f %z "$_f" 2>/dev/null)
     if [ -n "$_size" ] && [ "$_size" -gt "$MAX_LOG_FILE_BYTES" ]; then
-      echo "   -> skip log/$(basename "$_f") (${_size} bytes > 300 MiB)"
+      echo "   -> skip log/$(basename "$_f") (${_size} bytes > 50 MiB)"
       continue
     fi
     cp "$_f" "$LOG_DIR/arkkvm_log/" 2>/dev/null || true
@@ -206,11 +207,16 @@ if command -v zip >/dev/null 2>&1; then
   zip -r "$ARCHIVE_NAME" "$DIR_NAME" >/dev/null 2>&1
   _archive_ok=$?
 else
-  echo "zip not found, falling back to .tgz..."
+  # BusyBox tar has no -z; always pipe through gzip (works on GNU tar too).
+  echo "zip not found, falling back to .tgz (tar | gzip)..."
   ARCHIVE_NAME="${OUTPUT_DIR}.tgz"
   cd "$REKVM_BASE" || exit 1
-  tar -czf "$ARCHIVE_NAME" "$DIR_NAME" >/dev/null 2>&1
-  _archive_ok=$?
+  if tar -cf - "$DIR_NAME" | gzip > "$ARCHIVE_NAME"; then
+    _archive_ok=0
+  else
+    _archive_ok=1
+    rm -f "$ARCHIVE_NAME"
+  fi
 fi
 
 if [ "$_archive_ok" -eq 0 ] && [ -s "$ARCHIVE_NAME" ]; then

@@ -151,8 +151,8 @@ EOF
 		return 0
 	fi
 
-	ip=$(ip -4 -o addr show dev "$NET_IF" 2>/dev/null | awk '{print $4}' | head -1 | cut -d/ -f1)
-	ip_cidr=$(ip -4 -o addr show dev "$NET_IF" 2>/dev/null | awk '{print $4}' | head -1)
+	ip_cidr=$(nwu_ipv4_nonll_cidr "$NET_IF")
+	ip="${ip_cidr%/*}"
 	subnet="${ip_cidr#*/}"
 	router=$(nwu_ipv4_default_gateway "$NET_IF")
 	dns=$(grep '^nameserver' "$RESOLV_CONF" 2>/dev/null | awk '{print $2}' | tr '\n' ' ')

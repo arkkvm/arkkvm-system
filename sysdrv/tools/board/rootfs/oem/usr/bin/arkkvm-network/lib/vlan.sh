@@ -142,7 +142,7 @@ nwu_vlan_sync_interfaces() {
 
 nwu_vlan_capture_parent() {
 	parent="$CONF_VLAN_PARENT"
-	VLAN_PARENT_SNAPSHOT_FILE="${TEST_ROOT:-/tmp}/nwu-vlan-parent.snap.$$"
+	VLAN_PARENT_SNAPSHOT_FILE="/tmp/nwu-vlan-parent.snap.$$"
 	: >"$VLAN_PARENT_SNAPSHOT_FILE"
 	if nwu_skip_netlink; then
 		return 0

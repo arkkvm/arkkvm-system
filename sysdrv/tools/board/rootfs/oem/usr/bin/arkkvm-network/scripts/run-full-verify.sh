@@ -1,5 +1,5 @@
 #!/bin/sh
-# One-shot from Mac: local tests → deploy → on-device full verify → fetch report
+# One-shot: deploy → on-device full verify → fetch report
 set -e
 
 NWU_ROOT="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
@@ -17,14 +17,7 @@ echo "Report: $REPORT_LOCAL"
 echo "=================================================="
 
 echo ""
-echo ">>> [1/3] Local dry-run tests"
-if ! "$NWU_ROOT/ctl" test; then
-	echo "Local tests failed, aborting" >&2
-	exit 1
-fi
-
-echo ""
-echo ">>> [2/3] Deploy to device"
+echo ">>> [1/2] Deploy to device"
 DEVICE_IP="$DEVICE_IP" SSH_KEY="$SSH_KEY" "$NWU_ROOT/scripts/deploy-to-device.sh" "$DEVICE_IP"
 
 ssh_ok=0
@@ -43,7 +36,7 @@ if [ "$ssh_ok" -eq 0 ]; then
 fi
 
 echo ""
-echo ">>> [3/3] On-device verify (including VLAN)"
+echo ">>> [2/2] On-device verify (including VLAN)"
 ssh $SSH_OPTS "root@$DEVICE_IP" "
 	export NWU_ROOT=/oem/usr/bin/arkkvm-network
 	export NWU_VERIFY_REPORT=/tmp/nwu-verify-report.md

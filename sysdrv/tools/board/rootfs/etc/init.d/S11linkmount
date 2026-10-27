@@ -4,8 +4,11 @@ DHCPCD_DB_PERSIST_DIR=/userdata/arkkvm/dhcpcd
 DHCPCD_DB_RUNTIME_DIR=/var/db/dhcpcd
 # 与 S31arkkvmapp FT_IMG_PATH 一致（关机卸 loop 用）
 FT_IMG_PATH=/userdata/arkkvm/imgs/ft_disk.img
-# 产线/工厂置位：存在则本函数清空 userdata 后删除该文件（文件名按 oem 约定）
+# 产线/工厂置位：首次开机仅落"待恢复出厂"标志（保留 userdata 供工厂实验），
+# 再次开机才清空 userdata 完成恢复出厂，随后删除该置位文件（文件名按 oem 约定）
 OEM_FACTORY_FLAG=/oem/usr/etc/FACTORY_MODE
+# 置于 userdata 内：恢复出厂清空 userdata 时随分区内容一起消失，天然防重复格式化
+FACTORY_RESET_PENDING_FLAG=/userdata/.factory_reset_pending
 linkdev(){
 if [ ! -d "/dev/block/by-name" ];then
 mkdir -p /dev/block/by-name
@@ -198,16 +201,25 @@ persist_dhcpcd_db_after_userdata_mount() {
 
 }
 
-# userdata 已挂载后：若 oem 置位文件存在则清空分区内容并删除置位文件（在 persist_dhcpcd 前执行以便重建目录）
+# userdata 已挂载后执行（在 persist_dhcpcd 前以便重建目录）：
+#   - 首次开机（有置位文件、无待恢复标志）：落待恢复标志后直接返回，userdata 保留给工厂实验
+#   - 再次开机（待恢复标志已在）：清空 userdata 完成恢复出厂，并删除置位文件脱离工厂模式
 factory_clear_userdata_if_oem_flag() {
 	[ -f "$OEM_FACTORY_FLAG" ] || return 0
-	echo "${0}: factory flag $OEM_FACTORY_FLAG present, wiping /userdata ..."
+	if [ ! -f "$FACTORY_RESET_PENDING_FLAG" ]; then
+		mkdir -p /userdata || return 0
+		touch "$FACTORY_RESET_PENDING_FLAG" 2>/dev/null || return 0
+		echo "${0}: factory mode first boot, factory reset deferred to next boot"
+		return 0
+	fi
+	echo "${0}: factory reset: wiping /userdata ..."
 	for item in /userdata/* /userdata/.[!.]* /userdata/..?*; do
 		[ ! -e "$item" ] && [ ! -L "$item" ] && continue
 		rm -rf "$item" 2>/dev/null || true
 	done
 	sync
 	rm -f "$OEM_FACTORY_FLAG" 2>/dev/null || true
+	sync
 }
 
 # 先卸 ft_disk 的挂载点再 losetup -d，才能 umount /userdata

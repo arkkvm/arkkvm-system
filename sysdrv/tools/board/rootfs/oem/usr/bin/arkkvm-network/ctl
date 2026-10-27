@@ -48,7 +48,6 @@ Environment:
   NETWORK_CONF=...     Config path (default /userdata/arkkvm/network.conf)
 
 Examples:
-  ./ctl test
   ./ctl dry-run refresh ./config/network.conf.example
   sudo ./ctl refresh
   sudo ./ctl refresh --staging /userdata/arkkvm/network.conf.pending
@@ -75,9 +74,6 @@ case "$cmd" in
 		export NWU_DRY_RUN=1
 		msg_warn "dry-run enabled"
 		exec "$0" "$@"
-		;;
-	test)
-		exec sh "$NWU_ROOT/scripts/run-tests.sh" "${1:-all}"
 		;;
 	refresh)
 		exec sh "$NWU_ROOT/scripts/refresh-network.sh" "$@"

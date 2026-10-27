@@ -22,7 +22,6 @@ msg_info() { echo "[udhcpc-hook] $*" >&2; }
 
 nwu_hook_skip_net() {
 	[ "${NWU_DRY_RUN:-0}" = "1" ] && return 0
-	[ -n "${NWU_TEST_MODE:-}" ] && return 0
 	return 1
 }
 
@@ -67,7 +66,7 @@ nwu_hook_route_dns_policy() {
 case "$1" in
 deconfig)
 	if nwu_hook_skip_net; then rm -f "$LEASE_FILE"; exit 0; fi
-	ip addr flush dev "$interface" 2>/dev/null || true
+	ip -4 addr flush dev "$interface" 2>/dev/null || true
 	rm -f "$LEASE_FILE"
 	;;
 renew|bound)
@@ -90,20 +89,61 @@ EOF
 		exit 0
 	fi
 	if command -v ip >/dev/null 2>&1; then
-		ip addr flush dev "$interface" 2>/dev/null || true
+		ip -4 addr flush dev "$interface" 2>/dev/null || true
 		# busybox udhcpc gives dotted netmask in $subnet; convert to prefix length.
 		_prefix="$subnet"
 		case "$_prefix" in
-		255.255.255.0) _prefix=24 ;;
-		255.255.255.128) _prefix=25 ;;
-		255.255.255.192) _prefix=26 ;;
-		255.255.255.224) _prefix=27 ;;
-		255.255.255.240) _prefix=28 ;;
-		255.255.255.248) _prefix=29 ;;
-		255.255.255.252) _prefix=30 ;;
-		255.255.0.0) _prefix=16 ;;
-		255.0.0.0) _prefix=8 ;;
-		''|*[!0-9]*) _prefix=24 ;;
+		'') _prefix=24 ;;
+		*[!0-9.]*) _prefix=24 ;;
+		*.*)
+			case "$_prefix" in
+			255.255.255.255) _prefix=32 ;;
+			255.255.255.254) _prefix=31 ;;
+			255.255.255.252) _prefix=30 ;;
+			255.255.255.248) _prefix=29 ;;
+			255.255.255.240) _prefix=28 ;;
+			255.255.255.224) _prefix=27 ;;
+			255.255.255.192) _prefix=26 ;;
+			255.255.255.128) _prefix=25 ;;
+			255.255.255.0) _prefix=24 ;;
+			255.255.254.0) _prefix=23 ;;
+			255.255.252.0) _prefix=22 ;;
+			255.255.248.0) _prefix=21 ;;
+			255.255.240.0) _prefix=20 ;;
+			255.255.224.0) _prefix=19 ;;
+			255.255.192.0) _prefix=18 ;;
+			255.255.128.0) _prefix=17 ;;
+			255.255.0.0) _prefix=16 ;;
+			255.254.0.0) _prefix=15 ;;
+			255.252.0.0) _prefix=14 ;;
+			255.248.0.0) _prefix=13 ;;
+			255.240.0.0) _prefix=12 ;;
+			255.224.0.0) _prefix=11 ;;
+			255.192.0.0) _prefix=10 ;;
+			255.128.0.0) _prefix=9 ;;
+			255.0.0.0) _prefix=8 ;;
+			*)
+				_prefix=$(echo "$_prefix" | awk -F. '{
+					n=0
+					for (i=1;i<=4;i++) {
+						d=$i+0
+						if (d==255) n+=8
+						else if (d==254) n+=7
+						else if (d==252) n+=6
+						else if (d==248) n+=5
+						else if (d==240) n+=4
+						else if (d==224) n+=3
+						else if (d==192) n+=2
+						else if (d==128) n+=1
+						else if (d==0) { print n; exit }
+						else { print 24; exit }
+					}
+					print n
+				}')
+				;;
+			esac
+			;;
+		# already a numeric prefix length
 		esac
 		ip addr add "$ip/${_prefix}" dev "$interface" 2>/dev/null || true
 		ip link set dev "$interface" up

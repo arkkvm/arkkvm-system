@@ -3,16 +3,59 @@
 nwu_ipv4_cidr_from_netmask() {
 	mask="$1"
 	case "$mask" in
-		255.255.255.0) echo 24 ;;
-		255.255.255.128) echo 25 ;;
-		255.255.255.192) echo 26 ;;
-		255.255.255.224) echo 27 ;;
-		255.255.255.240) echo 28 ;;
-		255.255.255.248) echo 29 ;;
+		'') echo 24; return ;;
+		*/*) echo "${mask#*/}"; return ;;
+	esac
+	# already a prefix length
+	case "$mask" in
+		*[!0-9]*) ;;
+		*) echo "$mask"; return ;;
+	esac
+	case "$mask" in
+		255.255.255.255) echo 32 ;;
+		255.255.255.254) echo 31 ;;
 		255.255.255.252) echo 30 ;;
+		255.255.255.248) echo 29 ;;
+		255.255.255.240) echo 28 ;;
+		255.255.255.224) echo 27 ;;
+		255.255.255.192) echo 26 ;;
+		255.255.255.128) echo 25 ;;
+		255.255.255.0) echo 24 ;;
+		255.255.254.0) echo 23 ;;
+		255.255.252.0) echo 22 ;;
+		255.255.248.0) echo 21 ;;
+		255.255.240.0) echo 20 ;;
+		255.255.224.0) echo 19 ;;
+		255.255.192.0) echo 18 ;;
+		255.255.128.0) echo 17 ;;
 		255.255.0.0) echo 16 ;;
+		255.254.0.0) echo 15 ;;
+		255.252.0.0) echo 14 ;;
+		255.248.0.0) echo 13 ;;
+		255.240.0.0) echo 12 ;;
+		255.224.0.0) echo 11 ;;
+		255.192.0.0) echo 10 ;;
+		255.128.0.0) echo 9 ;;
 		255.0.0.0) echo 8 ;;
-		*/*) echo "${mask#*/}" ;;
+		*.*)
+			echo "$mask" | awk -F. '{
+				n=0
+				for (i=1;i<=4;i++) {
+					d=$i+0
+					if (d==255) n+=8
+					else if (d==254) n+=7
+					else if (d==252) n+=6
+					else if (d==248) n+=5
+					else if (d==240) n+=4
+					else if (d==224) n+=3
+					else if (d==192) n+=2
+					else if (d==128) n+=1
+					else if (d==0) { print n; exit }
+					else { print 24; exit }
+				}
+				print n
+			}'
+			;;
 		*) echo 24 ;;
 	esac
 }
@@ -29,6 +72,34 @@ nwu_ipv4_is_dotted() {
 nwu_ipv4_sanitize() {
 	nwu_ipv4_is_dotted "$1" || return 0
 	echo "$1"
+}
+
+# First non-link-local IPv4 CIDR on iface (DHCP/static address), if any.
+nwu_ipv4_nonll_cidr() {
+	iface="${1:-$NET_IF}"
+	ip -4 -o addr show dev "$iface" 2>/dev/null | awk '
+	{
+		addr = $4
+		sub(/\/.*/, "", addr)
+		if (addr ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ && addr !~ /^169\.254\./) {
+			print $4
+			exit
+		}
+	}'
+}
+
+# First 169.254/16 IPv4 CIDR on iface, if any.
+nwu_ipv4_linklocal_cidr() {
+	iface="${1:-$NET_IF}"
+	ip -4 -o addr show dev "$iface" 2>/dev/null | awk '
+	{
+		addr = $4
+		sub(/\/.*/, "", addr)
+		if (addr ~ /^169\.254\.[0-9]+\.[0-9]+$/) {
+			print $4
+			exit
+		}
+	}'
 }
 
 # Parse default gateway for iface from `via <ipv4>` only.
@@ -155,7 +226,7 @@ nwu_dhcp_preferred_ip() {
 
 	# In test/dry-run, skip live iface (host eth0 would poison preferred-IP tests).
 	if [ -n "$iface" ] && ! nwu_skip_netlink; then
-		prev=$(ip -4 -o addr show dev "$iface" 2>/dev/null | awk '{print $4}' | head -n1 | cut -d/ -f1)
+		prev=$(nwu_ipv4_nonll_cidr "$iface" | cut -d/ -f1)
 		prev=$(nwu_ipv4_sanitize "$prev")
 		if [ -n "$prev" ]; then
 			echo "live|$prev"
@@ -212,6 +283,7 @@ nwu_ipv4_apply_dhcp() {
 		fi
 		msg_warn "udhcpc already negotiating on $NET_IF; skip restart"
 		nwu_log "DHCP skip restart: udhcpc negotiating on $NET_IF"
+		nwu_ipv4ll_apply 2>/dev/null || true
 		return 0
 	fi
 	# Capture preferred IP before flush.
@@ -243,9 +315,11 @@ nwu_ipv4_apply_dhcp() {
 		fi
 	fi
 	nwu_dhcp_start
+	# Make the interface usable immediately while DHCP is still negotiating.
+	nwu_ipv4ll_apply 2>/dev/null || true
 	if [ "$CONF_DHCP_CLIENT" = "udhcpc" ]; then
 		nwu_udhcpc_wait_lease 2>/dev/null || true
-		got=$(ip -4 -o addr show dev "$NET_IF" 2>/dev/null | awk '{print $4}' | head -n1 | cut -d/ -f1)
+		got=$(nwu_ipv4_nonll_cidr "$NET_IF" | cut -d/ -f1)
 		got=$(nwu_ipv4_sanitize "$got")
 		if [ -n "$got" ]; then
 			if [ -z "$prev_ip" ] || [ "$got" = "$prev_ip" ]; then

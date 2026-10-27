@@ -33,7 +33,7 @@ NWU_ROOT="${NWU_ROOT:-/oem/usr/bin/arkkvm-network}"
 REFRESH_SCRIPT="$NWU_ROOT/scripts/refresh-network.sh"
 NETWORK_CONF="${NETWORK_CONF:-/userdata/arkkvm/network.conf}"
 USERDATA_DIR="${USERDATA_DIR:-/userdata/arkkvm}"
-BOOT_LOG="${NETWORK_LOG:-/userdata/arkkvm/network.log}"
+BOOT_LOG="${NETWORK_LOG:-/userdata/arkkvm/logs/arkkvm_network.log}"
 WAIT_USERDATA_SEC="${WAIT_USERDATA_SEC:-30}"
 NETWORK_LINK_MONITOR="${NETWORK_LINK_MONITOR:-1}"
 LINK_MONITOR_INTERVAL_SEC="${LINK_MONITOR_INTERVAL_SEC:-2}"
@@ -45,8 +45,9 @@ log_msg() {
 	TS=$(date '+%Y-%m-%d %H:%M:%S')
 	LINE="$TS [init] $*"
 	echo "$LINE"
-	mkdir -p "$(dirname "$BOOT_LOG")" 2>/dev/null || true
-	echo "$LINE" >>"$BOOT_LOG" 2>/dev/null || echo "$LINE" >>/tmp/network-unified-init.log 2>/dev/null || true
+	# shellcheck source=/dev/null
+	. "$NWU_ROOT/lib/common.sh"
+	nwu_log_file "$LINE"
 }
 
 wait_userdata() {
@@ -208,6 +209,14 @@ stop_link_monitor() {
 }
 
 do_start() {
+	# Upgrade: old log lived outside logs/ and Clear Logs cannot remove it.
+	# shellcheck source=/dev/null
+	. "$NWU_ROOT/lib/common.sh"
+	if [ -f "$NWU_LEGACY_NETWORK_LOG" ]; then
+		nwu_log_retire_legacy
+		log_msg "Removed legacy network log outside logs/: $NWU_LEGACY_NETWORK_LOG"
+	fi
+
 	log_msg "======== S16network start ========"
 
 	if [ ! -x "$REFRESH_SCRIPT" ]; then

@@ -72,7 +72,9 @@ nwu_ipv4_netmask_from_cidr() {
 
 nwu_state_runtime_ipv4() {
 	iface="$1"
-	ip -4 -o addr show dev "$iface" 2>/dev/null | awk '{print $4}' | head -n1
+	cidr=$(nwu_ipv4_nonll_cidr "$iface")
+	[ -n "$cidr" ] || cidr=$(nwu_ipv4_linklocal_cidr "$iface")
+	[ -n "$cidr" ] && echo "$cidr"
 }
 
 nwu_state_runtime_gateway() {

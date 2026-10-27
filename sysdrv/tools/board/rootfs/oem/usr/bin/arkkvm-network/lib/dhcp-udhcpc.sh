@@ -44,7 +44,7 @@ nwu_udhcpc_stop_all() {
 }
 
 nwu_udhcpc_has_ipv4() {
-	ip -4 -o addr show dev "$NET_IF" 2>/dev/null | grep -q 'inet '
+	[ -n "$(nwu_ipv4_nonll_cidr "$NET_IF")" ]
 }
 
 nwu_udhcpc_start() {
@@ -168,7 +168,7 @@ nwu_udhcpc_write_lease_from_system() {
 	if nwu_skip_netlink; then
 		return 0
 	fi
-	ip=$(ip -4 -o addr show dev "$NET_IF" 2>/dev/null | awk '{print $4}' | head -n1)
+	ip=$(nwu_ipv4_nonll_cidr "$NET_IF")
 	[ -n "$ip" ] || return 1
 	addr=${ip%/*}
 	mask=${ip#*/}
@@ -218,6 +218,8 @@ nwu_udhcpc_wait_lease() {
 	if nwu_skip_netlink || nwu_is_dry_run; then
 		return 0
 	fi
+	# A link-local fallback is already usable; do not block on DHCP.
+	[ -n "$(nwu_ipv4_linklocal_cidr "$NET_IF")" ] && return 0
 	i=0
 	while [ "$i" -lt 15 ]; do
 		nwu_udhcpc_lease_valid && return 0

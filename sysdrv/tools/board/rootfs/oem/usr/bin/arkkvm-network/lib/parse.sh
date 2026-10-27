@@ -216,7 +216,6 @@ nwu_conf_parse() {
 	NET_IF="$CONF_IFACE"
 	export NET_IF
 
-	nwu_log "parsed network.conf: dhcp=$CONF_DHCP_CLIENT ipv4=$CONF_IPV4_MODE vlan=${CONF_VLAN_ENABLED:-false}"
 }
 
 nwu_conf_show() {

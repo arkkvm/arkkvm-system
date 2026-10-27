@@ -1,4 +1,7 @@
 # description: ArkKVMApp Startup Script
+#
+# BACKUP ONLY in arkkvm-app/shell/. Device boots from jack-build-system board
+# rootfs: .../sysdrv/tools/board/rootfs/etc/init.d/S31arkkvmapp
 
 ### BEGIN INIT INFO
 # Provides:          ArkKVMApp
@@ -13,9 +16,20 @@ APP_PATH=/oem/usr/bin/arkkvm_app
 # APP_PATH=/userdata/arkkvm/bin/arkkvm_app
 APP_NAME=ArkKVMApp
 PID_FILE=/run/$APP_NAME.pid
+LOG_FILE=/userdata/arkkvm/log/arkkvm_app.log
+LOG_GUARD_PID=/run/arkkvm_app_log_guard.pid
 FT_IMG_PATH="/userdata/arkkvm/imgs/ft_disk.img"
 
 [ -f /etc/profile.d/RkEnv.sh ] && source /etc/profile.d/RkEnv.sh
+
+LOG_CAP_LIB=/oem/usr/bin/arkkvm_log_cap.sh
+[ -f "$LOG_CAP_LIB" ] || LOG_CAP_LIB="$(dirname "$0")/arkkvm_log_cap.sh"
+ARKKVM_LOG_CAP_LOADED=0
+# shellcheck source=/dev/null
+if [ -f "$LOG_CAP_LIB" ]; then
+    . "$LOG_CAP_LIB"
+    ARKKVM_LOG_CAP_LOADED=1
+fi
 
 case "$1" in
     start)
@@ -30,14 +44,18 @@ case "$1" in
             fi
         fi
 
-
         mkdir -p /userdata/arkkvm/log
+        if [ "$ARKKVM_LOG_CAP_LOADED" = 1 ]; then
+            cap_log_file "$LOG_FILE"
+        fi
 
-        nohup "$APP_PATH" >> /userdata/arkkvm/log/arkkvm_app.log 2>&1 &
+        nohup sh -c "$APP_PATH" >> "$LOG_FILE" 2>&1 &
         echo $! > $PID_FILE
-        echo "$APP_NAME started with PID $!. /userdata/arkkvm/log/arkkvm_app.log"
+        echo "$APP_NAME started with PID $!. $LOG_FILE"
 
-
+        if [ "$ARKKVM_LOG_CAP_LOADED" = 1 ]; then
+            start_log_guard "$LOG_FILE" "$LOG_GUARD_PID"
+        fi
 
         mkdir -p "$(dirname "$FT_IMG_PATH")"
         if [ ! -f "$FT_IMG_PATH" ]; then
@@ -46,12 +64,17 @@ case "$1" in
                 mkfs.vfat -F 32 "$FT_IMG_PATH"
             echo "FAT32 image created successfully."
         else
-            echo "Image file already exists: $FT_IMG_PATH"
+            echo "Image file already exists: $IMG_PATH"
         fi
 
         ;;
     stop)
         echo "Stopping $APP_NAME..."
+        if [ "$ARKKVM_LOG_CAP_LOADED" = 1 ]; then
+            stop_log_guard "$LOG_GUARD_PID"
+        else
+            [ -f "$LOG_GUARD_PID" ] && kill "$(cat "$LOG_GUARD_PID")" 2>/dev/null; rm -f "$LOG_GUARD_PID"
+        fi
         if [ -f $PID_FILE ]; then
             PID=$(cat $PID_FILE)
             if ps -p $PID > /dev/null 2>&1; then
@@ -59,7 +82,6 @@ case "$1" in
                 echo "$APP_NAME stopped (PID: $PID)"
             else
                 echo "No running process found for PID $PID"
-                killall -TERM arkkvm_app 2>/dev/null || true
             fi
             rm -f $PID_FILE
         else

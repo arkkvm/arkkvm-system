@@ -76,6 +76,7 @@ nwu_hostname_set "$CONF_HOSTNAME" "$CONF_DOMAIN"
 if nwu_vlan_is_enabled; then
 	NET_IF="$CONF_VLAN_PARENT"
 	export NET_IF
+	nwu_ipv4ll_remove 2>/dev/null || true
 	nwu_link_ensure_up
 	# Leaving flat eth0 DHCP behind: stop all clients before VLAN L3 owns traffic.
 	nwu_udhcpc_stop_all 2>/dev/null || true
@@ -118,6 +119,7 @@ else
 			if ! nwu_skip_netlink && ! nwu_is_dry_run; then
 				i=0
 				while [ "$i" -lt 8 ]; do
+					[ -n "$(nwu_ipv4_linklocal_cidr "$NET_IF")" ] && break
 					nwu_udhcpc_lease_valid 2>/dev/null && break
 					if nwu_udhcpc_has_ipv4 2>/dev/null; then
 						nwu_udhcpc_write_lease_from_system 2>/dev/null && break
@@ -128,6 +130,8 @@ else
 			fi
 		fi
 	fi
+	# If DHCP bound during the wait, drop the fallback; otherwise keep it.
+	nwu_ipv4ll_apply
 fi
 
 NET_IF="$CONF_IFACE"

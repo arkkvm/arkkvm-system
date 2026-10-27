@@ -1,11 +1,24 @@
+# BACKUP ONLY in arkkvm-app/shell/. Device boots from jack-build-system board
+# rootfs: .../sysdrv/tools/board/rootfs/etc/init.d/S30arkkvmusb
 
 APP_PATH=/oem/usr/bin/arkkvm_usb
 
-APP_NAME=ArkKVMApp
+APP_NAME=ArkKVMUsb
 PID_FILE=/run/$APP_NAME.pid
+LOG_FILE=/userdata/arkkvm/log/arkkvm_usb.log
+LOG_GUARD_PID=/run/arkkvm_usb_log_guard.pid
 FT_IMG_PATH="/userdata/arkkvm/imgs/ft_disk.img"
 
 [ -f /etc/profile.d/RkEnv.sh ] && source /etc/profile.d/RkEnv.sh
+
+LOG_CAP_LIB=/oem/usr/bin/arkkvm_log_cap.sh
+[ -f "$LOG_CAP_LIB" ] || LOG_CAP_LIB="$(dirname "$0")/arkkvm_log_cap.sh"
+ARKKVM_LOG_CAP_LOADED=0
+# shellcheck source=/dev/null
+if [ -f "$LOG_CAP_LIB" ]; then
+    . "$LOG_CAP_LIB"
+    ARKKVM_LOG_CAP_LOADED=1
+fi
 
 case "$1" in
     start)
@@ -20,17 +33,27 @@ case "$1" in
             fi
         fi
 
-
         mkdir -p /userdata/arkkvm/log
+        if [ "$ARKKVM_LOG_CAP_LOADED" = 1 ]; then
+            cap_log_file "$LOG_FILE"
+        fi
 
-        nohup sh -c "$APP_PATH" >> /userdata/arkkvm/log/arkkvm_usb.log 2>&1 &
+        nohup sh -c "$APP_PATH" >> "$LOG_FILE" 2>&1 &
         echo $! > $PID_FILE
-        echo "$APP_NAME started with PID $!. /userdata/arkkvm/log/arkkvm_usb.log"
+        echo "$APP_NAME started with PID $!. $LOG_FILE"
 
+        if [ "$ARKKVM_LOG_CAP_LOADED" = 1 ]; then
+            start_log_guard "$LOG_FILE" "$LOG_GUARD_PID"
+        fi
 
         ;;
     stop)
         echo "Stopping $APP_NAME..."
+        if [ "$ARKKVM_LOG_CAP_LOADED" = 1 ]; then
+            stop_log_guard "$LOG_GUARD_PID"
+        else
+            [ -f "$LOG_GUARD_PID" ] && kill "$(cat "$LOG_GUARD_PID")" 2>/dev/null; rm -f "$LOG_GUARD_PID"
+        fi
         if [ -f $PID_FILE ]; then
             PID=$(cat $PID_FILE)
             if ps -p $PID > /dev/null 2>&1; then

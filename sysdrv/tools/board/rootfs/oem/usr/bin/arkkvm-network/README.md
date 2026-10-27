@@ -43,9 +43,8 @@ network-config-unified/
     ├── refresh-network.sh       # ★ Sole refresh script (--staging / --committed)
     ├── udhcpc-hook.sh           # Production udhcpc hook (lease, routes, DNS)
     ├── udhcpc-staging.script    # Staging DHCP: address only, no default route/DNS
-    ├── run-tests.sh             # Local dry-run tests (11 cases)
     ├── verify-device.sh         # On-device full verification (conf-only, VLAN matrix)
-    ├── run-full-verify.sh       # Local tests + deploy + on-device verify + report
+    ├── run-full-verify.sh       # Deploy + on-device verify + report
     ├── deploy-to-device.sh      # rsync deploy to device
     ├── install-init.sh          # Install init.d script
     └── lib/
@@ -134,13 +133,12 @@ route_metric=200
 cd network-config-unified
 
 ./ctl help
-./ctl test                    # 11 local dry-run tests, no root required
 ./ctl dry-run refresh ./config/network.conf.example
 
 # On-device deploy (SSH)
 DEVICE_IP=192.168.5.116 ./scripts/deploy-to-device.sh
 
-# Full verification (local tests + deploy + on-device conf-only matrix + report)
+# Full verification (deploy + on-device conf-only matrix + report)
 ./scripts/run-full-verify.sh 192.168.5.116
 
 # On-device networking
@@ -186,7 +184,7 @@ Parse network.conf (or pending file from --staging)
 Environment variables:
 
 - `NWU_APPLY_MODE=staging|committed` (defaults from `vlan.apply_mode` in conf)
-- `NWU_DRY_RUN=1` / `NWU_FORCE=1` / `NWU_TEST_MODE=1`
+- `NWU_DRY_RUN=1` / `NWU_FORCE=1`
 
 ---
 
@@ -253,7 +251,6 @@ fn confirm_vlan_settings() {
 | `./ctl dhcp <op> [iface]` | start/stop/restart/renew/release/lease; iface e.g. `eth0.10` |
 | `./ctl resolv show` | Show resolv.conf |
 | `./ctl dry-run <cmd>` | Simulate |
-| `./ctl test` | Local automated tests |
 
 ---
 
@@ -261,9 +258,8 @@ fn confirm_vlan_settings() {
 
 | Script | Effect |
 |--------|--------|
-| `./ctl test` | Local 11 dry-run cases (parse, DHCP switch, VLAN staging, pending cleanup, etc.) |
 | `./scripts/verify-device.sh` | On device: full flat + VLAN matrix, **conf + refresh only** |
-| `./scripts/run-full-verify.sh [IP]` | Local test → deploy → on-device verify → `test-report-latest.md` |
+| `./scripts/run-full-verify.sh [IP]` | Deploy → on-device verify → `test-report-latest.md` |
 | `./scripts/deploy-to-device.sh [IP]` | rsync to `/oem/usr/bin/arkkvm-network` |
 
 ---

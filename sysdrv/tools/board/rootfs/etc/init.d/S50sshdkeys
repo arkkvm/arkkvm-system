@@ -1,0 +1,22 @@
+#!/bin/sh
+#
+# sshdkeys    Pre-generate sshd host keys in background.
+#
+# Keep the script itself instant: rcS waits for each init script, so the
+# actual key generation is dispatched to background (&) and reparented to
+# init. S91sshd later sees keys already present (or its own ssh-keygen -A
+# fallback finishes the job) and starts instantly.
+
+[ -x /usr/bin/ssh-keygen ] || exit 0
+
+# All host key types already present -> nothing to do
+if [ -f /etc/ssh/ssh_host_rsa_key ] && \
+   [ -f /etc/ssh/ssh_host_ecdsa_key ] && \
+   [ -f /etc/ssh/ssh_host_ed25519_key ]; then
+	exit 0
+fi
+
+umask 077
+/usr/bin/ssh-keygen -A >/dev/null 2>&1 </dev/null &
+
+exit 0
