@@ -1,0 +1,103 @@
+#!/bin/sh
+# description: ArkKVM kernel log daemon
+#
+# CANONICAL in arkkvm-app/shell/S12arkkvm_klogd — keep in sync with
+# jack-build-system/sysdrv/tools/board/rootfs/etc/init.d/S12arkkvm_klogd
+#
+# Starts after S11linkmount (mounts /userdata) and before network (S16) and
+# the app (S31). /dev/kmsg replays the ring buffer on open, so anything the
+# kernel logged before this point is still captured.
+
+### BEGIN INIT INFO
+# Provides:          arkkvm_klogd
+# Required-Start:    $local_fs
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Persist kernel logs (/dev/kmsg) to /userdata
+### END INIT INFO
+
+DAEMON=/oem/usr/bin/arkkvm_klogd
+NAME=arkkvm_klogd
+PID_FILE=/run/$NAME.pid
+LOG_FILE=/userdata/arkkvm/log/$NAME.log
+LOG_GUARD_PID=/run/${NAME}_log_guard.pid
+
+[ -f /etc/profile.d/RkEnv.sh ] && source /etc/profile.d/RkEnv.sh
+
+LOG_CAP_LIB=/oem/usr/bin/arkkvm_log_cap.sh
+[ -f "$LOG_CAP_LIB" ] || LOG_CAP_LIB="$(dirname "$0")/arkkvm_log_cap.sh"
+ARKKVM_LOG_CAP_LOADED=0
+# shellcheck source=/dev/null
+if [ -f "$LOG_CAP_LIB" ]; then
+    . "$LOG_CAP_LIB"
+    ARKKVM_LOG_CAP_LOADED=1
+fi
+
+start() {
+    if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+        echo "$NAME already running (PID $(cat "$PID_FILE"))"
+        return 0
+    fi
+    # Mixed-version safety: a rootfs with this script but without the binary
+    # (apps artifact not yet updated) must not enter the respawn loop.
+    [ -x "$DAEMON" ] || { echo "$NAME: $DAEMON not found, not starting"; return 1; }
+
+    # /userdata is mounted by S11linkmount; wait briefly (slow fsck/first boot).
+    n=0
+    while [ "$n" -lt 30 ] && ! grep -q ' /userdata ' /proc/mounts; do
+        sleep 1
+        n=$((n + 1))
+    done
+
+    mkdir -p /userdata/arkkvm/log
+    if [ "$ARKKVM_LOG_CAP_LOADED" = 1 ]; then
+        cap_log_file "$LOG_FILE"
+    fi
+
+    (
+        trap '' HUP
+        while true; do
+            "$DAEMON"
+            # Daemon exited (open failure, read error, crash): back off, retry.
+            sleep 5
+        done
+    ) >> "$LOG_FILE" 2>&1 &
+    echo $! > "$PID_FILE"
+    echo "$NAME started (PID $(cat "$PID_FILE"), console log: $LOG_FILE)"
+
+    if [ "$ARKKVM_LOG_CAP_LOADED" = 1 ]; then
+        start_log_guard "$LOG_FILE" "$LOG_GUARD_PID"
+    fi
+}
+
+stop() {
+    # Kill the respawn wrapper first so it cannot relaunch the daemon.
+    if [ -f "$PID_FILE" ]; then
+        kill "$(cat "$PID_FILE")" 2>/dev/null
+        rm -f "$PID_FILE"
+    fi
+    killall "$NAME" 2>/dev/null
+    if [ "$ARKKVM_LOG_CAP_LOADED" = 1 ]; then
+        stop_log_guard "$LOG_GUARD_PID"
+    else
+        [ -f "$LOG_GUARD_PID" ] && kill "$(cat "$LOG_GUARD_PID")" 2>/dev/null
+        rm -f "$LOG_GUARD_PID"
+    fi
+    echo "$NAME stopped"
+}
+
+restart() {
+    stop
+    sleep 1
+    start
+}
+
+case "$1" in
+    start|stop|restart)
+        "$1"
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart}"
+        exit 1
+        ;;
+esac
