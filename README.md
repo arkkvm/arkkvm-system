@@ -1,5 +1,7 @@
 # ArkKVM-System
 
+[ArkKVM](https://www.arkkvm.com/) is an open-source, all-in-one remote KVM platform — [product information & official site](https://www.arkkvm.com/).
+
 Firmware build system for ArkKVM hardware, based on the Rockchip RV1106 IPC Linux SDK.
 
 **Default target:** Rockchip RV1106, eMMC boot, board config `BoardConfig-EMMC-NONE-RV1106_ARKKVM_V2.mk`
